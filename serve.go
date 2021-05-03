@@ -46,10 +46,11 @@ type Response struct {
 	key   Key
 	value Datum
 	size  int
+	ok    bool
 }
 
 type Fetcher interface {
-	Do(key Key, readFunc func(io.Reader))
+	Do(key Key, readFunc func(io.Reader)) bool
 }
 
 type HTTPFetcher struct {
@@ -57,26 +58,37 @@ type HTTPFetcher struct {
 	client *http.Client
 }
 
-func (fetcher HTTPFetcher) Do(key Key, readFunc func(io.Reader)) {
+func (fetcher HTTPFetcher) Do(key Key, readFunc func(io.Reader)) bool {
 	archive := fetcher.bucket + "/" + key.name + ".pmtiles"
 	fetch, _ := http.NewRequest("GET", archive, nil)
 	end := key.rng.Offset + uint64(key.rng.Length) - 1
 	range_header := fmt.Sprintf("bytes=%d-%d", key.rng.Offset, end)
 	fetch.Header.Add("Range", range_header)
-	fetch_resp, _ := fetcher.client.Do(fetch)
+	fetch_resp, err := fetcher.client.Do(fetch)
+	if err != nil || fetch_resp.StatusCode >= 300 || fetch_resp.ContentLength != int64(key.rng.Length) {
+		return false
+	}
 	defer fetch_resp.Body.Close()
 	readFunc(fetch_resp.Body)
+	return true
 }
 
 type FileFetcher struct {
 	path string
 }
 
-func (fetcher FileFetcher) Do(key Key, readFunc func(io.Reader)) {
-	f, _ := os.Open(fetcher.path + "/" + key.name + ".pmtiles")
-	f.Seek(int64(key.rng.Offset), 0)
+func (fetcher FileFetcher) Do(key Key, readFunc func(io.Reader)) bool {
+	f, err := os.Open(fetcher.path + "/" + key.name + ".pmtiles")
+	if err != nil {
+		return false
+	}
+	_, err = f.Seek(int64(key.rng.Offset), 0)
+	if err != nil {
+		return false
+	}
 	defer f.Close()
 	readFunc(f)
+	return true
 }
 
 func main() {
@@ -212,7 +224,7 @@ func main() {
 					go func() {
 						var result Datum
 						var size int
-						fetcher.Do(key, func(reader io.Reader) {
+						ok := fetcher.Do(key, func(reader io.Reader) {
 							if req.kind == Root {
 								metadata, dir := pmtiles.ParseHeader(reader)
 								result = Datum{kind: Root, bytes: metadata, directory: dir}
@@ -228,8 +240,12 @@ func main() {
 								size = len(tile)
 							}
 						})
-						resps <- Response{key: key, value: result, size: size}
-						logger.Printf("fetched %s %d-%d", key.name, key.rng.Offset, key.rng.Length)
+						resps <- Response{key: key, value: result, size: size, ok: ok}
+						if ok {
+							logger.Printf("fetched %s %d-%d", key.name, key.rng.Offset, key.rng.Length)
+						} else {
+							logger.Printf("failed to fetch %s %d-%d", key.name, key.rng.Offset, key.rng.Length)
+						}
 					}()
 				}
 			case resp := <-resps:
