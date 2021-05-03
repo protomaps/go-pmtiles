@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"container/list"
+	"compress/gzip"
 	"flag"
 	"fmt"
 	"github.com/protomaps/go-pmtiles/pmtiles"
@@ -160,7 +162,7 @@ func main() {
 			tile = tile_value.bytes
 		}
 
-		ext := res[4]
+		ext := res[5]
 		var content_type string
 		switch ext {
 		case "jpg":
@@ -174,7 +176,17 @@ func main() {
 		if len(cors) > 0 {
 			w.Header().Set("Access-Control-Allow-Origin", cors)
 		}
-		w.Write(tile)
+
+		if ext == "pbf" {
+			w.Header().Set("Content-Encoding", "gzip")
+			var buf bytes.Buffer
+			zw := gzip.NewWriter(&buf)
+			_, _ = zw.Write(tile)
+			zw.Close()
+			w.Write(buf.Bytes())
+		} else {
+			w.Write(tile)
+		}
 		elapsed := time.Since(start)
 		logger.Printf("served %s/%d/%d/%d in %s", name, z, x, y, elapsed)
 	})
