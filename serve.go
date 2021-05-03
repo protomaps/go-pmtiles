@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -78,7 +79,7 @@ type FileFetcher struct {
 }
 
 func (fetcher FileFetcher) Do(key Key, readFunc func(io.Reader)) bool {
-	f, err := os.Open(fetcher.path + "/" + key.name + ".pmtiles")
+	f, err := os.Open(path.Join(fetcher.path,key.name + ".pmtiles"))
 	if err != nil {
 		return false
 	}
