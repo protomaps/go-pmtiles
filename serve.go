@@ -117,10 +117,10 @@ func main() {
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		rPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z_]+)\/(?P<Z>\d+)\/(?P<X>\d+)\/(?P<Y>\d+)\.(?P<EXT>png|pbf|jpg)`)
+		rPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z0-9_]+)\/(?P<Z>\d+)\/(?P<X>\d+)\/(?P<Y>\d+)\.(?P<EXT>png|pbf|jpg)`)
 		res := rPath.FindStringSubmatch(r.URL.Path)
 		if len(res) == 0 {
-			mPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z_]+)\/metadata`)
+			mPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z0-9_]+)\/metadata`)
 			res = mPath.FindStringSubmatch(r.URL.Path)
 
 			if len(res) == 0 {
