@@ -109,6 +109,7 @@ func main() {
 
 	var fetcher Fetcher
 	if strings.HasPrefix(path, "http") {
+		path = strings.TrimSuffix(path,"/")
 		fetcher = HTTPFetcher{client: &http.Client{}, bucket: path}
 	} else {
 		fetcher = FileFetcher{path: path}
