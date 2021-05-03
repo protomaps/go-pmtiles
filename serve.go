@@ -156,6 +156,11 @@ func main() {
 		y, _ := strconv.ParseUint(res[4], 10, 32)
 		coord := pmtiles.Zxy{Z: uint8(z), X: uint32(x), Y: uint32(y)}
 
+		if len(root_value.directory.Entries) == 0 {
+			w.WriteHeader(404)
+			return
+		}
+
 		var tile []byte
 		if offsetlen, ok := root_value.directory.Entries[coord]; ok {
 			tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
