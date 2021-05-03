@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
-	"container/list"
 	"compress/gzip"
+	"container/list"
 	"flag"
 	"fmt"
 	"github.com/protomaps/go-pmtiles/pmtiles"
@@ -237,29 +237,31 @@ func main() {
 				for _, v := range inflight[key] {
 					v.value <- resp.value
 				}
-				totalSize += resp.size
-				ent := &resp
-				entry := evictList.PushFront(ent)
-				cache[key] = entry
-
 				delete(inflight, key)
 
-				for {
-					if totalSize < cacheSize*1000*1000 {
-						break
-					}
-					ent := evictList.Back()
-					if ent != nil {
-						evictList.Remove(ent)
-						kv := ent.Value.(*Response)
-						delete(cache, kv.key)
-						totalSize -= kv.size
+				if resp.ok {
+					totalSize += resp.size
+					ent := &resp
+					entry := evictList.PushFront(ent)
+					cache[key] = entry
+
+					for {
+						if totalSize < cacheSize*1000*1000 {
+							break
+						}
+						ent := evictList.Back()
+						if ent != nil {
+							evictList.Remove(ent)
+							kv := ent.Value.(*Response)
+							delete(cache, kv.key)
+							totalSize -= kv.size
+						}
 					}
 				}
 			}
 		}
 	}()
 
-	logger.Printf("Serving %s on HTTP port: %s\n",path, *port)
+	logger.Printf("Serving %s on HTTP port: %s\n", path, *port)
 	logger.Fatal(http.ListenAndServe(":"+*port, nil))
 }
