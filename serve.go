@@ -79,17 +79,16 @@ func (fetcher FileFetcher) Do(key Key, readFunc func(io.Reader)) {
 
 func main() {
 	port := flag.String("p", "8077", "port to serve on")
-	var path string
 	var cors string
 	var cacheSize int
-	flag.StringVar(&path, "path", "", "path, an s3-like https://bucket.example.com or a local directory")
 	flag.StringVar(&cors, "cors", "", "CORS allowed origin value")
 	flag.IntVar(&cacheSize, "cache", 64, "Cache size in mb")
 	flag.Parse()
+	path := flag.Arg(0)
 
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 	if path == "" {
-		logger.Println("-path required")
+		logger.Println("USAGE: go-pmtiles LOCAL_PATH or https://BUCKET")
 		os.Exit(1)
 	}
 
@@ -249,6 +248,6 @@ func main() {
 		}
 	}()
 
-	logger.Printf("Serving on HTTP port: %s\n", *port)
+	logger.Printf("Serving %s on HTTP port: %s\n",path, *port)
 	logger.Fatal(http.ListenAndServe(":"+*port, nil))
 }
