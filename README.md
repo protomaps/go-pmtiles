@@ -1,9 +1,15 @@
 # go-pmtiles
 
+A caching proxy for the serverless [PMTiles](github.com/protomaps/pmtiles) archive format. Resolves several of the limitations of PMTiles by running a minimalistic, single-binary process on a tiny instance:
+
+* backwards compatibility for map renderers that require {z}/{x}/{y} url endpoints
+* lower latency, multiple fetches for index retrieval not necessary
+* automatic gzip compression for vector tiles
+
 ## Installation
 
-    go install github.com/protomaps/go-pmtiles
-    
+See [Releases](https://github.com/protomaps/go-pmtiles/releases) for your OS and architecture.
+
 ## Usage
 
 To serve a local directory containing EXAMPLE.pmtiles:
