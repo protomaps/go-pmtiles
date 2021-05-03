@@ -140,6 +140,7 @@ func main() {
 			if len(cors) > 0 {
 				w.Header().Set("Access-Control-Allow-Origin", cors)
 			}
+			w.Header().Set("Content-Length", strconv.Itoa(len(root_value.bytes)))
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(root_value.bytes)
 			return
@@ -197,13 +198,17 @@ func main() {
 		w.Header().Set("Content-Type", content_type)
 
 		if ext == "pbf" {
-			w.Header().Set("Content-Encoding", "gzip")
 			var buf bytes.Buffer
 			zw := gzip.NewWriter(&buf)
 			_, _ = zw.Write(tile)
 			zw.Close()
-			w.Write(buf.Bytes())
+
+			bytes := buf.Bytes()
+			w.Header().Set("Content-Length", strconv.Itoa(len(bytes)))
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Write(bytes)
 		} else {
+			w.Header().Set("Content-Length", strconv.Itoa(len(tile)))
 			w.Write(tile)
 		}
 		elapsed := time.Since(start)
