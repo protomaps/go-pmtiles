@@ -116,6 +116,9 @@ func main() {
 	reqs := make(chan Request, 8)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if len(cors) > 0 {
+			w.Header().Set("Access-Control-Allow-Origin", cors)
+		}
 		start := time.Now()
 		rPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z0-9_]+)\/(?P<Z>\d+)\/(?P<X>\d+)\/(?P<Y>\d+)\.(?P<EXT>png|pbf|jpg)`)
 		res := rPath.FindStringSubmatch(r.URL.Path)
@@ -185,9 +188,6 @@ func main() {
 			content_type = "application/x-protobuf"
 		}
 		w.Header().Set("Content-Type", content_type)
-		if len(cors) > 0 {
-			w.Header().Set("Access-Control-Allow-Origin", cors)
-		}
 
 		if ext == "pbf" {
 			w.Header().Set("Content-Encoding", "gzip")
