@@ -173,12 +173,20 @@ func main() {
 		} else {
 			leaf := pmtiles.GetParentTile(coord, root_value.directory.LeafZ)
 
-			offsetlen := root_value.directory.Leaves[leaf]
+			offsetlen, ok := root_value.directory.Leaves[leaf]
+			if !ok {
+				w.WriteHeader(404)
+				return
+			}
 			leaf_req := Request{kind: Leaf, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
 			reqs <- leaf_req
 			leaf_value := <-leaf_req.value
 
-			offsetlen = leaf_value.directory.Entries[coord]
+			offsetlen, ok = leaf_value.directory.Entries[coord]
+			if !ok {
+				w.WriteHeader(404)
+				return
+			}
 			tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
 			reqs <- tile_req
 			tile_value := <-tile_req.value
