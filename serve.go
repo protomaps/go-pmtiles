@@ -171,6 +171,10 @@ func main() {
 			tile_value := <-tile_req.value
 			tile = tile_value.bytes
 		} else {
+			if coord.Z < root_value.directory.LeafZ {
+				w.WriteHeader(404)
+				return
+			}
 			leaf := pmtiles.GetParentTile(coord, root_value.directory.LeafZ)
 
 			offsetlen, ok := root_value.directory.Leaves[leaf]
