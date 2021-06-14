@@ -5,5 +5,5 @@ ENV CGO_ENABLED=0
 RUN go build -o /workspace/go-pmtiles
 FROM scratch
 COPY --from=builder /workspace/go-pmtiles /workspace/go-pmtiles
-EXPOSE 8077
+EXPOSE 8080
 ENTRYPOINT ["/workspace/go-pmtiles"]

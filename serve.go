@@ -93,7 +93,7 @@ func (fetcher FileFetcher) Do(key Key, readFunc func(io.Reader)) bool {
 }
 
 func main() {
-	port := flag.String("p", "8077", "port to serve on")
+	port := flag.String("p", "8080", "port to serve on")
 	var cors string
 	var cacheSize int
 	flag.StringVar(&cors, "cors", "", "CORS allowed origin value")
