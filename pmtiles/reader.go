@@ -27,8 +27,6 @@ func (d Directory) SizeBytes() int {
 	return 21 * (len(d.Entries) + len(d.Leaves)) + 1
 }
 
-type Tile []byte
-
 func readUint24(b []byte) uint32 {
 	return (uint32(binary.LittleEndian.Uint16(b[1:3])) << 8) + uint32(b[0])
 }
