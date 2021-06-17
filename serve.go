@@ -81,7 +81,7 @@ type FileFetcher struct {
 }
 
 func (fetcher FileFetcher) Do(key Key, readFunc func(io.Reader)) bool {
-	f, err := os.Open(path.Join(fetcher.path,key.name + ".pmtiles"))
+	f, err := os.Open(path.Join(fetcher.path, key.name+".pmtiles"))
 	if err != nil {
 		return false
 	}
@@ -111,7 +111,7 @@ func main() {
 
 	var fetcher Fetcher
 	if strings.HasPrefix(path, "http") {
-		path = strings.TrimSuffix(path,"/")
+		path = strings.TrimSuffix(path, "/")
 		fetcher = HTTPFetcher{client: &http.Client{}, bucket: path}
 	} else {
 		fetcher = FileFetcher{path: path}
