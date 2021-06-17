@@ -85,9 +85,10 @@ type Loop struct {
 	fetcher   Fetcher
 	logger    *log.Logger
 	cacheSize int
+	cors	  string
 }
 
-func NewLoop(path string, logger *log.Logger, cacheSize int) Loop {
+func NewLoop(path string, logger *log.Logger, cacheSize int, cors string) Loop {
 	reqs := make(chan Request, 8)
 	var fetcher Fetcher
 	if strings.HasPrefix(path, "http") {
@@ -96,7 +97,7 @@ func NewLoop(path string, logger *log.Logger, cacheSize int) Loop {
 	} else {
 		fetcher = FileFetcher{path: path}
 	}
-	return Loop{reqs: reqs, fetcher: fetcher, logger: logger, cacheSize: cacheSize}
+	return Loop{reqs: reqs, fetcher: fetcher, logger: logger, cacheSize: cacheSize, cors: cors}
 }
 
 func (loop Loop) Start() {
@@ -178,6 +179,129 @@ func (loop Loop) Start() {
 	}()
 }
 
+func (loop Loop) Get(path string) (int,map[string]string,[]byte) {
+	headers := make(map[string]string)
+	if len(loop.cors) > 0 {
+		headers["Access-Control-Allow-Origin"] = loop.cors
+	}
+	start := time.Now()
+	rPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z0-9_]+)\/(?P<Z>\d+)\/(?P<X>\d+)\/(?P<Y>\d+)\.(?P<EXT>png|pbf|jpg)`)
+	res := rPath.FindStringSubmatch(path)
+	misses := 0
+
+	if len(res) == 0 {
+		mPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z0-9_]+)\/metadata`)
+		res = mPath.FindStringSubmatch(path)
+
+		if len(res) == 0 {
+			return 404, headers, nil
+		}
+
+		name := res[1]
+		root_req := Request{kind: Root, key: Key{name: name, rng: pmtiles.Range{Offset: 0, Length: 512000}}, value: make(chan Datum, 1)}
+		loop.reqs <- root_req
+		root_value := <-root_req.value
+		if !root_value.hit {
+			misses++
+		}
+		headers["Content-Length"] = strconv.Itoa(len(root_value.bytes))
+		headers["Content-Type"] = "application/json"
+		headers["Pmap-Cache-Misses"] = strconv.Itoa(misses)
+		return 200, headers, root_value.bytes
+	}
+
+	name := res[1]
+
+	root_req := Request{kind: Root, key: Key{name: name, rng: pmtiles.Range{Offset: 0, Length: 512000}}, value: make(chan Datum, 1)}
+	loop.reqs <- root_req
+
+	// https://golang.org/doc/faq#atomic_maps
+	root_value := <-root_req.value
+	if !root_value.hit {
+		misses++
+	}
+
+	z, _ := strconv.ParseUint(res[2], 10, 8)
+	x, _ := strconv.ParseUint(res[3], 10, 32)
+	y, _ := strconv.ParseUint(res[4], 10, 32)
+	coord := pmtiles.Zxy{Z: uint8(z), X: uint32(x), Y: uint32(y)}
+
+	if len(root_value.directory.Entries) == 0 {
+		return 404, headers, nil
+	}
+
+	var tile []byte
+	if offsetlen, ok := root_value.directory.Entries[coord]; ok {
+		tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
+		loop.reqs <- tile_req
+		tile_value := <-tile_req.value
+		if !tile_value.hit {
+			misses++
+		}
+		tile = tile_value.bytes
+	} else {
+		if coord.Z < root_value.directory.LeafZ {
+			return 404, headers, nil
+		}
+		leaf := pmtiles.GetParentTile(coord, root_value.directory.LeafZ)
+
+		offsetlen, ok := root_value.directory.Leaves[leaf]
+		if !ok {
+			return 404, headers, nil
+		}
+		leaf_req := Request{kind: Leaf, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
+		loop.reqs <- leaf_req
+		leaf_value := <-leaf_req.value
+		if !leaf_value.hit {
+			misses++
+		}
+
+		offsetlen, ok = leaf_value.directory.Entries[coord]
+		if !ok {
+			return 404, headers, nil
+		}
+		tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
+		loop.reqs <- tile_req
+		tile_value := <-tile_req.value
+		if !tile_value.hit {
+			misses++
+		}
+		tile = tile_value.bytes
+	}
+
+	ext := res[5]
+	var content_type string
+	switch ext {
+	case "jpg":
+		content_type = "image/jpeg"
+	case "png":
+		content_type = "image/png"
+	case "pbf":
+		content_type = "application/x-protobuf"
+	}
+	headers["Content-Type"] = content_type
+	headers["Pmap-Cache-Misses"] = strconv.Itoa(misses)
+
+	var body []byte
+	if ext == "pbf" {
+		var buf bytes.Buffer
+		zw := gzip.NewWriter(&buf)
+		_, _ = zw.Write(tile)
+		zw.Close()
+
+		body = buf.Bytes()
+		headers["Content-Length"] = strconv.Itoa(len(body))
+		headers["Content-Encoding"] = "gzip"
+	} else {
+		body = tile
+		headers["Content-Length"] = strconv.Itoa(len(tile))
+	}
+	elapsed := time.Since(start)
+	loop.logger.Printf("served %s/%d/%d/%d in %s", name, z, x, y, elapsed)
+
+	return 200, headers, body
+}
+
 func (fetcher FileFetcher) Do(key Key, readFunc func(io.Reader)) bool {
 	f, err := os.Open(path.Join(fetcher.path, key.name+".pmtiles"))
 	if err != nil {
@@ -207,136 +331,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	loop := NewLoop(path, logger, cacheSize)
+	loop := NewLoop(path, logger, cacheSize, cors)
 	loop.Start()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if len(cors) > 0 {
-			w.Header().Set("Access-Control-Allow-Origin", cors)
+		status_code, headers, body := loop.Get(r.URL.Path)
+		for k, v := range headers {
+			w.Header().Set(k,v)
 		}
-		start := time.Now()
-		rPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z0-9_]+)\/(?P<Z>\d+)\/(?P<X>\d+)\/(?P<Y>\d+)\.(?P<EXT>png|pbf|jpg)`)
-		res := rPath.FindStringSubmatch(r.URL.Path)
-		misses := 0
-
-		if len(res) == 0 {
-			mPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z0-9_]+)\/metadata`)
-			res = mPath.FindStringSubmatch(r.URL.Path)
-
-			if len(res) == 0 {
-				w.WriteHeader(404)
-				return
-			}
-
-			name := res[1]
-			root_req := Request{kind: Root, key: Key{name: name, rng: pmtiles.Range{Offset: 0, Length: 512000}}, value: make(chan Datum, 1)}
-			loop.reqs <- root_req
-			root_value := <-root_req.value
-			if !root_value.hit {
-				misses++
-			}
-			if len(cors) > 0 {
-				w.Header().Set("Access-Control-Allow-Origin", cors)
-			}
-			w.Header().Set("Content-Length", strconv.Itoa(len(root_value.bytes)))
-			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Pmap-Cache-Misses", strconv.Itoa(misses))
-			w.Write(root_value.bytes)
-			return
-		}
-
-		name := res[1]
-
-		root_req := Request{kind: Root, key: Key{name: name, rng: pmtiles.Range{Offset: 0, Length: 512000}}, value: make(chan Datum, 1)}
-		loop.reqs <- root_req
-
-		// https://golang.org/doc/faq#atomic_maps
-		root_value := <-root_req.value
-		if !root_value.hit {
-			misses++
-		}
-
-		z, _ := strconv.ParseUint(res[2], 10, 8)
-		x, _ := strconv.ParseUint(res[3], 10, 32)
-		y, _ := strconv.ParseUint(res[4], 10, 32)
-		coord := pmtiles.Zxy{Z: uint8(z), X: uint32(x), Y: uint32(y)}
-
-		if len(root_value.directory.Entries) == 0 {
-			w.WriteHeader(404)
-			return
-		}
-
-		var tile []byte
-		if offsetlen, ok := root_value.directory.Entries[coord]; ok {
-			tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
-			loop.reqs <- tile_req
-			tile_value := <-tile_req.value
-			if !tile_value.hit {
-				misses++
-			}
-			tile = tile_value.bytes
-		} else {
-			if coord.Z < root_value.directory.LeafZ {
-				w.WriteHeader(404)
-				return
-			}
-			leaf := pmtiles.GetParentTile(coord, root_value.directory.LeafZ)
-
-			offsetlen, ok := root_value.directory.Leaves[leaf]
-			if !ok {
-				w.WriteHeader(404)
-				return
-			}
-			leaf_req := Request{kind: Leaf, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
-			loop.reqs <- leaf_req
-			leaf_value := <-leaf_req.value
-			if !leaf_value.hit {
-				misses++
-			}
-
-			offsetlen, ok = leaf_value.directory.Entries[coord]
-			if !ok {
-				w.WriteHeader(404)
-				return
-			}
-			tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
-			loop.reqs <- tile_req
-			tile_value := <-tile_req.value
-			if !tile_value.hit {
-				misses++
-			}
-			tile = tile_value.bytes
-		}
-
-		ext := res[5]
-		var content_type string
-		switch ext {
-		case "jpg":
-			content_type = "image/jpeg"
-		case "png":
-			content_type = "image/png"
-		case "pbf":
-			content_type = "application/x-protobuf"
-		}
-		w.Header().Set("Content-Type", content_type)
-		w.Header().Set("Pmap-Cache-Misses", strconv.Itoa(misses))
-
-		if ext == "pbf" {
-			var buf bytes.Buffer
-			zw := gzip.NewWriter(&buf)
-			_, _ = zw.Write(tile)
-			zw.Close()
-
-			bytes := buf.Bytes()
-			w.Header().Set("Content-Length", strconv.Itoa(len(bytes)))
-			w.Header().Set("Content-Encoding", "gzip")
-			w.Write(bytes)
-		} else {
-			w.Header().Set("Content-Length", strconv.Itoa(len(tile)))
-			w.Write(tile)
-		}
-		elapsed := time.Since(start)
-		logger.Printf("served %s/%d/%d/%d in %s", name, z, x, y, elapsed)
+		w.WriteHeader(status_code)
+		w.Write(body)
 	})
 
 	logger.Printf("Serving %s on HTTP port: %s\n", path, *port)
