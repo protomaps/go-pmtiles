@@ -80,6 +80,104 @@ type FileFetcher struct {
 	path string
 }
 
+type Loop struct {
+	reqs      chan Request
+	fetcher   Fetcher
+	logger    *log.Logger
+	cacheSize int
+}
+
+func NewLoop(path string, logger *log.Logger, cacheSize int) Loop {
+	reqs := make(chan Request, 8)
+	var fetcher Fetcher
+	if strings.HasPrefix(path, "http") {
+		path = strings.TrimSuffix(path, "/")
+		fetcher = HTTPFetcher{client: &http.Client{}, bucket: path}
+	} else {
+		fetcher = FileFetcher{path: path}
+	}
+	return Loop{reqs: reqs, fetcher: fetcher, logger: logger, cacheSize: cacheSize}
+}
+
+func (loop Loop) Start() {
+	go func() {
+		cache := make(map[Key]*list.Element)
+		inflight := make(map[Key][]Request)
+		resps := make(chan Response, 8)
+		evictList := list.New()
+		totalSize := 0
+
+		for {
+			select {
+			case req := <-loop.reqs:
+				key := req.key
+				if val, ok := cache[key]; ok {
+					evictList.MoveToFront(val)
+					req.value <- val.Value.(*Response).value
+				} else if _, ok := inflight[key]; ok {
+					inflight[key] = append(inflight[key], req)
+				} else {
+					inflight[key] = []Request{req}
+					go func() {
+						var result Datum
+						var size int
+						ok := loop.fetcher.Do(key, func(reader io.Reader) {
+							if req.kind == Root {
+								metadata, dir := pmtiles.ParseHeader(reader)
+								result = Datum{kind: Root, bytes: metadata, directory: dir}
+								size = len(metadata) + dir.SizeBytes()
+							} else if req.kind == Leaf {
+								dir := pmtiles.ParseDirectory(reader, key.rng.Length/17)
+								result = Datum{kind: Root, directory: dir}
+								size = dir.SizeBytes()
+							} else {
+								tile := make([]byte, key.rng.Length)
+								_, _ = io.ReadFull(reader, tile)
+								result = Datum{kind: Tile, bytes: tile}
+								size = len(tile)
+							}
+						})
+						resps <- Response{key: key, value: result, size: size, ok: ok}
+						if ok {
+							loop.logger.Printf("fetched %s %d-%d", key.name, key.rng.Offset, key.rng.Length)
+						} else {
+							loop.logger.Printf("failed to fetch %s %d-%d", key.name, key.rng.Offset, key.rng.Length)
+						}
+					}()
+				}
+			case resp := <-resps:
+				key := resp.key
+				resp.value.hit = false
+				for _, v := range inflight[key] {
+					v.value <- resp.value
+				}
+				delete(inflight, key)
+
+				if resp.ok {
+					resp.value.hit = true
+					totalSize += resp.size
+					ent := &resp
+					entry := evictList.PushFront(ent)
+					cache[key] = entry
+
+					for {
+						if totalSize < loop.cacheSize*1000*1000 {
+							break
+						}
+						ent := evictList.Back()
+						if ent != nil {
+							evictList.Remove(ent)
+							kv := ent.Value.(*Response)
+							delete(cache, kv.key)
+							totalSize -= kv.size
+						}
+					}
+				}
+			}
+		}
+	}()
+}
+
 func (fetcher FileFetcher) Do(key Key, readFunc func(io.Reader)) bool {
 	f, err := os.Open(path.Join(fetcher.path, key.name+".pmtiles"))
 	if err != nil {
@@ -109,15 +207,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	var fetcher Fetcher
-	if strings.HasPrefix(path, "http") {
-		path = strings.TrimSuffix(path, "/")
-		fetcher = HTTPFetcher{client: &http.Client{}, bucket: path}
-	} else {
-		fetcher = FileFetcher{path: path}
-	}
-
-	reqs := make(chan Request, 8)
+	loop := NewLoop(path, logger, cacheSize)
+	loop.Start()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if len(cors) > 0 {
@@ -139,7 +230,7 @@ func main() {
 
 			name := res[1]
 			root_req := Request{kind: Root, key: Key{name: name, rng: pmtiles.Range{Offset: 0, Length: 512000}}, value: make(chan Datum, 1)}
-			reqs <- root_req
+			loop.reqs <- root_req
 			root_value := <-root_req.value
 			if !root_value.hit {
 				misses++
@@ -157,7 +248,7 @@ func main() {
 		name := res[1]
 
 		root_req := Request{kind: Root, key: Key{name: name, rng: pmtiles.Range{Offset: 0, Length: 512000}}, value: make(chan Datum, 1)}
-		reqs <- root_req
+		loop.reqs <- root_req
 
 		// https://golang.org/doc/faq#atomic_maps
 		root_value := <-root_req.value
@@ -178,7 +269,7 @@ func main() {
 		var tile []byte
 		if offsetlen, ok := root_value.directory.Entries[coord]; ok {
 			tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
-			reqs <- tile_req
+			loop.reqs <- tile_req
 			tile_value := <-tile_req.value
 			if !tile_value.hit {
 				misses++
@@ -197,7 +288,7 @@ func main() {
 				return
 			}
 			leaf_req := Request{kind: Leaf, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
-			reqs <- leaf_req
+			loop.reqs <- leaf_req
 			leaf_value := <-leaf_req.value
 			if !leaf_value.hit {
 				misses++
@@ -209,7 +300,7 @@ func main() {
 				return
 			}
 			tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
-			reqs <- tile_req
+			loop.reqs <- tile_req
 			tile_value := <-tile_req.value
 			if !tile_value.hit {
 				misses++
@@ -247,83 +338,6 @@ func main() {
 		elapsed := time.Since(start)
 		logger.Printf("served %s/%d/%d/%d in %s", name, z, x, y, elapsed)
 	})
-
-	go func() {
-		cache := make(map[Key]*list.Element)
-		inflight := make(map[Key][]Request)
-		resps := make(chan Response, 8)
-		evictList := list.New()
-		totalSize := 0
-
-		for {
-			select {
-			case req := <-reqs:
-				key := req.key
-				if val, ok := cache[key]; ok {
-					evictList.MoveToFront(val)
-					req.value <- val.Value.(*Response).value
-				} else if _, ok := inflight[key]; ok {
-					inflight[key] = append(inflight[key], req)
-				} else {
-					inflight[key] = []Request{req}
-					go func() {
-						var result Datum
-						var size int
-						ok := fetcher.Do(key, func(reader io.Reader) {
-							if req.kind == Root {
-								metadata, dir := pmtiles.ParseHeader(reader)
-								result = Datum{kind: Root, bytes: metadata, directory: dir}
-								size = len(metadata) + dir.SizeBytes()
-							} else if req.kind == Leaf {
-								dir := pmtiles.ParseDirectory(reader, key.rng.Length/17)
-								result = Datum{kind: Root, directory: dir}
-								size = dir.SizeBytes()
-							} else {
-								tile := make([]byte, key.rng.Length)
-								_, _ = io.ReadFull(reader, tile)
-								result = Datum{kind: Tile, bytes: tile}
-								size = len(tile)
-							}
-						})
-						resps <- Response{key: key, value: result, size: size, ok: ok}
-						if ok {
-							logger.Printf("fetched %s %d-%d", key.name, key.rng.Offset, key.rng.Length)
-						} else {
-							logger.Printf("failed to fetch %s %d-%d", key.name, key.rng.Offset, key.rng.Length)
-						}
-					}()
-				}
-			case resp := <-resps:
-				key := resp.key
-				resp.value.hit = false
-				for _, v := range inflight[key] {
-					v.value <- resp.value
-				}
-				delete(inflight, key)
-
-				if resp.ok {
-					resp.value.hit = true
-					totalSize += resp.size
-					ent := &resp
-					entry := evictList.PushFront(ent)
-					cache[key] = entry
-
-					for {
-						if totalSize < cacheSize*1000*1000 {
-							break
-						}
-						ent := evictList.Back()
-						if ent != nil {
-							evictList.Remove(ent)
-							kv := ent.Value.(*Response)
-							delete(cache, kv.key)
-							totalSize -= kv.size
-						}
-					}
-				}
-			}
-		}
-	}()
 
 	logger.Printf("Serving %s on HTTP port: %s\n", path, *port)
 	logger.Fatal(http.ListenAndServe(":"+*port, nil))
