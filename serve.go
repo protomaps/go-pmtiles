@@ -35,6 +35,7 @@ type Datum struct {
 	bytes     []byte
 	directory pmtiles.Directory
 	kind      DatumKind
+	hit       bool
 }
 
 type Request struct {
@@ -44,10 +45,11 @@ type Request struct {
 }
 
 type Response struct {
-	key   Key
-	value Datum
-	size  int
-	ok    bool
+	key    Key
+	value  Datum
+	size   int
+	ok     bool
+	misses int
 }
 
 type Fetcher interface {
@@ -124,6 +126,8 @@ func main() {
 		start := time.Now()
 		rPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z0-9_]+)\/(?P<Z>\d+)\/(?P<X>\d+)\/(?P<Y>\d+)\.(?P<EXT>png|pbf|jpg)`)
 		res := rPath.FindStringSubmatch(r.URL.Path)
+		misses := 0
+
 		if len(res) == 0 {
 			mPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z0-9_]+)\/metadata`)
 			res = mPath.FindStringSubmatch(r.URL.Path)
@@ -137,11 +141,15 @@ func main() {
 			root_req := Request{kind: Root, key: Key{name: name, rng: pmtiles.Range{Offset: 0, Length: 512000}}, value: make(chan Datum, 1)}
 			reqs <- root_req
 			root_value := <-root_req.value
+			if !root_value.hit {
+				misses++
+			}
 			if len(cors) > 0 {
 				w.Header().Set("Access-Control-Allow-Origin", cors)
 			}
 			w.Header().Set("Content-Length", strconv.Itoa(len(root_value.bytes)))
 			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Pmap-Cache-Misses", strconv.Itoa(misses))
 			w.Write(root_value.bytes)
 			return
 		}
@@ -153,6 +161,9 @@ func main() {
 
 		// https://golang.org/doc/faq#atomic_maps
 		root_value := <-root_req.value
+		if !root_value.hit {
+			misses++
+		}
 
 		z, _ := strconv.ParseUint(res[2], 10, 8)
 		x, _ := strconv.ParseUint(res[3], 10, 32)
@@ -169,6 +180,9 @@ func main() {
 			tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
 			reqs <- tile_req
 			tile_value := <-tile_req.value
+			if !tile_value.hit {
+				misses++
+			}
 			tile = tile_value.bytes
 		} else {
 			if coord.Z < root_value.directory.LeafZ {
@@ -185,6 +199,9 @@ func main() {
 			leaf_req := Request{kind: Leaf, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
 			reqs <- leaf_req
 			leaf_value := <-leaf_req.value
+			if !leaf_value.hit {
+				misses++
+			}
 
 			offsetlen, ok = leaf_value.directory.Entries[coord]
 			if !ok {
@@ -194,6 +211,9 @@ func main() {
 			tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
 			reqs <- tile_req
 			tile_value := <-tile_req.value
+			if !tile_value.hit {
+				misses++
+			}
 			tile = tile_value.bytes
 		}
 
@@ -208,6 +228,7 @@ func main() {
 			content_type = "application/x-protobuf"
 		}
 		w.Header().Set("Content-Type", content_type)
+		w.Header().Set("Pmap-Cache-Misses", strconv.Itoa(misses))
 
 		if ext == "pbf" {
 			var buf bytes.Buffer
@@ -274,12 +295,14 @@ func main() {
 				}
 			case resp := <-resps:
 				key := resp.key
+				resp.value.hit = false
 				for _, v := range inflight[key] {
 					v.value <- resp.value
 				}
 				delete(inflight, key)
 
 				if resp.ok {
+					resp.value.hit = true
 					totalSize += resp.size
 					ent := &resp
 					entry := evictList.PushFront(ent)
