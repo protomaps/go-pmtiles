@@ -282,12 +282,16 @@ func (loop Loop) Get(path string) (int,map[string]string,[]byte) {
 
 	var body []byte
 	if ext == "pbf" {
-		var buf bytes.Buffer
-		zw := gzip.NewWriter(&buf)
-		_, _ = zw.Write(tile)
-		zw.Close()
+		if len(tile) >= 2 && tile[0] == 0x1f && tile[1] == 0x8b {
+			body = tile
+		} else {
+			var buf bytes.Buffer
+			zw := gzip.NewWriter(&buf)
+			_, _ = zw.Write(tile)
+			zw.Close()
+			body = buf.Bytes()
+		}
 
-		body = buf.Bytes()
 		headers["Content-Length"] = strconv.Itoa(len(body))
 		headers["Content-Encoding"] = "gzip"
 	} else {
