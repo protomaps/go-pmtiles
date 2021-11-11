@@ -183,7 +183,7 @@ func (loop Loop) Get(path string) (int,map[string]string,[]byte) {
 		headers["Access-Control-Allow-Origin"] = loop.cors
 	}
 	start := time.Now()
-	rPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z0-9_]+)\/(?P<Z>\d+)\/(?P<X>\d+)\/(?P<Y>\d+)\.(?P<EXT>png|pbf|jpg)`)
+	rPath := regexp.MustCompile(`\/(?P<NAME>[-A-Za-z0-9_]+)\/(?P<Z>\d+)\/(?P<X>\d+)\/(?P<Y>\d+)\.(?P<EXT>png|pbf|jpg)`)
 	res := rPath.FindStringSubmatch(path)
 	misses := 0
 
