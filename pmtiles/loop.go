@@ -188,7 +188,7 @@ func (loop Loop) Get(path string) (int,map[string]string,[]byte) {
 	misses := 0
 
 	if len(res) == 0 {
-		mPath := regexp.MustCompile(`\/(?P<NAME>[A-Za-z0-9_]+)\/metadata`)
+		mPath := regexp.MustCompile(`\/(?P<NAME>[-A-Za-z0-9_]+)\/metadata`)
 		res = mPath.FindStringSubmatch(path)
 
 		if len(res) == 0 {
