@@ -19,12 +19,12 @@ type Range struct {
 
 type Directory struct {
 	Entries map[Zxy]Range
-	LeafZ uint8
-	Leaves map[Zxy]Range
+	LeafZ   uint8
+	Leaves  map[Zxy]Range
 }
 
 func (d Directory) SizeBytes() int {
-	return 21 * (len(d.Entries) + len(d.Leaves)) + 1
+	return 21*(len(d.Entries)+len(d.Leaves)) + 1
 }
 
 func readUint24(b []byte) uint32 {
@@ -39,19 +39,17 @@ func GetParentTile(tile Zxy, level uint8) Zxy {
 	tile_diff := tile.Z - level
 	x := math.Floor(float64(tile.X / (1 << tile_diff)))
 	y := math.Floor(float64(tile.Y / (1 << tile_diff)))
-	return Zxy{Z:level,X:uint32(x),Y:uint32(y)}
+	return Zxy{Z: level, X: uint32(x), Y: uint32(y)}
 }
 
-
 func ParseDirectory(reader io.Reader, numEntries uint32) Directory {
-
 	z_raw := make([]byte, 1)
 	x_raw := make([]byte, 3)
 	y_raw := make([]byte, 3)
 	offset_raw := make([]byte, 6)
 	length_raw := make([]byte, 4)
 
-	the_dir := Directory{Entries:make(map[Zxy]Range),Leaves:make(map[Zxy]Range)}
+	the_dir := Directory{Entries: make(map[Zxy]Range), Leaves: make(map[Zxy]Range)}
 	var maxz uint8
 	for i := 0; i < int(numEntries); i++ {
 		io.ReadFull(reader, z_raw)
@@ -65,12 +63,12 @@ func ParseDirectory(reader io.Reader, numEntries uint32) Directory {
 		length := binary.LittleEndian.Uint32(length_raw)
 
 		z := z_raw[0]
-		if (z & 0b10000000 == 0) {
+		if z&0b10000000 == 0 {
 			the_dir.Entries[Zxy{Z: uint8(z), X: uint32(x), Y: uint32(y)}] = Range{Offset: offset, Length: length}
 		} else {
 			leaf_z := z & 0b01111111
 			maxz = leaf_z
-			if (leaf_z != maxz) {
+			if leaf_z != maxz {
 				// raise an error, out of spec pmtiles
 			}
 			the_dir.Leaves[Zxy{Z: leaf_z, X: uint32(x), Y: uint32(y)}] = Range{Offset: offset, Length: length}
