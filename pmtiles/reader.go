@@ -1,6 +1,7 @@
 package pmtiles
 
 import (
+	"bufio"
 	"encoding/binary"
 	"io"
 	"math"
@@ -91,6 +92,6 @@ func ParseHeader(reader io.Reader) ([]byte, Directory) {
 	rootdir_len := binary.LittleEndian.Uint16(rootdir_len_bytes)
 	metadata_bytes := make([]byte, metadata_len)
 	io.ReadFull(reader, metadata_bytes)
-	the_dir := ParseDirectory(reader, uint32(rootdir_len))
+	the_dir := ParseDirectory(bufio.NewReader(reader), uint32(rootdir_len))
 	return metadata_bytes, the_dir
 }
