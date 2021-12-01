@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"path"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
-	"net/http"
 )
 
 type Key struct {
@@ -83,7 +83,7 @@ type Loop struct {
 	fetcher   Fetcher
 	logger    *log.Logger
 	cacheSize int
-	cors	  string
+	cors      string
 }
 
 func NewLoop(path string, logger *log.Logger, cacheSize int, cors string) Loop {
@@ -126,7 +126,9 @@ func (loop Loop) Start() {
 								result = Datum{kind: Root, bytes: metadata, directory: dir}
 								size = len(metadata) + dir.SizeBytes()
 							} else if req.kind == Leaf {
-								dir := ParseDirectory(reader, key.rng.Length/17)
+								dir_bytes := make([]byte, key.rng.Length)
+								io.ReadFull(reader, dir_bytes)
+								dir := ParseDirectory(dir_bytes)
 								result = Datum{kind: Root, directory: dir}
 								size = dir.SizeBytes()
 							} else {
@@ -177,7 +179,7 @@ func (loop Loop) Start() {
 	}()
 }
 
-func (loop Loop) Get(path string) (int,map[string]string,[]byte) {
+func (loop Loop) Get(path string) (int, map[string]string, []byte) {
 	headers := make(map[string]string)
 	if len(loop.cors) > 0 {
 		headers["Access-Control-Allow-Origin"] = loop.cors

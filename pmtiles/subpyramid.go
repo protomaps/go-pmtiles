@@ -1,7 +1,6 @@
 package pmtiles
 
 import (
-	"bufio"
 	"encoding/json"
 	"io"
 	"log"
@@ -49,7 +48,6 @@ func Subpyramid(logger *log.Logger, input string, output string, z uint8, minX u
 	if err != nil {
 		return
 	}
-	logger.Println(f)
 	metadata_bytes, root_directory := ParseHeader(f)
 
 	var metadata Metadata
@@ -65,16 +63,22 @@ func Subpyramid(logger *log.Logger, input string, output string, z uint8, minX u
 				if err != nil {
 					panic("I/O error")
 				}
-				dir := ParseDirectory(bufio.NewReaderSize(f, int(rng.Length)), rng.Length/17)
-				for lkey, lrng := range dir.Entries {
-					if lkey.Z <= z && Matches(z, minX, minY, maxX, maxY, lkey) {
-						_, err = f.Seek(int64(lrng.Offset), 0)
-						if err != nil {
-							return
+
+				dir_bytes := make([]byte, rng.Length)
+				io.ReadFull(f, dir_bytes)
+
+				for i := 0; i < len(dir_bytes)/17; i++ {
+					leaf_z, lzxy, lrng := ParseEntry(dir_bytes[i*17 : i*17+17])
+					if leaf_z == 0 {
+						if lzxy.Z <= z && Matches(z, minX, minY, maxX, maxY, lzxy) {
+							_, err = f.Seek(int64(lrng.Offset), 0)
+							if err != nil {
+								return
+							}
+							tile_data := make([]byte, lrng.Length)
+							io.ReadFull(f, tile_data)
+							writer.WriteTile(lzxy, tile_data)
 						}
-						tile_data := make([]byte, lrng.Length)
-						io.ReadFull(f, tile_data)
-						writer.WriteTile(lkey, tile_data)
 					}
 				}
 			}

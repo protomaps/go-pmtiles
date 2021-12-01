@@ -1,7 +1,6 @@
 package pmtiles
 
 import (
-	"bufio"
 	"encoding/binary"
 	"io"
 	"math"
@@ -43,36 +42,34 @@ func GetParentTile(tile Zxy, level uint8) Zxy {
 	return Zxy{Z: level, X: uint32(x), Y: uint32(y)}
 }
 
-func ParseDirectory(reader io.Reader, numEntries uint32) Directory {
-	z_raw := make([]byte, 1)
-	x_raw := make([]byte, 3)
-	y_raw := make([]byte, 3)
-	offset_raw := make([]byte, 6)
-	length_raw := make([]byte, 4)
+func ParseEntry(b []byte) (uint8, Zxy, Range) {
+	z_raw := b[0]
+	x_raw := b[1:4]
+	y_raw := b[4:7]
+	offset_raw := b[7:13]
+	length_raw := b[13:17]
+	x := readUint24(x_raw)
+	y := readUint24(y_raw)
+	offset := readUint48(offset_raw)
+	length := binary.LittleEndian.Uint32(length_raw)
+	if z_raw&0b10000000 == 0 {
+		return 0, Zxy{Z: uint8(z_raw), X: uint32(x), Y: uint32(y)}, Range{Offset: offset, Length: length}
+	} else {
+		leaf_z := z_raw & 0b01111111
+		return leaf_z, Zxy{Z: leaf_z, X: uint32(x), Y: uint32(y)}, Range{Offset: offset, Length: length}
+	}
+}
 
+func ParseDirectory(dir_bytes []byte) Directory {
 	the_dir := Directory{Entries: make(map[Zxy]Range), Leaves: make(map[Zxy]Range)}
 	var maxz uint8
-	for i := 0; i < int(numEntries); i++ {
-		io.ReadFull(reader, z_raw)
-		io.ReadFull(reader, x_raw)
-		io.ReadFull(reader, y_raw)
-		io.ReadFull(reader, offset_raw)
-		io.ReadFull(reader, length_raw)
-		x := readUint24(x_raw)
-		y := readUint24(y_raw)
-		offset := readUint48(offset_raw)
-		length := binary.LittleEndian.Uint32(length_raw)
-
-		z := z_raw[0]
-		if z&0b10000000 == 0 {
-			the_dir.Entries[Zxy{Z: uint8(z), X: uint32(x), Y: uint32(y)}] = Range{Offset: offset, Length: length}
+	for i := 0; i < len(dir_bytes)/17; i++ {
+		leaf_z, zxy, rng := ParseEntry(dir_bytes[i*17 : i*17+17])
+		if leaf_z == 0 {
+			the_dir.Entries[zxy] = rng
 		} else {
-			leaf_z := z & 0b01111111
-			maxz = leaf_z
-			if leaf_z != maxz {
-				// raise an error, out of spec pmtiles
-			}
-			the_dir.Leaves[Zxy{Z: leaf_z, X: uint32(x), Y: uint32(y)}] = Range{Offset: offset, Length: length}
+			maxz = leaf_z // todo check spec
+			the_dir.Leaves[zxy] = rng
 		}
 	}
 	the_dir.LeafZ = maxz
@@ -89,9 +86,11 @@ func ParseHeader(reader io.Reader) ([]byte, Directory) {
 	metadata_len := binary.LittleEndian.Uint32(metadata_len_bytes)
 	rootdir_len_bytes := make([]byte, 2)
 	io.ReadFull(reader, rootdir_len_bytes)
-	rootdir_len := binary.LittleEndian.Uint16(rootdir_len_bytes)
+	rootdir_len := int(binary.LittleEndian.Uint16(rootdir_len_bytes))
 	metadata_bytes := make([]byte, metadata_len)
 	io.ReadFull(reader, metadata_bytes)
-	the_dir := ParseDirectory(bufio.NewReader(reader), uint32(rootdir_len))
+	dir_bytes := make([]byte, rootdir_len*17)
+	io.ReadFull(reader, dir_bytes)
+	the_dir := ParseDirectory(dir_bytes)
 	return metadata_bytes, the_dir
 }
