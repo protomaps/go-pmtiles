@@ -2,6 +2,7 @@ package pmtiles
 
 import (
 	"encoding/binary"
+	"hash/fnv"
 	"os"
 )
 
@@ -11,9 +12,10 @@ type Entry struct {
 }
 
 type Writer struct {
-	file   *os.File
-	offset uint64
-	tiles  []Entry
+	file         *os.File
+	offset       uint64
+	tiles        []Entry
+	hashToOffset map[uint64]uint64
 }
 
 func NewWriter(path string) Writer {
@@ -26,7 +28,8 @@ func NewWriter(path string) Writer {
 	if err != nil {
 		panic("Write failed")
 	}
-	return Writer{file: f, offset: offset}
+	hashToOffset := make(map[uint64]uint64)
+	return Writer{file: f, offset: offset, hashToOffset: hashToOffset}
 }
 
 // return (uint32(binary.LittleEndian.Uint16(b[1:3])) << 8) + uint32(b[0])
@@ -54,9 +57,21 @@ func (writer *Writer) writeEntry(entry Entry) {
 }
 
 func (writer *Writer) WriteTile(zxy Zxy, data []byte) {
-	writer.file.Write(data)
-	writer.tiles = append(writer.tiles, Entry{zxy: zxy, rng: Range{Offset: writer.offset, Length: uint32(len(data))}})
-	writer.offset += uint64(len(data))
+	// TODO do gzip decompression here
+	hsh := fnv.New64a()
+	hsh.Write(data)
+	tileHash := hsh.Sum64()
+
+	existingOffset, ok := writer.hashToOffset[tileHash]
+
+	if ok {
+		writer.tiles = append(writer.tiles, Entry{zxy: zxy, rng: Range{Offset: existingOffset, Length: uint32(len(data))}})
+	} else {
+		writer.file.Write(data)
+		writer.tiles = append(writer.tiles, Entry{zxy: zxy, rng: Range{Offset: writer.offset, Length: uint32(len(data))}})
+		writer.hashToOffset[tileHash] = writer.offset
+		writer.offset += uint64(len(data))
+	}
 }
 
 func (writer *Writer) writeHeader(metadata []byte, numRootEntries int) {
