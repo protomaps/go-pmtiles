@@ -226,10 +226,6 @@ func (loop Loop) Get(path string) (int, map[string]string, []byte) {
 	y, _ := strconv.ParseUint(res[4], 10, 32)
 	coord := Zxy{Z: uint8(z), X: uint32(x), Y: uint32(y)}
 
-	if len(root_value.directory.Entries) == 0 {
-		return 404, headers, nil
-	}
-
 	var tile []byte
 	if offsetlen, ok := root_value.directory.Entries[coord]; ok {
 		tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
