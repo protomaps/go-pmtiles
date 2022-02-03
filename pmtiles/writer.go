@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"hash/fnv"
 	"os"
+	"sort"
 )
 
 type Entry struct {
@@ -16,6 +17,26 @@ type Writer struct {
 	offset       uint64
 	tiles        []Entry
 	hashToOffset map[uint64]uint64
+}
+
+type EntryAscending []Entry
+
+func (e EntryAscending) Len() int {
+	return len(e)
+}
+
+func (e EntryAscending) Swap(i, j int) {
+	e[i], e[j] = e[j], e[i]
+}
+
+func (e EntryAscending) Less(i, j int) bool {
+	if e[i].zxy.Z != e[j].zxy.Z {
+		return e[i].zxy.Z < e[j].zxy.Z
+	}
+	if e[i].zxy.X != e[j].zxy.X {
+		return e[i].zxy.X < e[j].zxy.X
+	}
+	return e[i].zxy.Y < e[j].zxy.Y
 }
 
 func NewWriter(path string) Writer {
@@ -86,6 +107,9 @@ func (writer *Writer) Finalize(metadata_bytes []byte) {
 	if len(writer.tiles) < 21845 {
 		_, _ = writer.file.Seek(0, 0)
 		writer.writeHeader(metadata_bytes, len(writer.tiles))
+
+		sort.Sort(EntryAscending(writer.tiles))
+
 		for _, entry := range writer.tiles {
 			writer.writeEntry(entry)
 		}
