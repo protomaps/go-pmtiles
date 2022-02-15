@@ -69,7 +69,8 @@ func main() {
 			pprof.StartCPUProfile(f)
 			defer pprof.StopCPUProfile()
 		}
-		pmtiles.SubpyramidXY(logger, path, output, uint8(num_args[0]), uint32(num_args[1]), uint32(num_args[2]), uint32(num_args[3]), uint32(num_args[4]))
+		bounds := "-180,-90,180,90" // TODO deal with antimeridian, center of tile, etc
+		pmtiles.SubpyramidXY(logger, path, output, uint8(num_args[0]), uint32(num_args[1]), uint32(num_args[2]), uint32(num_args[3]), uint32(num_args[4]), bounds)
 	default:
 		logger.Println("unrecognized command.")
 		flag.PrintDefaults()

@@ -3,8 +3,8 @@ package pmtiles
 import (
 	"encoding/json"
 	"io"
-	"math"
 	"log"
+	"math"
 	"os"
 	"strconv"
 )
@@ -22,17 +22,17 @@ func PointToTile(z int, lng float64, lat float64) Zxy {
 	d2r := math.Pi / 180
 	sin := math.Sin(lat * d2r)
 	z2 := 1 << z
-	x := float64(z2) * (lng / 360 + 0.5)
-	y := float64(z2) * (0.5 - 0.25 * math.Log((1 + sin) / (1 - sin)) / math.Pi)
-	x = math.Mod(x,float64(z2))
-	if (x < 0) {
+	x := float64(z2) * (lng/360 + 0.5)
+	y := float64(z2) * (0.5 - 0.25*math.Log((1+sin)/(1-sin))/math.Pi)
+	x = math.Mod(x, float64(z2))
+	if x < 0 {
 		x = x + float64(z2)
 	}
 	iy := int(math.Floor(y))
-	if (iy > z2-1) {
+	if iy > z2-1 {
 		iy = z2 - 1
 	}
-	return Zxy{Z:uint8(z),X:uint32(math.Floor(x)),Y:uint32(iy)}
+	return Zxy{Z: uint8(z), X: uint32(math.Floor(x)), Y: uint32(iy)}
 }
 
 // given a source PMTiles archive,
@@ -61,11 +61,7 @@ func Matches(z uint8, minX uint32, minY uint32, maxX uint32, maxY uint32, candid
 	}
 }
 
-func SubpyramidLatLon(logger *log.Logger, input string, output string, z uint8, minLon float64, minLat float64, maxLon float64, maxLat float64) {
-
-}
-
-func SubpyramidXY(logger *log.Logger, input string, output string, z uint8, minX uint32, minY uint32, maxX uint32, maxY uint32) {
+func SubpyramidXY(logger *log.Logger, input string, output string, z uint8, minX uint32, minY uint32, maxX uint32, maxY uint32, bounds string) {
 	f, err := os.Open(input)
 	if err != nil {
 		return
@@ -75,6 +71,7 @@ func SubpyramidXY(logger *log.Logger, input string, output string, z uint8, minX
 	var metadata Metadata
 	json.Unmarshal(metadata_bytes, &metadata)
 	metadata.Maxzoom = strconv.Itoa(int(z))
+	metadata.Bounds = bounds
 
 	writer := NewWriter(output)
 
