@@ -31,7 +31,7 @@ func main() {
 		serveCmd.Parse(os.Args[2:])
 		path := serveCmd.Arg(0)
 		if path == "" {
-			logger.Println("USAGE: go-pmtiles serve LOCAL_PATH or https://BUCKET")
+			logger.Println("USAGE: go-pmtiles serve  [-p PORT] [-cors VALUE] LOCAL_PATH or https://BUCKET")
 			os.Exit(1)
 		}
 		loop := pmtiles.NewLoop(path, logger, *cacheSize, "*")
