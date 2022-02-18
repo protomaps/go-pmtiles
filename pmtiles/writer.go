@@ -97,7 +97,7 @@ func (writer *Writer) WriteTile(zxy Zxy, data []byte) {
 
 func (writer *Writer) writeHeader(metadata []byte, numRootEntries int) {
 	_, _ = writer.file.Write([]byte{0x50, 0x4D})                               // magic number
-	_ = binary.Write(writer.file, binary.LittleEndian, uint16(1))              // version
+	_ = binary.Write(writer.file, binary.LittleEndian, uint16(2))              // version
 	_ = binary.Write(writer.file, binary.LittleEndian, uint32(len(metadata)))  // metadata length
 	_ = binary.Write(writer.file, binary.LittleEndian, uint16(numRootEntries)) // root dir entries
 	_, _ = writer.file.Write(metadata)
