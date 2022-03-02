@@ -18,5 +18,5 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: ghcr.io
-          repository: protomaps/go-pmtiles/go-pmtiles
+          repository: protomaps/go-pmtiles
           tags: master
