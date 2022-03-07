@@ -1,0 +1,29 @@
+<html>
+    <head>
+        <title>Protomaps Leaflet Demo served by go-pmtiles</title>
+        <meta charset="utf-8"/>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+        <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+        <script src="https://unpkg.com/leaflet-hash@0.2.1/leaflet-hash.js"></script>
+        <script src="https://unpkg.com/protomaps@latest/dist/protomaps.min.js"></script>
+        <style>
+            body, #map {
+                height:100vh;
+                width: 100%;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="map">
+        <script type="text/javascript">
+            let URL = "http://localhost:8077/us/{z}/{x}/{y}.pbf"
+            
+            const map = L.map('map')
+            let hash = new L.Hash(map)
+            if (!window.location.hash) map.setView(new L.LatLng(25.0412,121.5177),16)
+            var layer = protomaps.leafletLayer({url:URL})
+            layer.addTo(map)
+            layer.addInspector(map)
+        </script>
+    </body>
+</html>

@@ -1,0 +1,20 @@
+version: '3'
+
+services:
+  go-pmtiles:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # EXAMPLE FOR MOUNTING AND USING ""./maps"-FOLDER
+    command: /workspace/go-pmtiles serve -p 8077 -cors \* /maps
+    volumes:
+      - ./maps:/maps
+    
+    # EXAMPLE FOR USING PUBLIC S3-Bucket
+    # command: /workspace/go-pmtiles serve -p 8077 -cors \* https://YOUR_BUCKET.s3.YOUR_REGION.amazonaws.com/
+    
+    ports:
+      -   target: 8077
+          published: 8077
+          protocol: tcp

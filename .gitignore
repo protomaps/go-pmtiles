@@ -1,3 +1,4 @@
 dist/
 go-pmtiles
 *.pmtiles
+.DS_Store
