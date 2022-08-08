@@ -9,19 +9,19 @@ func TestPointToTile(t *testing.T) {
 	if (result != Zxy{4,8,8}) {
 		t.Errorf("result did not match, was %d", result)
 	}
-	result = PointToTile(4,-180,-90)
+	result = PointToTile(4,-180,-85)
 	if (result != Zxy{4,0,15}) {
 		t.Errorf("result did not match, was %d", result)
 	}
-	result = PointToTile(4,-180,90)
+	result = PointToTile(4,-180,85)
 	if (result != Zxy{4,0,0}) {
 		t.Errorf("result did not match, was %d", result)
 	}
-	result = PointToTile(4,179.999,-90)
+	result = PointToTile(4,179.999,-85)
 	if (result != Zxy{4,15,15}) {
 		t.Errorf("result did not match, was %d", result)
 	}
-	result = PointToTile(4,179.999,90)
+	result = PointToTile(4,179.999,85)
 	if (result != Zxy{4,15,0}) {
 		t.Errorf("result did not match, was %d", result)
 	}

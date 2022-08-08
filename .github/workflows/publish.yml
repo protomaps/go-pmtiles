@@ -1,4 +1,4 @@
-name: go-pmtiles
+name: publish
 
 on: [push]
 
