@@ -47,9 +47,9 @@ func TestIdToZxy(t *testing.T) {
 }
 
 func TestManyTileIds(t *testing.T) {
-	var z int64
-	var x int64
-	var y int64
+	var z uint8
+	var x uint32
+	var y uint32
 	for z = 0; z < 10; z++ {
 		for x = 0; x < (1 << z); x++ {
 			for y = 0; y < (1 << z); y++ {
