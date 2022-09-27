@@ -11,13 +11,10 @@ func rotate(n uint64, x *uint64, y *uint64, rx uint64, ry uint64) {
 }
 
 func t_on_level(z uint8, pos uint64) (uint8, uint32, uint32) {
-	var n uint64
-	n = 1 << z
+	var n uint64 = 1 << z
 	rx, ry, t := pos, pos, pos
 	var tx uint64
 	var ty uint64
-	tx = 0
-	ty = 0
 	var s uint64
 	for s = 1; s < n; s *= 2 {
 		rx = 1 & (t / 2)
@@ -32,19 +29,14 @@ func t_on_level(z uint8, pos uint64) (uint8, uint32, uint32) {
 
 func ZxyToId(z uint8, x uint32, y uint32) uint64 {
 	var acc uint64
-	acc = 0
 	var tz uint8
-	for tz = 0; tz < z; tz++ {
+	for ; tz < z; tz++ {
 		acc += (0x1 << tz) * (0x1 << tz)
 	}
-	var n uint64
-	n = 1 << z
+	var n uint64 = 1 << z
 	var rx uint64
 	var ry uint64
 	var d uint64
-	rx = 0
-	ry = 0
-	d = 0
 	tx := uint64(x)
 	ty := uint64(y)
 	for s := n / 2; s > 0; s /= 2 {
@@ -65,11 +57,9 @@ func ZxyToId(z uint8, x uint32, y uint32) uint64 {
 }
 
 func IdToZxy(i uint64) (uint8, uint32, uint32) {
-	var acc uint64
 	var num_tiles uint64
+	var acc uint64
 	var z uint8
-	acc = 0
-	z = 0
 	for {
 		num_tiles = (1 << z) * (1 << z)
 		if acc+num_tiles > i {
