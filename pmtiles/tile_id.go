@@ -6,9 +6,7 @@ func rotate(n uint64, x *uint64, y *uint64, rx uint64, ry uint64) {
 			*x = n - 1 - *x
 			*y = n - 1 - *y
 		}
-		t := *x
-		*x = *y
-		*y = t
+		*x, *y = *y, *x
 	}
 }
 
