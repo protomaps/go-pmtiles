@@ -71,6 +71,12 @@ func main() {
 		}
 		bounds := "-180,-90,180,90" // TODO deal with antimeridian, center of tile, etc
 		pmtiles.SubpyramidXY(logger, path, output, uint8(num_args[0]), uint32(num_args[1]), uint32(num_args[2]), uint32(num_args[3]), uint32(num_args[4]), bounds)
+	case "convert":
+		convertCmd := flag.NewFlagSet("convert", flag.ExitOnError)
+		convertCmd.Parse(os.Args[2:])
+		path := convertCmd.Arg(0)
+		output := convertCmd.Arg(1)
+		pmtiles.Convert(logger, path, output)
 	default:
 		logger.Println("unrecognized command.")
 		flag.PrintDefaults()
