@@ -80,4 +80,24 @@ func Convert(logger *log.Logger, input string, output string) {
 		}
 	}
 
+	mbtilesMetadata := make([]string, 0)
+	{
+		stmt, _, err := conn.PrepareTransient("SELECT name, value FROM metadata")
+		if err != nil {
+			logger.Fatal(err)
+		}
+		defer stmt.Finalize()
+
+		for {
+			row, err := stmt.Step()
+			if err != nil {
+				log.Fatal(err)
+			}
+			if !row {
+				break
+			}
+			mbtilesMetadata = append(mbtilesMetadata, stmt.ColumnText(0))
+			mbtilesMetadata = append(mbtilesMetadata, stmt.ColumnText(1))
+		}
+	}
 }
