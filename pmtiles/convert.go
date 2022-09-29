@@ -172,17 +172,26 @@ func Convert(logger *log.Logger, input string, output string) {
 	// assemble the final file
 	outfile, err := os.Create(os.Args[2])
 
-	header_bytes := serialize_header(header)
-
-	root_bytes, leaves_bytes := optimize_directories(resolver.Entries, 16384-len(header_bytes))
-
-	outfile.Write(header_bytes)
-	outfile.Write(root_bytes)
+	root_bytes, leaves_bytes := optimize_directories(resolver.Entries, 16384-HEADERV3_LEN_BYTES)
 
 	metadata_bytes, err := json.Marshal(json_metadata)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	header.RootOffset = HEADERV3_LEN_BYTES
+	header.RootLength = uint64(len(root_bytes))
+	header.MetadataOffset = header.RootOffset + header.RootLength
+	header.MetadataLength = uint64(len(metadata_bytes))
+	header.LeafDirectoryOffset = header.MetadataOffset + header.MetadataLength
+	header.LeafDirectoryLength = uint64(len(leaves_bytes))
+	header.TileDataOffset = header.LeafDirectoryOffset + header.LeafDirectoryLength
+	header.TileDataLength = resolver.Offset
+
+	header_bytes := serialize_header(header)
+
+	outfile.Write(header_bytes)
+	outfile.Write(root_bytes)
 	outfile.Write(metadata_bytes)
 	outfile.Write(leaves_bytes)
 	io.Copy(outfile, tmpfile)

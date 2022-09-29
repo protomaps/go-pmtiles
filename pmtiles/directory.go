@@ -27,6 +27,8 @@ const (
 	Webp                     = 4
 )
 
+const HEADERV3_LEN_BYTES = 122
+
 type HeaderV3 struct {
 	SpecVersion         uint8
 	RootOffset          uint64
@@ -141,7 +143,7 @@ func deserialize_entries(data bytes.Buffer) []EntryV3 {
 }
 
 func serialize_header(header HeaderV3) []byte {
-	b := make([]byte, 122)
+	b := make([]byte, HEADERV3_LEN_BYTES)
 	copy(b[0:2], "PM")
 
 	b[2] = 3
