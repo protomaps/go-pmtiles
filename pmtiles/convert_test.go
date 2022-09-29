@@ -4,6 +4,33 @@ import (
 	"testing"
 )
 
+func TestResolver(t *testing.T) {
+	resolver := NewResolver()
+	resolver.AddTileIsNew(1, []byte{0x1, 0x2})
+	if len(resolver.Entries) != 1 {
+		t.Fatalf("expected length 1")
+	}
+	resolver.AddTileIsNew(2, []byte{0x1, 0x3})
+	if resolver.Offset != 4 {
+		t.Fatalf("expected ending offset (total size) to be 4")
+	}
+	is_new := resolver.AddTileIsNew(3, []byte{0x1, 0x2})
+	if is_new {
+		t.Fatalf("expected deduplication")
+	}
+	if resolver.Offset != 4 {
+		t.Fatalf("expected ending offset (total size) to be 4")
+	}
+	resolver.AddTileIsNew(4, []byte{0x1, 0x2})
+	if len(resolver.Entries) != 3 {
+		t.Fatalf("expected length with RLE to be 3")
+	}
+	resolver.AddTileIsNew(6, []byte{0x1, 0x2})
+	if len(resolver.Entries) != 4 {
+		t.Fatalf("expected length with RLE to be 4 with a skip")
+	}
+}
+
 func TestMbtiles(t *testing.T) {
 	header, json_metadata, err := mbtiles_to_header_json([]string{
 		"name", "test_name",

@@ -8,11 +8,50 @@ import (
 	"hash/fnv"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
 	"zombiezen.com/go/sqlite"
 )
+
+type Resolver struct {
+	Entries   []EntryV3
+	Offset    uint64
+	OffsetMap map[string]uint64
+}
+
+func (r *Resolver) AddTileIsNew(tile_id uint64, data []byte) bool {
+	hashfunc := fnv.New128a()
+	hashfunc.Write(data)
+	var tmp []byte
+	sum := hashfunc.Sum(tmp)
+	sum_string := string(sum)
+
+	if found_offset, ok := r.OffsetMap[sum_string]; ok {
+		last_entry := r.Entries[len(r.Entries)-1]
+		if tile_id == last_entry.TileId+uint64(last_entry.RunLength) && last_entry.Offset == found_offset {
+			// RLE
+			if last_entry.RunLength+1 > math.MaxUint32 {
+				panic("Maximum 32-bit run length exceeded")
+			}
+			r.Entries[len(r.Entries)-1].RunLength++
+		} else {
+			r.Entries = append(r.Entries, EntryV3{tile_id, found_offset, uint32(len(data)), 1})
+		}
+
+		return false
+	} else {
+		r.OffsetMap[sum_string] = r.Offset
+		r.Entries = append(r.Entries, EntryV3{tile_id, r.Offset, uint32(len(data)), 1})
+		r.Offset += uint64(len(data))
+		return true
+	}
+}
+
+func NewResolver() *Resolver {
+	return &Resolver{make([]EntryV3, 0), 0, make(map[string]uint64)}
+}
 
 func Convert(logger *log.Logger, input string, output string) {
 	conn, err := sqlite.OpenConn(input, sqlite.OpenReadOnly)
@@ -52,10 +91,9 @@ func Convert(logger *log.Logger, input string, output string) {
 	}
 	defer os.Remove(tmpfile.Name())
 
-	entries := make([]EntryV3, 0)
+	resolver := NewResolver()
+
 	{
-		var offset uint64
-		sum_to_offset := make(map[string]uint64)
 		bar := progressbar.Default(int64(tileset.GetCardinality()))
 		i := tileset.Iterator()
 		stmt := conn.Prep("SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?")
@@ -81,19 +119,9 @@ func Convert(logger *log.Logger, input string, output string) {
 			buf := new(bytes.Buffer)
 			buf.ReadFrom(reader)
 			data := buf.Bytes()
-			hashfunc := fnv.New128a()
-			hashfunc.Write(data)
-			var tmp []byte
-			sum := hashfunc.Sum(tmp)
-			sum_string := string(sum)
 
-			if found_offset, ok := sum_to_offset[sum_string]; ok {
-				entries = append(entries, EntryV3{id, found_offset, uint32(len(data)), 1})
-			} else {
-				sum_to_offset[sum_string] = offset
-				entries = append(entries, EntryV3{id, offset, uint32(len(data)), 1})
+			if resolver.AddTileIsNew(id, data) {
 				tmpfile.Write(data)
-				offset += uint64(len(data))
 			}
 
 			stmt.ClearBindings()
