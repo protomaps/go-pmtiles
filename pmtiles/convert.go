@@ -6,12 +6,14 @@ import (
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/schollz/progressbar/v3"
 	"hash/fnv"
+	"io"
 	"io/ioutil"
 	"log"
 	"math"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 	"zombiezen.com/go/sqlite"
 )
 
@@ -21,6 +23,7 @@ type Resolver struct {
 	OffsetMap map[string]uint64
 }
 
+// must be called in increasing tile_id order
 func (r *Resolver) AddTileIsNew(tile_id uint64, data []byte) bool {
 	hashfunc := fnv.New128a()
 	hashfunc.Write(data)
@@ -54,12 +57,40 @@ func NewResolver() *Resolver {
 }
 
 func Convert(logger *log.Logger, input string, output string) {
+	start := time.Now()
 	conn, err := sqlite.OpenConn(input, sqlite.OpenReadOnly)
 	if err != nil {
 		logger.Fatal(err)
 	}
 	defer conn.Close()
 
+	mbtiles_metadata := make([]string, 0)
+	{
+		stmt, _, err := conn.PrepareTransient("SELECT name, value FROM metadata")
+		if err != nil {
+			logger.Fatal(err)
+		}
+		defer stmt.Finalize()
+
+		for {
+			row, err := stmt.Step()
+			if err != nil {
+				log.Fatal(err)
+			}
+			if !row {
+				break
+			}
+			mbtiles_metadata = append(mbtiles_metadata, stmt.ColumnText(0))
+			mbtiles_metadata = append(mbtiles_metadata, stmt.ColumnText(1))
+		}
+	}
+	header, json_metadata, err := mbtiles_to_header_json(mbtiles_metadata)
+
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	// assemble a sorted set of all TileIds
 	tileset := roaring64.New()
 	{
 		stmt, _, err := conn.PrepareTransient("SELECT zoom_level, tile_column, tile_row FROM tiles")
@@ -91,8 +122,8 @@ func Convert(logger *log.Logger, input string, output string) {
 	}
 	defer os.Remove(tmpfile.Name())
 
+	// write tiles to tmpfile with deduplication
 	resolver := NewResolver()
-
 	{
 		bar := progressbar.Default(int64(tileset.GetCardinality()))
 		i := tileset.Iterator()
@@ -130,26 +161,39 @@ func Convert(logger *log.Logger, input string, output string) {
 		}
 	}
 
-	mbtilesMetadata := make([]string, 0)
-	{
-		stmt, _, err := conn.PrepareTransient("SELECT name, value FROM metadata")
-		if err != nil {
-			logger.Fatal(err)
-		}
-		defer stmt.Finalize()
+	logger.Println("# of addressed tiles: ", tileset.GetCardinality())
+	logger.Println("# of tile entries (after RLE): ", len(resolver.Entries))
+	logger.Println("# of tile contents: ", len(resolver.OffsetMap))
 
-		for {
-			row, err := stmt.Step()
-			if err != nil {
-				log.Fatal(err)
-			}
-			if !row {
-				break
-			}
-			mbtilesMetadata = append(mbtilesMetadata, stmt.ColumnText(0))
-			mbtilesMetadata = append(mbtilesMetadata, stmt.ColumnText(1))
-		}
+	header.AddressedTilesCount = tileset.GetCardinality()
+	header.TileEntriesCount = uint64(len(resolver.Entries))
+	header.TileContentsCount = uint64(len(resolver.OffsetMap))
+
+	// assemble the final file
+	outfile, err := os.Create(os.Args[2])
+
+	header_bytes := serialize_header(header)
+
+	root_bytes, leaves_bytes := optimize_directories(resolver.Entries, 16384-len(header_bytes))
+
+	outfile.Write(header_bytes)
+	outfile.Write(root_bytes)
+
+	metadata_bytes, err := json.Marshal(json_metadata)
+	if err != nil {
+		log.Fatal(err)
 	}
+	outfile.Write(metadata_bytes)
+	outfile.Write(leaves_bytes)
+	io.Copy(outfile, tmpfile)
+
+	logger.Println("Finished in ", time.Since(start))
+}
+
+func optimize_directories(entries []EntryV3, target_root_len int) ([]byte, []byte) {
+	root_bytes := make([]byte, 0)
+	leaves_bytes := make([]byte, 0)
+	return root_bytes, leaves_bytes
 }
 
 func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]interface{}, error) {
