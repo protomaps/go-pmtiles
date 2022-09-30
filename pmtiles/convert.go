@@ -170,19 +170,20 @@ func Convert(logger *log.Logger, input string, output string) {
 	header.TileContentsCount = uint64(len(resolver.OffsetMap))
 
 	// assemble the final file
-	outfile, err := os.Create(os.Args[2])
+	outfile, err := os.Create(output)
 
 	root_bytes, leaves_bytes, num_leaves := optimize_directories(resolver.Entries, 16384-HEADERV3_LEN_BYTES)
 
 	if num_leaves > 0 {
 		logger.Println("Root dir bytes: ", len(root_bytes))
 		logger.Println("Leaves dir bytes: ", len(leaves_bytes))
-		logger.Println("Average leaf dir bytes: ", len(leaves_bytes)/num_leaves)
+		logger.Println("Num leaf dirs: ", num_leaves)
 		logger.Println("Total dir bytes: ", len(root_bytes)+len(leaves_bytes))
-		logger.Println("Average bytes per entry: ", float64(len(root_bytes)+len(leaves_bytes))/float64(tileset.GetCardinality()))
+		logger.Println("Average leaf dir bytes: ", len(leaves_bytes)/num_leaves)
+		logger.Printf("Average bytes per entry: %.2f\n", float64(len(root_bytes)+len(leaves_bytes))/float64(tileset.GetCardinality()))
 	} else {
 		logger.Println("Total dir bytes: ", len(root_bytes))
-		logger.Println("Average bytes per entry: ", float64(len(root_bytes))/float64(tileset.GetCardinality()))
+		logger.Printf("Average bytes per entry: %.2f\n", float64(len(root_bytes))/float64(tileset.GetCardinality()))
 	}
 
 	metadata_bytes, err := json.Marshal(json_metadata)
