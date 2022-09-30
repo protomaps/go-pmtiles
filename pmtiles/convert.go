@@ -172,7 +172,18 @@ func Convert(logger *log.Logger, input string, output string) {
 	// assemble the final file
 	outfile, err := os.Create(os.Args[2])
 
-	root_bytes, leaves_bytes := optimize_directories(resolver.Entries, 16384-HEADERV3_LEN_BYTES)
+	root_bytes, leaves_bytes, num_leaves := optimize_directories(resolver.Entries, 16384-HEADERV3_LEN_BYTES)
+
+	if num_leaves > 0 {
+		logger.Println("Root dir bytes: ", len(root_bytes))
+		logger.Println("Leaves dir bytes: ", len(leaves_bytes))
+		logger.Println("Average leaf dir bytes: ", len(leaves_bytes)/num_leaves)
+		logger.Println("Total dir bytes: ", len(root_bytes)+len(leaves_bytes))
+		logger.Println("Average bytes per entry: ", float64(len(root_bytes)+len(leaves_bytes))/float64(tileset.GetCardinality()))
+	} else {
+		logger.Println("Total dir bytes: ", len(root_bytes))
+		logger.Println("Average bytes per entry: ", float64(len(root_bytes))/float64(tileset.GetCardinality()))
+	}
 
 	metadata_bytes, err := json.Marshal(json_metadata)
 	if err != nil {
@@ -197,12 +208,6 @@ func Convert(logger *log.Logger, input string, output string) {
 	io.Copy(outfile, tmpfile)
 
 	logger.Println("Finished in ", time.Since(start))
-}
-
-func optimize_directories(entries []EntryV3, target_root_len int) ([]byte, []byte) {
-	root_bytes := make([]byte, 0)
-	leaves_bytes := make([]byte, 0)
-	return root_bytes, leaves_bytes
 }
 
 func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]interface{}, error) {

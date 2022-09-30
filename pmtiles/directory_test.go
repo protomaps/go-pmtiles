@@ -1,6 +1,8 @@
 package pmtiles
 
 import (
+	"bytes"
+	"math/rand"
 	"testing"
 )
 
@@ -11,7 +13,7 @@ func TestDirectoryRoundtrip(t *testing.T) {
 	entries = append(entries, EntryV3{2, 2, 2, 2})
 
 	serialized := serialize_entries(entries)
-	result := deserialize_entries(serialized)
+	result := deserialize_entries(bytes.NewBuffer(serialized))
 	if len(result) != 3 {
 		t.Fatalf(`expected %d to be 3`, len(result))
 	}
@@ -152,5 +154,34 @@ func TestHeaderRoundtrip(t *testing.T) {
 	}
 	if result.CenterLat != 3.2 {
 		t.Fatalf(`expected to be 3.2`)
+	}
+}
+
+func TestOptimizeDirectories(t *testing.T) {
+	rand.Seed(3857)
+	entries := make([]EntryV3, 0)
+	entries = append(entries, EntryV3{0, 0, 100, 1})
+	_, leaves_bytes, num_leaves := optimize_directories(entries, 100)
+	if len(leaves_bytes) > 0 || num_leaves != 0 {
+		t.Fatalf("leaves bytes should be empty")
+	}
+
+	entries = make([]EntryV3, 0)
+	var i uint64
+	var offset uint64
+	for ; i < 1000; i++ {
+		randtilesize := rand.Intn(1000000)
+		entries = append(entries, EntryV3{i, offset, uint32(randtilesize), 1})
+		offset += uint64(randtilesize)
+	}
+
+	root_bytes, leaves_bytes, num_leaves := optimize_directories(entries, 1024)
+
+	if len(root_bytes) > 1024 {
+		t.Fatalf("root bytes")
+	}
+
+	if num_leaves == 0 || len(leaves_bytes) == 0 {
+		t.Fatalf("expected leaves")
 	}
 }

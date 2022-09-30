@@ -64,7 +64,7 @@ type EntryV3 struct {
 	RunLength uint32
 }
 
-func serialize_entries(entries []EntryV3) bytes.Buffer {
+func serialize_entries(entries []EntryV3) []byte {
 	var b bytes.Buffer
 	tmp := make([]byte, binary.MaxVarintLen64)
 	w, _ := gzip.NewWriterLevel(&b, gzip.DefaultCompression)
@@ -102,13 +102,13 @@ func serialize_entries(entries []EntryV3) bytes.Buffer {
 	}
 
 	w.Close()
-	return b
+	return b.Bytes()
 }
 
-func deserialize_entries(data bytes.Buffer) []EntryV3 {
+func deserialize_entries(data *bytes.Buffer) []EntryV3 {
 	entries := make([]EntryV3, 0)
 
-	reader, _ := gzip.NewReader(&data)
+	reader, _ := gzip.NewReader(data)
 	byte_reader := bufio.NewReader(reader)
 
 	num_entries, _ := binary.ReadUvarint(byte_reader)
@@ -204,4 +204,49 @@ func deserialize_header(d []byte) HeaderV3 {
 	h.CenterLat = math.Float32frombits(binary.LittleEndian.Uint32(d[118 : 118+4]))
 
 	return h
+}
+
+func build_roots_leaves(entries []EntryV3, leaf_size int) ([]byte, []byte, int) {
+	root_entries := make([]EntryV3, 0)
+	leaves_bytes := make([]byte, 0)
+	num_leaves := 0
+
+	for idx := 0; idx <= len(entries); idx += leaf_size {
+		num_leaves++
+		end := idx + leaf_size
+		if idx+leaf_size > len(entries) {
+			end = len(entries)
+		}
+		serialized := serialize_entries(entries[idx:end])
+
+		root_entries = append(root_entries, EntryV3{entries[idx].TileId, uint64(len(leaves_bytes)), uint32(len(serialized)), 0})
+		leaves_bytes = append(leaves_bytes, serialized...)
+	}
+
+	root_bytes := serialize_entries(root_entries)
+	return root_bytes, leaves_bytes, num_leaves
+
+}
+
+func optimize_directories(entries []EntryV3, target_root_len int) ([]byte, []byte, int) {
+	test_root_bytes := serialize_entries(entries)
+
+	// Case1: the entire directory fits into the target len
+	if len(test_root_bytes) <= target_root_len {
+		return test_root_bytes, make([]byte, 0), 0
+	} else {
+
+		// TODO: case 2: mixed tile entries/directory entries in root
+
+		// case 3: root directory is leaf pointers only
+		// use an iterative method, increasing the size of the leaf directory until the root fits
+		leaf_size := 4096
+		for {
+			root_bytes, leaves_bytes, num_leaves := build_roots_leaves(entries, leaf_size)
+			if len(root_bytes) <= target_root_len {
+				return root_bytes, leaves_bytes, num_leaves
+			}
+			leaf_size *= 2
+		}
+	}
 }
