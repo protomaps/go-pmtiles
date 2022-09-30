@@ -30,7 +30,6 @@ const (
 const HEADERV3_LEN_BYTES = 122
 
 type HeaderV3 struct {
-	SpecVersion         uint8
 	RootOffset          uint64
 	RootLength          uint64
 	MetadataOffset      uint64

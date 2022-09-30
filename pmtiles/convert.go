@@ -2,6 +2,7 @@ package pmtiles
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/schollz/progressbar/v3"
@@ -75,7 +76,7 @@ func Convert(logger *log.Logger, input string, output string) {
 		for {
 			row, err := stmt.Step()
 			if err != nil {
-				log.Fatal(err)
+				logger.Fatal(err)
 			}
 			if !row {
 				break
@@ -90,6 +91,7 @@ func Convert(logger *log.Logger, input string, output string) {
 		logger.Fatal(err)
 	}
 
+	logger.Println("Querying total tile count...")
 	// determine the count
 	var total_tiles int64
 	{
@@ -105,6 +107,7 @@ func Convert(logger *log.Logger, input string, output string) {
 		total_tiles = stmt.ColumnInt64(0)
 	}
 
+	logger.Println("Pass 1: Assembling TileID set")
 	// assemble a sorted set of all TileIds
 	tileset := roaring64.New()
 	{
@@ -140,6 +143,7 @@ func Convert(logger *log.Logger, input string, output string) {
 	}
 	defer os.Remove(tmpfile.Name())
 
+	logger.Println("Pass 2: writing tiles")
 	// write tiles to tmpfile with deduplication
 	resolver := NewResolver()
 	{
@@ -189,6 +193,9 @@ func Convert(logger *log.Logger, input string, output string) {
 
 	// assemble the final file
 	outfile, err := os.Create(output)
+	if err != nil {
+		logger.Fatal(err)
+	}
 
 	root_bytes, leaves_bytes, num_leaves := optimize_directories(resolver.Entries, 16384-HEADERV3_LEN_BYTES)
 
@@ -204,11 +211,20 @@ func Convert(logger *log.Logger, input string, output string) {
 		logger.Printf("Average bytes per entry: %.2f\n", float64(len(root_bytes))/float64(tileset.GetCardinality()))
 	}
 
-	metadata_bytes, err := json.Marshal(json_metadata)
-	if err != nil {
-		log.Fatal(err)
+	var metadata_bytes []byte
+	{
+		metadata_bytes_uncompressed, err := json.Marshal(json_metadata)
+		if err != nil {
+			logger.Fatal(err)
+		}
+		var b bytes.Buffer
+		w, _ := gzip.NewWriterLevel(&b, gzip.DefaultCompression)
+		w.Write(metadata_bytes_uncompressed)
+		w.Close()
+		metadata_bytes = b.Bytes()
 	}
 
+	header.Clustered = true
 	header.RootOffset = HEADERV3_LEN_BYTES
 	header.RootLength = uint64(len(root_bytes))
 	header.MetadataOffset = header.RootOffset + header.RootLength
@@ -224,6 +240,7 @@ func Convert(logger *log.Logger, input string, output string) {
 	outfile.Write(root_bytes)
 	outfile.Write(metadata_bytes)
 	outfile.Write(leaves_bytes)
+	tmpfile.Seek(0, 0)
 	io.Copy(outfile, tmpfile)
 
 	logger.Println("Finished in ", time.Since(start))
