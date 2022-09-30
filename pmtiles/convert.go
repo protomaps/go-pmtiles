@@ -241,7 +241,10 @@ func Convert(logger *log.Logger, input string, output string) {
 	outfile.Write(metadata_bytes)
 	outfile.Write(leaves_bytes)
 	tmpfile.Seek(0, 0)
-	io.Copy(outfile, tmpfile)
+	_, err = io.Copy(outfile, tmpfile)
+	if err != nil {
+		logger.Fatal(err)
+	}
 
 	logger.Println("Finished in ", time.Since(start))
 }
