@@ -266,38 +266,38 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 			json_result["format"] = value
 		case "bounds":
 			parts := strings.Split(value, ",")
-			f, err := strconv.ParseFloat(parts[0], 32)
+			f, err := strconv.ParseFloat(parts[0], 64)
 			if err != nil {
 				return header, json_result, err
 			}
-			header.MinLon = float32(f)
-			f, err = strconv.ParseFloat(parts[1], 32)
+			header.MinLonE7 = int32(f * 10000000)
+			f, err = strconv.ParseFloat(parts[1], 64)
 			if err != nil {
 				return header, json_result, err
 			}
-			header.MinLat = float32(f)
-			f, err = strconv.ParseFloat(parts[2], 32)
+			header.MinLatE7 = int32(f * 10000000)
+			f, err = strconv.ParseFloat(parts[2], 64)
 			if err != nil {
 				return header, json_result, err
 			}
-			header.MaxLon = float32(f)
-			f, err = strconv.ParseFloat(parts[3], 32)
+			header.MaxLonE7 = int32(f * 10000000)
+			f, err = strconv.ParseFloat(parts[3], 64)
 			if err != nil {
 				return header, json_result, err
 			}
-			header.MaxLat = float32(f)
+			header.MaxLatE7 = int32(f * 10000000)
 		case "center":
 			parts := strings.Split(value, ",")
-			f, err := strconv.ParseFloat(parts[0], 32)
+			f, err := strconv.ParseFloat(parts[0], 64)
 			if err != nil {
 				return header, json_result, err
 			}
-			header.CenterLon = float32(f)
-			f, err = strconv.ParseFloat(parts[1], 32)
+			header.CenterLonE7 = int32(f * 10000000)
+			f, err = strconv.ParseFloat(parts[1], 64)
 			if err != nil {
 				return header, json_result, err
 			}
-			header.CenterLat = float32(f)
+			header.CenterLatE7 = int32(f * 10000000)
 			i, err := strconv.ParseInt(parts[2], 10, 8)
 			if err != nil {
 				return header, json_result, err

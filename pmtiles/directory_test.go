@@ -74,13 +74,13 @@ func TestHeaderRoundtrip(t *testing.T) {
 	header.TileType = Mvt
 	header.MinZoom = 1
 	header.MaxZoom = 2
-	header.MinLon = 1.1
-	header.MinLat = 2.1
-	header.MaxLon = 1.2
-	header.MaxLat = 2.2
+	header.MinLonE7 = 1.1 * 10000000
+	header.MinLatE7 = 2.1 * 10000000
+	header.MaxLonE7 = 1.2 * 10000000
+	header.MaxLatE7 = 2.2 * 10000000
 	header.CenterZoom = 3
-	header.CenterLon = 3.1
-	header.CenterLat = 3.2
+	header.CenterLonE7 = 3.1 * 10000000
+	header.CenterLatE7 = 3.2 * 10000000
 	b := serialize_header(header)
 	result := deserialize_header(b)
 	if result.RootOffset != 1 {
@@ -134,25 +134,25 @@ func TestHeaderRoundtrip(t *testing.T) {
 	if result.MaxZoom != 2 {
 		t.Fatalf(`expected to be 2`)
 	}
-	if result.MinLon != 1.1 {
+	if result.MinLonE7 != 11000000 {
 		t.Fatalf(`expected to be 1.1`)
 	}
-	if result.MinLat != 2.1 {
+	if result.MinLatE7 != 21000000 {
 		t.Fatalf(`expected to be 2.1`)
 	}
-	if result.MaxLon != 1.2 {
+	if result.MaxLonE7 != 12000000 {
 		t.Fatalf(`expected to be 1.2`)
 	}
-	if result.MaxLat != 2.2 {
+	if result.MaxLatE7 != 22000000 {
 		t.Fatalf(`expected to be 2.2`)
 	}
 	if result.CenterZoom != 3 {
 		t.Fatalf(`expected to be 3`)
 	}
-	if result.CenterLon != 3.1 {
+	if result.CenterLonE7 != 31000000 {
 		t.Fatalf(`expected to be 3.1`)
 	}
-	if result.CenterLat != 3.2 {
+	if result.CenterLatE7 != 32000000 {
 		t.Fatalf(`expected to be 3.2`)
 	}
 }

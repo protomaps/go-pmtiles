@@ -50,25 +50,25 @@ func TestMbtiles(t *testing.T) {
 		t.Fatalf("parsing error %s", err)
 	}
 
-	if header.MinLon != -180.0 {
+	if header.MinLonE7 != -180*10000000 {
 		t.Fatalf(`expected min lon`)
 	}
-	if header.MinLat != -85 {
+	if header.MinLatE7 != -85*10000000 {
 		t.Fatalf(`expected min lat`)
 	}
-	if header.MaxLon != 180.0 {
+	if header.MaxLonE7 != 180*10000000 {
 		t.Fatalf(`expected max lon`)
 	}
-	if header.MaxLat != 85.0 {
+	if header.MaxLatE7 != 85*10000000 {
 		t.Fatalf(`expected max lat`)
 	}
 	if header.TileType != Mvt {
 		t.Fatalf(`expected tile type mvt`)
 	}
-	if header.CenterLon != -122.1906 {
+	if header.CenterLonE7 != -122.1906*10000000 {
 		t.Fatalf(`expected center lon`)
 	}
-	if header.CenterLat != 37.7599 {
+	if header.CenterLatE7 != 37.7599*10000000 {
 		t.Fatalf(`expected center lat`)
 	}
 	if header.CenterZoom != 11 {

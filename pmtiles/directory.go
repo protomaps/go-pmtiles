@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
-	"math"
 )
 
 type Compression uint8
@@ -47,13 +46,13 @@ type HeaderV3 struct {
 	TileType            TileType
 	MinZoom             uint8
 	MaxZoom             uint8
-	MinLon              float32
-	MinLat              float32
-	MaxLon              float32
-	MaxLat              float32
+	MinLonE7            int32
+	MinLatE7            int32
+	MaxLonE7            int32
+	MaxLatE7            int32
 	CenterZoom          uint8
-	CenterLon           float32
-	CenterLat           float32
+	CenterLonE7         int32
+	CenterLatE7         int32
 }
 
 type EntryV3 struct {
@@ -165,13 +164,13 @@ func serialize_header(header HeaderV3) []byte {
 	b[94] = uint8(header.TileType)
 	b[95] = header.MinZoom
 	b[96] = header.MaxZoom
-	binary.LittleEndian.PutUint32(b[97:97+4], math.Float32bits(header.MinLon))
-	binary.LittleEndian.PutUint32(b[101:101+4], math.Float32bits(header.MinLat))
-	binary.LittleEndian.PutUint32(b[105:105+4], math.Float32bits(header.MaxLon))
-	binary.LittleEndian.PutUint32(b[109:109+4], math.Float32bits(header.MaxLat))
+	binary.LittleEndian.PutUint32(b[97:97+4], uint32(header.MinLonE7))
+	binary.LittleEndian.PutUint32(b[101:101+4], uint32(header.MinLatE7))
+	binary.LittleEndian.PutUint32(b[105:105+4], uint32(header.MaxLonE7))
+	binary.LittleEndian.PutUint32(b[109:109+4], uint32(header.MaxLatE7))
 	b[113] = header.CenterZoom
-	binary.LittleEndian.PutUint32(b[114:114+4], math.Float32bits(header.CenterLon))
-	binary.LittleEndian.PutUint32(b[118:118+4], math.Float32bits(header.CenterLat))
+	binary.LittleEndian.PutUint32(b[114:114+4], uint32(header.CenterLonE7))
+	binary.LittleEndian.PutUint32(b[118:118+4], uint32(header.CenterLatE7))
 	return b
 }
 
@@ -194,13 +193,13 @@ func deserialize_header(d []byte) HeaderV3 {
 	h.TileType = TileType(d[94])
 	h.MinZoom = d[95]
 	h.MaxZoom = d[96]
-	h.MinLon = math.Float32frombits(binary.LittleEndian.Uint32(d[97 : 97+4]))
-	h.MinLat = math.Float32frombits(binary.LittleEndian.Uint32(d[101 : 101+4]))
-	h.MaxLon = math.Float32frombits(binary.LittleEndian.Uint32(d[105 : 105+4]))
-	h.MaxLat = math.Float32frombits(binary.LittleEndian.Uint32(d[109 : 109+4]))
+	h.MinLonE7 = int32(binary.LittleEndian.Uint32(d[97 : 97+4]))
+	h.MinLatE7 = int32(binary.LittleEndian.Uint32(d[101 : 101+4]))
+	h.MaxLonE7 = int32(binary.LittleEndian.Uint32(d[105 : 105+4]))
+	h.MaxLatE7 = int32(binary.LittleEndian.Uint32(d[109 : 109+4]))
 	h.CenterZoom = d[113]
-	h.CenterLon = math.Float32frombits(binary.LittleEndian.Uint32(d[114 : 114+4]))
-	h.CenterLat = math.Float32frombits(binary.LittleEndian.Uint32(d[118 : 118+4]))
+	h.CenterLonE7 = int32(binary.LittleEndian.Uint32(d[114 : 114+4]))
+	h.CenterLatE7 = int32(binary.LittleEndian.Uint32(d[118 : 118+4]))
 
 	return h
 }
