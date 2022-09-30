@@ -90,6 +90,21 @@ func Convert(logger *log.Logger, input string, output string) {
 		logger.Fatal(err)
 	}
 
+	// determine the count
+	var total_tiles int64
+	{
+		stmt, _, err := conn.PrepareTransient("SELECT count(*) FROM tiles")
+		if err != nil {
+			logger.Fatal(err)
+		}
+		defer stmt.Finalize()
+		row, err := stmt.Step()
+		if err != nil || !row {
+			logger.Fatal(err)
+		}
+		total_tiles = stmt.ColumnInt64(0)
+	}
+
 	// assemble a sorted set of all TileIds
 	tileset := roaring64.New()
 	{
@@ -98,6 +113,8 @@ func Convert(logger *log.Logger, input string, output string) {
 			logger.Fatal(err)
 		}
 		defer stmt.Finalize()
+
+		bar := progressbar.Default(total_tiles)
 
 		for {
 			row, err := stmt.Step()
@@ -113,6 +130,7 @@ func Convert(logger *log.Logger, input string, output string) {
 			flipped_y := (1 << z) - 1 - y
 			id := ZxyToId(z, x, flipped_y)
 			tileset.Add(id)
+			bar.Add(1)
 		}
 	}
 
