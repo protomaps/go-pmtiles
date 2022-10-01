@@ -173,6 +173,15 @@ func Convert(logger *log.Logger, input string, output string) {
 			buf.ReadFrom(reader)
 			data := buf.Bytes()
 
+			// detect tile compression dynamically, gzip if not already
+			if data[0] == 31 && data[1] == 139 {
+				var b bytes.Buffer
+				w, _ := gzip.NewWriterLevel(&b, gzip.DefaultCompression)
+				w.Write(data)
+				w.Close()
+				data = b.Bytes()
+			}
+
 			if resolver.AddTileIsNew(id, data) {
 				tmpfile.Write(data)
 			}
@@ -225,6 +234,9 @@ func Convert(logger *log.Logger, input string, output string) {
 	}
 
 	header.Clustered = true
+	header.InternalCompression = Gzip
+	header.TileCompression = Gzip
+
 	header.RootOffset = HEADERV3_LEN_BYTES
 	header.RootLength = uint64(len(root_bytes))
 	header.MetadataOffset = header.RootOffset + header.RootLength
