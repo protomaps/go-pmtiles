@@ -19,13 +19,15 @@ import (
 )
 
 type Resolver struct {
-	Entries   []EntryV3
-	Offset    uint64
-	OffsetMap map[string]uint64
+	Entries        []EntryV3
+	Offset         uint64
+	OffsetMap      map[string]uint64
+	AddressedTiles uint64 // none of them can be empty
 }
 
-// must be called in increasing tile_id order
+// must be called in increasing tile_id order, uniquely
 func (r *Resolver) AddTileIsNew(tile_id uint64, data []byte) bool {
+	r.AddressedTiles++
 	hashfunc := fnv.New128a()
 	hashfunc.Write(data)
 	var tmp []byte
@@ -54,7 +56,7 @@ func (r *Resolver) AddTileIsNew(tile_id uint64, data []byte) bool {
 }
 
 func NewResolver() *Resolver {
-	return &Resolver{make([]EntryV3, 0), 0, make(map[string]uint64)}
+	return &Resolver{make([]EntryV3, 0), 0, make(map[string]uint64), 0}
 }
 
 func Convert(logger *log.Logger, input string, output string) {
@@ -173,8 +175,13 @@ func Convert(logger *log.Logger, input string, output string) {
 			buf.ReadFrom(reader)
 			data := buf.Bytes()
 
-			// detect tile compression dynamically, gzip if not already
-			if data[0] == 31 && data[1] == 139 {
+			if len(data) == 0 {
+				continue
+			}
+
+			if len(data) >= 2 && data[0] == 31 && data[1] == 139 {
+				// the tile is already gzipped
+			} else {
 				var b bytes.Buffer
 				w, _ := gzip.NewWriterLevel(&b, gzip.DefaultCompression)
 				w.Write(data)
@@ -192,11 +199,11 @@ func Convert(logger *log.Logger, input string, output string) {
 		}
 	}
 
-	logger.Println("# of addressed tiles: ", tileset.GetCardinality())
+	logger.Println("# of addressed tiles: ", resolver.AddressedTiles)
 	logger.Println("# of tile entries (after RLE): ", len(resolver.Entries))
 	logger.Println("# of tile contents: ", len(resolver.OffsetMap))
 
-	header.AddressedTilesCount = tileset.GetCardinality()
+	header.AddressedTilesCount = resolver.AddressedTiles
 	header.TileEntriesCount = uint64(len(resolver.Entries))
 	header.TileContentsCount = uint64(len(resolver.OffsetMap))
 
@@ -214,10 +221,10 @@ func Convert(logger *log.Logger, input string, output string) {
 		logger.Println("Num leaf dirs: ", num_leaves)
 		logger.Println("Total dir bytes: ", len(root_bytes)+len(leaves_bytes))
 		logger.Println("Average leaf dir bytes: ", len(leaves_bytes)/num_leaves)
-		logger.Printf("Average bytes per entry: %.2f\n", float64(len(root_bytes)+len(leaves_bytes))/float64(tileset.GetCardinality()))
+		logger.Printf("Average bytes per entry: %.2f\n", float64(len(root_bytes)+len(leaves_bytes))/float64(resolver.AddressedTiles))
 	} else {
 		logger.Println("Total dir bytes: ", len(root_bytes))
-		logger.Printf("Average bytes per entry: %.2f\n", float64(len(root_bytes))/float64(tileset.GetCardinality()))
+		logger.Printf("Average bytes per entry: %.2f\n", float64(len(root_bytes))/float64(resolver.AddressedTiles))
 	}
 
 	var metadata_bytes []byte
