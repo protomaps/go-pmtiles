@@ -153,6 +153,10 @@ func Convert(logger *log.Logger, input string, output string) {
 		i := tileset.Iterator()
 		stmt := conn.Prep("SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?")
 
+		var raw_tile_tmp bytes.Buffer
+		var compress_tmp bytes.Buffer
+		compressor, _ := gzip.NewWriterLevel(&compress_tmp, gzip.DefaultCompression)
+
 		for i.HasNext() {
 			id := i.Next()
 			z, x, y := IdToZxy(id)
@@ -171,9 +175,9 @@ func Convert(logger *log.Logger, input string, output string) {
 			}
 
 			reader := stmt.ColumnReader(0)
-			buf := new(bytes.Buffer)
-			buf.ReadFrom(reader)
-			data := buf.Bytes()
+			raw_tile_tmp.Reset()
+			raw_tile_tmp.ReadFrom(reader)
+			data := raw_tile_tmp.Bytes()
 
 			if len(data) == 0 {
 				continue
@@ -182,11 +186,11 @@ func Convert(logger *log.Logger, input string, output string) {
 			if len(data) >= 2 && data[0] == 31 && data[1] == 139 {
 				// the tile is already gzipped
 			} else {
-				var b bytes.Buffer
-				w, _ := gzip.NewWriterLevel(&b, gzip.DefaultCompression)
-				w.Write(data)
-				w.Close()
-				data = b.Bytes()
+				compress_tmp.Reset()
+				compressor.Reset(&compress_tmp)
+				compressor.Write(data)
+				compressor.Close()
+				data = compress_tmp.Bytes()
 			}
 
 			if resolver.AddTileIsNew(id, data) {
