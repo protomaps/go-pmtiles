@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/schollz/progressbar/v3"
+	"hash"
 	"hash/fnv"
 	"io"
 	"io/ioutil"
@@ -18,45 +19,68 @@ import (
 	"zombiezen.com/go/sqlite"
 )
 
+type OffsetLen struct {
+	Offset uint64
+	Length uint32
+}
+
 type Resolver struct {
 	Entries        []EntryV3
 	Offset         uint64
-	OffsetMap      map[string]uint64
+	OffsetMap      map[string]OffsetLen
 	AddressedTiles uint64 // none of them can be empty
+	compressor     *gzip.Writer
+	compress_tmp   *bytes.Buffer
+	hashfunc       hash.Hash
 }
 
 // must be called in increasing tile_id order, uniquely
-func (r *Resolver) AddTileIsNew(tile_id uint64, data []byte) bool {
+func (r *Resolver) AddTileIsNew(tile_id uint64, data []byte) (bool, []byte) {
 	r.AddressedTiles++
-	hashfunc := fnv.New128a()
-	hashfunc.Write(data)
+	r.hashfunc.Reset()
+	r.hashfunc.Write(data)
 	var tmp []byte
-	sum := hashfunc.Sum(tmp)
+	sum := r.hashfunc.Sum(tmp)
 	sum_string := string(sum)
 
-	if found_offset, ok := r.OffsetMap[sum_string]; ok {
+	if found, ok := r.OffsetMap[sum_string]; ok {
 		last_entry := r.Entries[len(r.Entries)-1]
-		if tile_id == last_entry.TileId+uint64(last_entry.RunLength) && last_entry.Offset == found_offset {
+		if tile_id == last_entry.TileId+uint64(last_entry.RunLength) && last_entry.Offset == found.Offset {
 			// RLE
 			if last_entry.RunLength+1 > math.MaxUint32 {
 				panic("Maximum 32-bit run length exceeded")
 			}
 			r.Entries[len(r.Entries)-1].RunLength++
 		} else {
-			r.Entries = append(r.Entries, EntryV3{tile_id, found_offset, uint32(len(data)), 1})
+			r.Entries = append(r.Entries, EntryV3{tile_id, found.Offset, found.Length, 1})
 		}
 
-		return false
+		return false, nil
 	} else {
-		r.OffsetMap[sum_string] = r.Offset
-		r.Entries = append(r.Entries, EntryV3{tile_id, r.Offset, uint32(len(data)), 1})
-		r.Offset += uint64(len(data))
-		return true
+		var new_data []byte
+		if len(data) >= 2 && data[0] == 31 && data[1] == 139 {
+			// the tile is already gzipped
+			new_data = data
+		} else {
+			r.compress_tmp.Reset()
+			r.compressor.Reset(r.compress_tmp)
+			r.compressor.Write(data)
+			r.compressor.Close()
+			new_data = r.compress_tmp.Bytes()
+		}
+
+		r.OffsetMap[sum_string] = OffsetLen{r.Offset, uint32(len(new_data))}
+		r.Entries = append(r.Entries, EntryV3{tile_id, r.Offset, uint32(len(new_data)), 1})
+		r.Offset += uint64(len(new_data))
+		return true, new_data
 	}
 }
 
 func NewResolver() *Resolver {
-	return &Resolver{make([]EntryV3, 0), 0, make(map[string]uint64), 0}
+	b := new(bytes.Buffer)
+	compressor, _ := gzip.NewWriterLevel(b, gzip.DefaultCompression)
+	r := Resolver{make([]EntryV3, 0), 0, make(map[string]OffsetLen), 0, compressor, b, fnv.New128a()}
+	return &r
 }
 
 func Convert(logger *log.Logger, input string, output string) {
@@ -154,8 +178,6 @@ func Convert(logger *log.Logger, input string, output string) {
 		stmt := conn.Prep("SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?")
 
 		var raw_tile_tmp bytes.Buffer
-		var compress_tmp bytes.Buffer
-		compressor, _ := gzip.NewWriterLevel(&compress_tmp, gzip.DefaultCompression)
 
 		for i.HasNext() {
 			id := i.Next()
@@ -179,22 +201,10 @@ func Convert(logger *log.Logger, input string, output string) {
 			raw_tile_tmp.ReadFrom(reader)
 			data := raw_tile_tmp.Bytes()
 
-			if len(data) == 0 {
-				continue
-			}
-
-			if len(data) >= 2 && data[0] == 31 && data[1] == 139 {
-				// the tile is already gzipped
-			} else {
-				compress_tmp.Reset()
-				compressor.Reset(&compress_tmp)
-				compressor.Write(data)
-				compressor.Close()
-				data = compress_tmp.Bytes()
-			}
-
-			if resolver.AddTileIsNew(id, data) {
-				tmpfile.Write(data)
+			if len(data) > 0 {
+				if is_new, new_data := resolver.AddTileIsNew(id, data); is_new {
+					tmpfile.Write(new_data)
+				}
 			}
 
 			stmt.ClearBindings()

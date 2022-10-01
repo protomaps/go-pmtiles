@@ -11,15 +11,15 @@ func TestResolver(t *testing.T) {
 		t.Fatalf("expected length 1")
 	}
 	resolver.AddTileIsNew(2, []byte{0x1, 0x3})
-	if resolver.Offset != 4 {
-		t.Fatalf("expected ending offset (total size) to be 4")
+	if resolver.Offset != 52 {
+		t.Fatalf("expected ending offset (total size) to be 52, was %d", resolver.Offset)
 	}
-	is_new := resolver.AddTileIsNew(3, []byte{0x1, 0x2})
+	is_new, _ := resolver.AddTileIsNew(3, []byte{0x1, 0x2})
 	if is_new {
 		t.Fatalf("expected deduplication")
 	}
-	if resolver.Offset != 4 {
-		t.Fatalf("expected ending offset (total size) to be 4")
+	if resolver.Offset != 52 {
+		t.Fatalf("expected ending offset (total size) to be 4, was %d", resolver.Offset)
 	}
 	resolver.AddTileIsNew(4, []byte{0x1, 0x2})
 	if len(resolver.Entries) != 3 {
