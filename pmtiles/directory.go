@@ -65,7 +65,7 @@ type EntryV3 struct {
 func serialize_entries(entries []EntryV3) []byte {
 	var b bytes.Buffer
 	tmp := make([]byte, binary.MaxVarintLen64)
-	w, _ := gzip.NewWriterLevel(&b, gzip.DefaultCompression)
+	w, _ := gzip.NewWriterLevel(&b, gzip.BestCompression)
 
 	var n int
 	n = binary.PutUvarint(tmp, uint64(len(entries)))

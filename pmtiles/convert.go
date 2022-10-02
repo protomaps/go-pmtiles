@@ -78,7 +78,7 @@ func (r *Resolver) AddTileIsNew(tile_id uint64, data []byte) (bool, []byte) {
 
 func NewResolver() *Resolver {
 	b := new(bytes.Buffer)
-	compressor, _ := gzip.NewWriterLevel(b, gzip.DefaultCompression)
+	compressor, _ := gzip.NewWriterLevel(b, gzip.BestCompression)
 	r := Resolver{make([]EntryV3, 0), 0, make(map[string]OffsetLen), 0, compressor, b, fnv.New128a()}
 	return &r
 }
@@ -248,7 +248,7 @@ func Convert(logger *log.Logger, input string, output string) {
 			logger.Fatal(err)
 		}
 		var b bytes.Buffer
-		w, _ := gzip.NewWriterLevel(&b, gzip.DefaultCompression)
+		w, _ := gzip.NewWriterLevel(&b, gzip.BestCompression)
 		w.Write(metadata_bytes_uncompressed)
 		w.Close()
 		metadata_bytes = b.Bytes()
