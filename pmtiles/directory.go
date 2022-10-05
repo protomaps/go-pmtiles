@@ -143,7 +143,7 @@ func deserialize_entries(data *bytes.Buffer) []EntryV3 {
 
 func serialize_header(header HeaderV3) []byte {
 	b := make([]byte, HEADERV3_LEN_BYTES)
-	copy(b[0:7], "PMTILES")
+	copy(b[0:7], "PMTiles")
 
 	b[7] = 3
 	binary.LittleEndian.PutUint64(b[8:8+8], header.RootOffset)
