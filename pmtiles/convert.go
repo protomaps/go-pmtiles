@@ -238,7 +238,7 @@ func Convert(logger *log.Logger, input string, output string) {
 		logger.Printf("Average bytes per entry: %.2f\n", float64(len(root_bytes)+len(leaves_bytes))/float64(resolver.AddressedTiles))
 	} else {
 		logger.Println("Total dir bytes: ", len(root_bytes))
-		logger.Printf("Average bytes per entry: %.2f\n", float64(len(root_bytes))/float64(resolver.AddressedTiles))
+		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(root_bytes))/float64(resolver.AddressedTiles))
 	}
 
 	var metadata_bytes []byte
