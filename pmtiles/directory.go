@@ -147,7 +147,7 @@ func serialize_header(header HeaderV3) []byte {
 
 	b[7] = 3
 	binary.LittleEndian.PutUint64(b[8:8+8], header.RootOffset)
-	binary.LittleEndian.PutUint64(b[16:15+8], header.RootLength)
+	binary.LittleEndian.PutUint64(b[16:16+8], header.RootLength)
 	binary.LittleEndian.PutUint64(b[24:24+8], header.MetadataOffset)
 	binary.LittleEndian.PutUint64(b[32:32+8], header.MetadataLength)
 	binary.LittleEndian.PutUint64(b[40:40+8], header.LeafDirectoryOffset)
@@ -168,7 +168,7 @@ func serialize_header(header HeaderV3) []byte {
 	binary.LittleEndian.PutUint32(b[102:102+4], uint32(header.MinLonE7))
 	binary.LittleEndian.PutUint32(b[106:106+4], uint32(header.MinLatE7))
 	binary.LittleEndian.PutUint32(b[110:110+4], uint32(header.MaxLonE7))
-	binary.LittleEndian.PutUint32(b[115:115+4], uint32(header.MaxLatE7))
+	binary.LittleEndian.PutUint32(b[114:114+4], uint32(header.MaxLatE7))
 	b[118] = header.CenterZoom
 	binary.LittleEndian.PutUint32(b[119:119+4], uint32(header.CenterLonE7))
 	binary.LittleEndian.PutUint32(b[123:123+4], uint32(header.CenterLatE7))
