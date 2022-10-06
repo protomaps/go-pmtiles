@@ -84,6 +84,28 @@ func NewResolver() *Resolver {
 }
 
 func Convert(logger *log.Logger, input string, output string) {
+	if strings.HasSuffix(input, ".pmtiles") {
+		ConvertPmtilesV2(logger, input, output)
+	} else {
+		ConvertMbtiles(logger, input, output)
+	}
+}
+
+func ConvertPmtilesV2(logger *log.Logger, input string, output string) {
+	f, err := os.Open(input)
+	if err != nil {
+		log.Fatalf("Failed to open file: %s", err)
+	}
+	buffer := make([]byte, 512000)
+	io.ReadFull(f, buffer)
+	if string(buffer[0:7]) == "PMTiles" && buffer[7] == 3 {
+		logger.Fatal("Archive is already the latest PMTiles version (3).")
+	}
+
+	defer f.Close()
+}
+
+func ConvertMbtiles(logger *log.Logger, input string, output string) {
 	start := time.Now()
 	conn, err := sqlite.OpenConn(input, sqlite.OpenReadOnly)
 	if err != nil {
