@@ -3,6 +3,9 @@ package main
 import (
 	"flag"
 	"github.com/protomaps/go-pmtiles/pmtiles"
+	_ "gocloud.dev/blob/azureblob"
+	_ "gocloud.dev/blob/gcsblob"
+	_ "gocloud.dev/blob/s3blob"
 	"log"
 	"net/http"
 	"os"
@@ -27,11 +30,13 @@ func main() {
 	cpuProfile := subpyramidCmd.Bool("profile", false, "profiling output")
 
 	switch os.Args[1] {
+	case "show":
+		pmtiles.Show(logger, os.Args)
 	case "serve":
 		serveCmd.Parse(os.Args[2:])
 		path := serveCmd.Arg(0)
 		if path == "" {
-			logger.Println("USAGE: go-pmtiles serve  [-p PORT] [-cors VALUE] LOCAL_PATH or https://BUCKET")
+			logger.Println("USAGE: serve  [-p PORT] [-cors VALUE] LOCAL_PATH or https://BUCKET")
 			os.Exit(1)
 		}
 		loop := pmtiles.NewLoop(path, logger, *cacheSize, "*")
@@ -77,6 +82,8 @@ func main() {
 		path := convertCmd.Arg(0)
 		output := convertCmd.Arg(1)
 		pmtiles.Convert(logger, path, output)
+	case "upload":
+		pmtiles.Upload(logger, os.Args)
 	default:
 		logger.Println("unrecognized command.")
 		flag.PrintDefaults()
