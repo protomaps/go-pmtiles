@@ -66,14 +66,14 @@ func SubpyramidXY(logger *log.Logger, input string, output string, z uint8, minX
 	if err != nil {
 		return
 	}
-	metadata_bytes, root_directory := ParseHeader(f)
+	metadata_bytes, root_directory := ParseHeaderV2(f)
 
 	var metadata Metadata
 	json.Unmarshal(metadata_bytes, &metadata)
 	metadata.Maxzoom = strconv.Itoa(int(z))
 	metadata.Bounds = bounds
 
-	writer := NewWriter(output)
+	// writer := NewWriter(output)
 
 	if z >= root_directory.LeafZ {
 		for key, rng := range root_directory.Leaves {
@@ -87,7 +87,7 @@ func SubpyramidXY(logger *log.Logger, input string, output string, z uint8, minX
 				io.ReadFull(f, dir_bytes)
 
 				for i := 0; i < len(dir_bytes)/17; i++ {
-					leaf_z, lzxy, lrng := ParseEntry(dir_bytes[i*17 : i*17+17])
+					leaf_z, lzxy, lrng := ParseEntryV2(dir_bytes[i*17 : i*17+17])
 					if leaf_z == 0 {
 						if lzxy.Z <= z && Matches(z, minX, minY, maxX, maxY, lzxy) {
 							_, err = f.Seek(int64(lrng.Offset), 0)
@@ -96,7 +96,7 @@ func SubpyramidXY(logger *log.Logger, input string, output string, z uint8, minX
 							}
 							tile_data := make([]byte, lrng.Length)
 							io.ReadFull(f, tile_data)
-							writer.WriteTile(lzxy, tile_data)
+							// writer.WriteTile(lzxy, tile_data)
 						}
 					}
 				}
@@ -111,10 +111,11 @@ func SubpyramidXY(logger *log.Logger, input string, output string, z uint8, minX
 			}
 			tile_data := make([]byte, rng.Length)
 			io.ReadFull(f, tile_data)
-			writer.WriteTile(key, tile_data)
+			// writer.WriteTile(key, tile_data)
 		}
 	}
 
 	new_metadata_bytes, _ := json.Marshal(metadata)
-	writer.Finalize(new_metadata_bytes)
+	_ = new_metadata_bytes
+	// writer.Finalize(new_metadata_bytes)
 }

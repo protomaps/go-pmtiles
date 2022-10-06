@@ -31,7 +31,7 @@ const (
 
 type Datum struct {
 	bytes     []byte
-	directory Directory
+	directory DirectoryV2
 	kind      DatumKind
 	hit       bool
 }
@@ -122,13 +122,13 @@ func (loop Loop) Start() {
 						var size int
 						ok := loop.fetcher.Do(key, func(reader io.Reader) {
 							if req.kind == Root {
-								metadata, dir := ParseHeader(reader)
+								metadata, dir := ParseHeaderV2(reader)
 								result = Datum{kind: Root, bytes: metadata, directory: dir}
 								size = len(metadata) + dir.SizeBytes()
 							} else if req.kind == Leaf {
 								dir_bytes := make([]byte, key.rng.Length)
 								io.ReadFull(reader, dir_bytes)
-								dir := ParseDirectory(dir_bytes)
+								dir := ParseDirectoryV2(dir_bytes)
 								result = Datum{kind: Root, directory: dir}
 								size = dir.SizeBytes()
 							} else {

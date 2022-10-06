@@ -17,13 +17,13 @@ type Range struct {
 	Length uint32
 }
 
-type Directory struct {
+type DirectoryV2 struct {
 	Entries map[Zxy]Range
 	LeafZ   uint8
 	Leaves  map[Zxy]Range
 }
 
-func (d Directory) SizeBytes() int {
+func (d DirectoryV2) SizeBytes() int {
 	return 21*(len(d.Entries)+len(d.Leaves)) + 1
 }
 
@@ -42,7 +42,7 @@ func GetParentTile(tile Zxy, level uint8) Zxy {
 	return Zxy{Z: level, X: uint32(x), Y: uint32(y)}
 }
 
-func ParseEntry(b []byte) (uint8, Zxy, Range) {
+func ParseEntryV2(b []byte) (uint8, Zxy, Range) {
 	z_raw := b[0]
 	x_raw := b[1:4]
 	y_raw := b[4:7]
@@ -60,11 +60,11 @@ func ParseEntry(b []byte) (uint8, Zxy, Range) {
 	}
 }
 
-func ParseDirectory(dir_bytes []byte) Directory {
-	the_dir := Directory{Entries: make(map[Zxy]Range), Leaves: make(map[Zxy]Range)}
+func ParseDirectoryV2(dir_bytes []byte) DirectoryV2 {
+	the_dir := DirectoryV2{Entries: make(map[Zxy]Range), Leaves: make(map[Zxy]Range)}
 	var maxz uint8
 	for i := 0; i < len(dir_bytes)/17; i++ {
-		leaf_z, zxy, rng := ParseEntry(dir_bytes[i*17 : i*17+17])
+		leaf_z, zxy, rng := ParseEntryV2(dir_bytes[i*17 : i*17+17])
 		if leaf_z == 0 {
 			the_dir.Entries[zxy] = rng
 		} else {
@@ -76,7 +76,7 @@ func ParseDirectory(dir_bytes []byte) Directory {
 	return the_dir
 }
 
-func ParseHeader(reader io.Reader) ([]byte, Directory) {
+func ParseHeaderV2(reader io.Reader) ([]byte, DirectoryV2) {
 	magic_num := make([]byte, 2)
 	io.ReadFull(reader, magic_num)
 	version := make([]byte, 2)
@@ -91,6 +91,6 @@ func ParseHeader(reader io.Reader) ([]byte, Directory) {
 	io.ReadFull(reader, metadata_bytes)
 	dir_bytes := make([]byte, rootdir_len*17)
 	io.ReadFull(reader, dir_bytes)
-	the_dir := ParseDirectory(dir_bytes)
+	the_dir := ParseDirectoryV2(dir_bytes)
 	return metadata_bytes, the_dir
 }
