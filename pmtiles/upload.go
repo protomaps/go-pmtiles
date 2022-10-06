@@ -34,7 +34,12 @@ func Upload(logger *log.Logger, args []string) {
 	nChunks := int64(0)
 	buffer := make([]byte, 16*1024*1024)
 
-	w, err := b.NewWriter(ctx, file, nil)
+	opts := &blob.WriterOptions{
+		BufferSize:     256 * 1000 * 1000,
+		MaxConcurrency: 2,
+	}
+
+	w, err := b.NewWriter(ctx, file, opts)
 	if err != nil {
 		log.Fatalf("Failed to obtain writer: %s", err)
 	}
