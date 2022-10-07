@@ -86,7 +86,23 @@ func TestV2UpgradeBarebones(t *testing.T) {
 	if header.TileType != Mvt {
 		t.Fatalf(`expected infer mvt`)
 	}
-	// mbtiles writes? look at spec
+}
+
+func TestV2UpgradeStrings(t *testing.T) {
+	header, _, err := v2_to_header_json(map[string]interface{}{
+		"minzoom":     "0",
+		"maxzoom":     "14",
+		"bounds":      "-180.0,-85,178,83",
+	}, []byte{0x1f, 0x8b, 0x0, 0x0})
+	if err != nil {
+		t.Fatalf("parsing error %s", err)
+	}
+	if header.MinZoom != 0 {
+		t.Fatalf("expected minzoom=0, was %d", header.MinZoom)
+	}
+	if header.MaxZoom != 14 {
+		t.Fatalf("expected maxzoom=14, was %d", header.MaxZoom)
+	}
 }
 
 func TestV2UpgradeExtra(t *testing.T) {

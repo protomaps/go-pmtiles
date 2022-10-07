@@ -113,13 +113,12 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) {
 
 	// get the first 4 bytes at offset 512000 to attempt tile type detection
 
-	first4 := make([]byte, 0)
+	first4 := make([]byte, 4)
 	f.Seek(512000, 0)
 	n, err := f.Read(first4)
 	if n != 4 || err != nil {
 		panic(err)
 	}
-	f.Seek(0, 0)
 
 	header, json_metadata, err := v2_to_header_json(v2_metadata, first4)
 
@@ -380,11 +379,34 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 func v2_to_header_json(v2_json_metadata map[string]interface{}, first4 []byte) (HeaderV3, map[string]interface{}, error) {
 	header := HeaderV3{}
 	if val, ok := v2_json_metadata["minzoom"]; ok {
-		header.MinZoom = uint8(val.(int))
+		switch v := val.(type) {
+		case int:
+			header.MinZoom = uint8(v)
+		case string:
+			i, err := strconv.ParseInt(v, 10, 8)
+			if err != nil {
+				return header, v2_json_metadata, err
+			}
+			header.MinZoom = uint8(i)
+		default:
+			return header, v2_json_metadata, errors.New("Can't parse minzoom")
+		}
 		delete(v2_json_metadata, "minzoom")
 	}
 	if val, ok := v2_json_metadata["maxzoom"]; ok {
-		header.MaxZoom = uint8(val.(int))
+		switch v := val.(type) {
+		case int:
+			header.MaxZoom = uint8(v)
+		case string:
+			i, err := strconv.ParseInt(v, 10, 8)
+			if err != nil {
+				return header, v2_json_metadata, err
+			}
+			header.MaxZoom = uint8(i)
+		default:
+			return header, v2_json_metadata, errors.New("Can't parse minzoom")
+		}
+
 		delete(v2_json_metadata, "maxzoom")
 	}
 	if val, ok := v2_json_metadata["bounds"]; ok {
