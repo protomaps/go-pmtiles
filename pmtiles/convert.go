@@ -93,6 +93,21 @@ func Convert(logger *log.Logger, input string, output string) {
 	}
 }
 
+func add_directoryv2_entries(dir DirectoryV2, entries *[]EntryV3, f *os.File) {
+	for zxy, rng := range dir.Entries {
+		tile_id := ZxyToId(zxy.Z, zxy.X, zxy.Y)
+		*entries = append(*entries, EntryV3{tile_id, rng.Offset, rng.Length, 1})
+	}
+
+	for _, rng := range dir.Leaves {
+		f.Seek(int64(rng.Offset), 0)
+		leaf_bytes := make([]byte, rng.Length)
+		f.Read(leaf_bytes)
+		leaf_dir := ParseDirectoryV2(leaf_bytes)
+		add_directoryv2_entries(leaf_dir, entries, f)
+	}
+}
+
 func ConvertPmtilesV2(logger *log.Logger, input string, output string) {
 	start := time.Now()
 	f, err := os.Open(input)
@@ -127,15 +142,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) {
 	}
 
 	entries := make([]EntryV3, 0)
-
-	for zxy, rng := range dir.Entries {
-		tile_id := ZxyToId(zxy.Z, zxy.X, zxy.Y)
-		entries = append(entries, EntryV3{tile_id, rng.Offset, rng.Length, 1})
-	}
-
-	// TODO all extant v2 archives have only one leaf level?
-	// for zxy, rng := range dir.Leaves {
-	// }
+	add_directoryv2_entries(dir, &entries, f)
 
 	// sort + RLE encoding
 	sort.Slice(entries, func(i, j int) bool {
