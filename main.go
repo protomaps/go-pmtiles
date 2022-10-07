@@ -21,18 +21,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
-	port := serveCmd.String("p", "8080", "port to serve on")
-	cors := serveCmd.String("cors", "", "CORS allowed origin value")
-	cacheSize := serveCmd.Int("cache", 64, "Cache size in mb")
-
-	subpyramidCmd := flag.NewFlagSet("subpyramid", flag.ExitOnError)
-	cpuProfile := subpyramidCmd.Bool("profile", false, "profiling output")
-
 	switch os.Args[1] {
 	case "show":
 		pmtiles.Show(logger, os.Args)
 	case "serve":
+		serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
+		port := serveCmd.String("p", "8080", "port to serve on")
+		cors := serveCmd.String("cors", "", "CORS allowed origin value")
+		cacheSize := serveCmd.Int("cache", 64, "Cache size in mb")
 		serveCmd.Parse(os.Args[2:])
 		path := serveCmd.Arg(0)
 		if path == "" {
@@ -54,6 +50,8 @@ func main() {
 		logger.Printf("Serving %s on HTTP port: %s with Access-Control-Allow-Origin: %s\n", path, *port, *cors)
 		logger.Fatal(http.ListenAndServe(":"+*port, nil))
 	case "subpyramid":
+		subpyramidCmd := flag.NewFlagSet("subpyramid", flag.ExitOnError)
+		cpuProfile := subpyramidCmd.Bool("profile", false, "profiling output")
 		subpyramidCmd.Parse(os.Args[2:])
 		path := subpyramidCmd.Arg(0)
 		output := subpyramidCmd.Arg(1)
@@ -83,7 +81,7 @@ func main() {
 		output := convertCmd.Arg(1)
 		pmtiles.Convert(logger, path, output)
 	case "upload":
-		pmtiles.Upload(logger, os.Args)
+		pmtiles.Upload(logger, os.Args[2:])
 	case "validate":
 		// pmtiles.Validate()
 	default:

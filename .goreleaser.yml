@@ -18,6 +18,11 @@ archives:
       linux: Linux
       windows: Windows
       amd64: x86_64
+    format_overrides:
+      - goos: windows
+        format: zip
+      - goos: darwin
+        format: zip
 checksum:
   name_template: 'checksums.txt'
 snapshot:

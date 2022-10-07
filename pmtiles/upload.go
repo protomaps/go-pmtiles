@@ -2,6 +2,7 @@ package pmtiles
 
 import (
 	"context"
+	"flag"
 	"github.com/schollz/progressbar/v3"
 	"gocloud.dev/blob"
 	"io"
@@ -10,8 +11,19 @@ import (
 )
 
 func Upload(logger *log.Logger, args []string) {
-	file := args[2]
-	bucketURL := args[3]
+	cmd := flag.NewFlagSet("upload", flag.ExitOnError)
+	buffer_size := cmd.Int("buffer-size", 8, "Upload chunk size in megabytes")
+	max_concurrency := cmd.Int("max-concurrency", 5, "Number of upload threads")
+
+	cmd.Parse(args)
+	file := cmd.Arg(0)
+	bucketURL := cmd.Arg(1)
+
+	if file == "" || bucketURL == "" {
+		logger.Println("USAGE: upload [-buffer-size B] [-max-concurrency M] INPUT s3://BUCKET?region=region")
+		os.Exit(1)
+	}
+
 	logger.Println(file, bucketURL)
 	ctx := context.Background()
 	b, err := blob.OpenBucket(ctx, bucketURL)
@@ -35,8 +47,8 @@ func Upload(logger *log.Logger, args []string) {
 	buffer := make([]byte, 16*1024*1024)
 
 	opts := &blob.WriterOptions{
-		BufferSize:     256 * 1000 * 1000,
-		MaxConcurrency: 2,
+		BufferSize:     *buffer_size * 1000 * 1000,
+		MaxConcurrency: *max_concurrency,
 	}
 
 	w, err := b.NewWriter(ctx, file, opts)
