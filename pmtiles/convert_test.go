@@ -31,6 +31,127 @@ func TestResolver(t *testing.T) {
 	}
 }
 
+func TestV2UpgradeBarebones(t *testing.T) {
+	header, json_metadata, err := v2_to_header_json(map[string]interface{}{
+		"minzoom":     4,
+		"maxzoom":     5,
+		"bounds":      "-180.0,-85,178,83",
+		"attribution": "abcd",
+	}, []byte{0x1f, 0x8b, 0x0, 0x0})
+	if err != nil {
+		t.Fatalf("parsing error %s", err)
+	}
+	if header.MinZoom != 4 {
+		t.Fatalf("expected minzoom=4, was %d", header.MinZoom)
+	}
+	if header.MaxZoom != 5 {
+		t.Fatalf("expected maxzoom=5, was %d", header.MaxZoom)
+	}
+	if _, ok := json_metadata["attribution"]; !ok {
+		t.Fatalf("expected key in result")
+	}
+	if _, ok := json_metadata["minzoom"]; ok {
+		t.Fatalf("expected minzoom not in result")
+	}
+	if _, ok := json_metadata["maxzoom"]; ok {
+		t.Fatalf("expected maxzoom not in result")
+	}
+	if header.MinLonE7 != -180*10000000 {
+		t.Fatalf(`expected min lon`)
+	}
+	if header.MinLatE7 != -85*10000000 {
+		t.Fatalf(`expected min lat`)
+	}
+	if header.MaxLonE7 != 178*10000000 {
+		t.Fatalf(`expected max lon`)
+	}
+	if header.MaxLatE7 != 83*10000000 {
+		t.Fatalf(`expected max lat`)
+	}
+	if _, ok := json_metadata["bounds"]; ok {
+		t.Fatalf("expected bounds not in result")
+	}
+	if header.CenterLatE7 != -1*10000000 {
+		t.Fatalf(`expected default center lat -1`)
+	}
+	if header.CenterLonE7 != -1*10000000 {
+		t.Fatalf(`expected default center lat -1`)
+	}
+	if header.CenterZoom != 4 {
+		t.Fatalf(`expected default center zoom = minzoom`)
+	}
+	if header.TileCompression != Gzip {
+		t.Fatalf(`expected infer gzip`)
+	}
+	if header.TileType != Mvt {
+		t.Fatalf(`expected infer mvt`)
+	}
+	// mbtiles writes? look at spec
+}
+
+func TestV2UpgradeExtra(t *testing.T) {
+	// with the fields tippecanoe usually has
+	header, json_metadata, err := v2_to_header_json(map[string]interface{}{
+		"minzoom":     1,
+		"maxzoom":     2,
+		"bounds":      "-180.0,-85,180,85",
+		"center":      "-122.1906,37.7599,11",
+		"format":      "pbf",
+		"compression": "gzip",
+	}, []byte{0x0, 0x0, 0x0, 0x0})
+	if err != nil {
+		t.Fatalf("parsing error %s", err)
+	}
+	if header.CenterLonE7 != -122.1906*10000000 {
+		t.Fatalf(`expected center lon`)
+	}
+	if header.CenterLatE7 != 37.7599*10000000 {
+		t.Fatalf(`expected center lat`)
+	}
+	if header.CenterZoom != 11 {
+		t.Fatalf(`expected center zoom`)
+	}
+	if _, ok := json_metadata["center"]; ok {
+		t.Fatalf("expected center not in result")
+	}
+}
+
+func TestV2UpgradeInfer(t *testing.T) {
+	header, _, err := v2_to_header_json(map[string]interface{}{
+		"minzoom": 1,
+		"maxzoom": 2,
+		"bounds":  "-180.0,-85,180,85",
+	}, []byte{0xff, 0xd8, 0xff, 0xe0})
+	if err != nil || header.TileType != Jpeg || header.TileCompression != NoCompression {
+		t.Fatalf("expected inferred tile type")
+	}
+
+	header, _, err = v2_to_header_json(map[string]interface{}{
+		"minzoom": 1,
+		"maxzoom": 2,
+		"bounds":  "-180.0,-85,180,85",
+	}, []byte{0x89, 0x50, 0x4e, 0x47})
+	if err != nil || header.TileType != Png || header.TileCompression != NoCompression {
+		t.Fatalf("expected inferred tile type")
+	}
+	header, _, err = v2_to_header_json(map[string]interface{}{
+		"minzoom": 1,
+		"maxzoom": 2,
+		"bounds":  "-180.0,-85,180,85",
+	}, []byte{0x00, 00, 00, 00})
+	if header.TileType != Mvt || header.TileCompression != NoCompression {
+		t.Fatalf("expected inferred tile type")
+	}
+	header, _, err = v2_to_header_json(map[string]interface{}{
+		"minzoom": 1,
+		"maxzoom": 2,
+		"bounds":  "-180.0,-85,180,85",
+	}, []byte{0x1f, 0x8b, 00, 00})
+	if err != nil || header.TileType != Mvt || header.TileCompression != Gzip {
+		t.Fatalf("expected inferred tile type")
+	}
+}
+
 func TestMbtiles(t *testing.T) {
 	header, json_metadata, err := mbtiles_to_header_json([]string{
 		"name", "test_name",

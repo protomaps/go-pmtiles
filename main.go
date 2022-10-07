@@ -84,6 +84,8 @@ func main() {
 		pmtiles.Convert(logger, path, output)
 	case "upload":
 		pmtiles.Upload(logger, os.Args)
+	case "validate":
+		// pmtiles.Validate()
 	default:
 		logger.Println("unrecognized command.")
 		flag.PrintDefaults()

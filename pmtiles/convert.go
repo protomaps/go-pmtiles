@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/schollz/progressbar/v3"
 	"hash"
@@ -13,6 +14,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -92,17 +94,86 @@ func Convert(logger *log.Logger, input string, output string) {
 }
 
 func ConvertPmtilesV2(logger *log.Logger, input string, output string) {
+	start := time.Now()
 	f, err := os.Open(input)
 	if err != nil {
 		log.Fatalf("Failed to open file: %s", err)
 	}
+	defer f.Close()
 	buffer := make([]byte, 512000)
 	io.ReadFull(f, buffer)
 	if string(buffer[0:7]) == "PMTiles" && buffer[7] == 3 {
 		logger.Fatal("Archive is already the latest PMTiles version (3).")
 	}
 
-	defer f.Close()
+	v2_json_bytes, dir := ParseHeaderV2(bytes.NewReader(buffer))
+
+	var v2_metadata map[string]interface{}
+	json.Unmarshal(v2_json_bytes, &v2_metadata)
+
+	// get the first 4 bytes at offset 512000 to attempt tile type detection
+
+	first4 := make([]byte, 0)
+	f.Seek(512000, 0)
+	n, err := f.Read(first4)
+	if n != 4 || err != nil {
+		panic(err)
+	}
+	f.Seek(0, 0)
+
+	header, json_metadata, err := v2_to_header_json(v2_metadata, first4)
+
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	entries := make([]EntryV3, 0)
+
+	for zxy, rng := range dir.Entries {
+		tile_id := ZxyToId(zxy.Z, zxy.X, zxy.Y)
+		entries = append(entries, EntryV3{tile_id, rng.Offset, rng.Length, 1})
+	}
+
+	// TODO all extant v2 archives have only one leaf level?
+	// for zxy, rng := range dir.Leaves {
+	// }
+
+	// sort + RLE encoding
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].TileId < entries[j].TileId
+	})
+
+	tmpfile, err := ioutil.TempFile("", "")
+	if err != nil {
+		logger.Fatal(err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	// re-use resolver, because even if archives are de-duplicated we may need to recompress.
+	resolver := NewResolver()
+
+	for _, entry := range entries {
+		if entry.Length == 0 {
+			continue
+		}
+		_, err := f.Seek(int64(entry.Offset), 0)
+		if err != nil {
+			panic(err)
+		}
+		buf := make([]byte, entry.Length)
+		_, err = f.Read(buf)
+		if err != nil {
+			if err != io.EOF {
+				panic(err)
+			}
+		}
+		if is_new, new_data := resolver.AddTileIsNew(entry.TileId, buf); is_new {
+			tmpfile.Write(new_data)
+		}
+	}
+
+	finalize(logger, resolver, header, tmpfile, output, json_metadata)
+	logger.Println("Finished in ", time.Since(start))
 }
 
 func ConvertMbtiles(logger *log.Logger, input string, output string) {
@@ -234,7 +305,11 @@ func ConvertMbtiles(logger *log.Logger, input string, output string) {
 			bar.Add(1)
 		}
 	}
+	finalize(logger, resolver, header, tmpfile, output, json_metadata)
+	logger.Println("Finished in ", time.Since(start))
+}
 
+func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *os.File, output string, json_metadata map[string]interface{}) {
 	logger.Println("# of addressed tiles: ", resolver.AddressedTiles)
 	logger.Println("# of tile entries (after RLE): ", len(resolver.Entries))
 	logger.Println("# of tile contents: ", len(resolver.OffsetMap))
@@ -300,8 +375,128 @@ func ConvertMbtiles(logger *log.Logger, input string, output string) {
 	if err != nil {
 		logger.Fatal(err)
 	}
+}
 
-	logger.Println("Finished in ", time.Since(start))
+func v2_to_header_json(v2_json_metadata map[string]interface{}, first4 []byte) (HeaderV3, map[string]interface{}, error) {
+	header := HeaderV3{}
+	if val, ok := v2_json_metadata["minzoom"]; ok {
+		header.MinZoom = uint8(val.(int))
+		delete(v2_json_metadata, "minzoom")
+	}
+	if val, ok := v2_json_metadata["maxzoom"]; ok {
+		header.MaxZoom = uint8(val.(int))
+		delete(v2_json_metadata, "maxzoom")
+	}
+	if val, ok := v2_json_metadata["bounds"]; ok {
+		min_lon, min_lat, max_lon, max_lat, err := parse_bounds(val.(string))
+		if err != nil {
+			return header, v2_json_metadata, err
+		}
+		header.MinLonE7 = min_lon
+		header.MinLatE7 = min_lat
+		header.MaxLonE7 = max_lon
+		header.MaxLatE7 = max_lat
+		delete(v2_json_metadata, "bounds")
+	} else {
+		return header, v2_json_metadata, errors.New("Archive is missing bounds.")
+	}
+
+	if val, ok := v2_json_metadata["center"]; ok {
+		center_lon, center_lat, center_zoom, err := parse_center(val.(string))
+		if err != nil {
+			return header, v2_json_metadata, err
+		}
+		header.CenterLonE7 = center_lon
+		header.CenterLatE7 = center_lat
+		header.CenterZoom = center_zoom
+		delete(v2_json_metadata, "center")
+	} else {
+		header.CenterLatE7 = (header.MinLatE7 + header.MaxLatE7) / 2
+		header.CenterLonE7 = (header.MinLonE7 + header.MaxLonE7) / 2
+		header.CenterZoom = header.MinZoom
+	}
+
+	if val, ok := v2_json_metadata["compression"]; ok {
+		switch val.(string) {
+		case "gzip":
+			header.TileCompression = Gzip
+		default:
+			return header, v2_json_metadata, errors.New("Unknown compression type")
+		}
+	} else {
+		if first4[0] == 0x1f && first4[1] == 0x8b {
+			header.TileCompression = Gzip
+		} else {
+			header.TileCompression = NoCompression
+		}
+	}
+
+	if val, ok := v2_json_metadata["format"]; ok {
+		switch val.(string) {
+		case "pbf":
+			header.TileType = Mvt
+		case "png":
+			header.TileType = Png
+		case "jpg":
+			header.TileType = Jpeg
+		case "webp":
+			header.TileType = Webp
+		default:
+			return header, v2_json_metadata, errors.New("Unknown tile type")
+		}
+	} else {
+		if first4[0] == 0x89 && first4[1] == 0x50 && first4[2] == 0x4e && first4[3] == 0x47 {
+			header.TileType = Png
+		} else if first4[0] == 0xff && first4[1] == 0xd8 && first4[2] == 0xff && first4[3] == 0xe0 {
+			header.TileType = Jpeg
+		} else {
+			// assume it is a vector tile
+			header.TileType = Mvt
+		}
+	}
+
+	return header, v2_json_metadata, nil
+}
+
+func parse_bounds(bounds string) (int32, int32, int32, int32, error) {
+	parts := strings.Split(bounds, ",")
+	E7 := 10000000.0
+	min_lon, err := strconv.ParseFloat(parts[0], 64)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	min_lat, err := strconv.ParseFloat(parts[1], 64)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	max_lon, err := strconv.ParseFloat(parts[2], 64)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	max_lat, err := strconv.ParseFloat(parts[3], 64)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	return int32(min_lon * E7), int32(min_lat * E7), int32(max_lon * E7), int32(max_lat * E7), nil
+}
+
+func parse_center(center string) (int32, int32, uint8, error) {
+	parts := strings.Split(center, ",")
+	E7 := 10000000.0
+	center_lon, err := strconv.ParseFloat(parts[0], 64)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	center_lat, err := strconv.ParseFloat(parts[1], 64)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	center_zoom, err := strconv.ParseInt(parts[2], 10, 8)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return int32(center_lon * E7), int32(center_lat * E7), uint8(center_zoom), nil
+
 }
 
 func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]interface{}, error) {
@@ -323,44 +518,22 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 			}
 			json_result["format"] = value
 		case "bounds":
-			parts := strings.Split(value, ",")
-			f, err := strconv.ParseFloat(parts[0], 64)
+			min_lon, min_lat, max_lon, max_lat, err := parse_bounds(value)
 			if err != nil {
 				return header, json_result, err
 			}
-			header.MinLonE7 = int32(f * 10000000)
-			f, err = strconv.ParseFloat(parts[1], 64)
-			if err != nil {
-				return header, json_result, err
-			}
-			header.MinLatE7 = int32(f * 10000000)
-			f, err = strconv.ParseFloat(parts[2], 64)
-			if err != nil {
-				return header, json_result, err
-			}
-			header.MaxLonE7 = int32(f * 10000000)
-			f, err = strconv.ParseFloat(parts[3], 64)
-			if err != nil {
-				return header, json_result, err
-			}
-			header.MaxLatE7 = int32(f * 10000000)
+			header.MinLonE7 = min_lon
+			header.MinLatE7 = min_lat
+			header.MaxLonE7 = max_lon
+			header.MaxLatE7 = max_lat
 		case "center":
-			parts := strings.Split(value, ",")
-			f, err := strconv.ParseFloat(parts[0], 64)
+			center_lon, center_lat, center_zoom, err := parse_center(value)
 			if err != nil {
 				return header, json_result, err
 			}
-			header.CenterLonE7 = int32(f * 10000000)
-			f, err = strconv.ParseFloat(parts[1], 64)
-			if err != nil {
-				return header, json_result, err
-			}
-			header.CenterLatE7 = int32(f * 10000000)
-			i, err := strconv.ParseInt(parts[2], 10, 8)
-			if err != nil {
-				return header, json_result, err
-			}
-			header.CenterZoom = uint8(i)
+			header.CenterLonE7 = center_lon
+			header.CenterLatE7 = center_lat
+			header.CenterZoom = center_zoom
 		case "minzoom":
 			i, err := strconv.ParseInt(value, 10, 8)
 			if err != nil {
