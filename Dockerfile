@@ -1,4 +1,4 @@
-FROM golang:1.16.15-alpine AS builder
+FROM golang:1.19.2-alpine3.16 AS builder
 COPY . /workspace
 WORKDIR /workspace
 ENV CGO_ENABLED=0
