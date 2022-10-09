@@ -6,6 +6,7 @@ import (
 	_ "gocloud.dev/blob/azureblob"
 	_ "gocloud.dev/blob/gcsblob"
 	_ "gocloud.dev/blob/s3blob"
+	_ "gocloud.dev/blob/fileblob"
 	"log"
 	"net/http"
 	"os"
