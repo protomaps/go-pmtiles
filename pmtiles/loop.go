@@ -110,6 +110,7 @@ func (loop Loop) Start() {
 						}
 
 						r, err := loop.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length, nil)
+						defer r.Close()
 
 						// TODO: store away ETag
 						if err != nil {
@@ -177,58 +178,32 @@ func (loop Loop) Start() {
 	}()
 }
 
-func setHTTPHeaders(header HeaderV3, headers map[string]string) {
-	switch header.TileType {
+func (loop Loop) get_metadata(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
+	root_req := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
+	loop.reqs <- root_req
+	root_value := <-root_req.value
+	header := root_value.header
 
+	r, err := loop.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), nil)
+	defer r.Close()
+
+	if err != nil {
+		return 500, http_headers, nil
 	}
-	// var content_type string
-	// switch ext {
-	// case "jpg":
-	// 	content_type = "image/jpeg"
-	// case "png":
-	// 	content_type = "image/png"
-	// case "pbf":
-	// 	content_type = "application/x-protobuf"
-	// }
-	// headers["Content-Type"] = content_type
-	// 	headers["Content-Length"] = strconv.Itoa(len(body))
-	// 	headers["Content-Encoding"] = "gzip"
-	// } else {
-	// 	headers["Content-Length"] = strconv.Itoa(len(tile))
-	// }
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return 500, http_headers, nil
+	}
+
+	if header_val, ok := headerContentEncoding(header.InternalCompression); ok {
+		http_headers["Content-Encoding"] = header_val
+	}
+	http_headers["Content-Type"] = "application/json"
+
+	return 200, http_headers, b
 }
 
-func (loop Loop) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
-	http_headers := make(map[string]string)
-	// if len(loop.cors) > 0 {
-	// 	headers["Access-Control-Allow-Origin"] = loop.cors
-	// }
-	rPath := regexp.MustCompile(`\/(?P<NAME>[-A-Za-z0-9_]+)\/(?P<Z>\d+)\/(?P<X>\d+)\/(?P<Y>\d+)\.(?P<EXT>png|pbf|jpg)`)
-	res := rPath.FindStringSubmatch(path)
-
-	// if len(res) == 0 {
-	// 	mPath := regexp.MustCompile(`\/(?P<NAME>[-A-Za-z0-9_]+)\/metadata`)
-	// 	res = mPath.FindStringSubmatch(path)
-
-	if len(res) == 0 {
-		return 404, http_headers, nil
-	}
-
-	// 	name := res[1]
-	// 	root_req := Request{kind: Root, key: Key{name: name, rng: Range{Offset: 0, Length: 512000}}, value: make(chan Datum, 1)}
-	// 	loop.reqs <- root_req
-	// 	root_value := <-root_req.value
-	// 	if !root_value.hit {
-	// 		misses++
-	// 	}
-	// 	headers["Content-Length"] = strconv.Itoa(len(root_value.bytes))
-	// 	headers["Content-Type"] = "application/json"
-	// 	headers["Pmap-Cache-Misses"] = strconv.Itoa(misses)
-	// 	return 200, headers, root_value.bytes
-	// }
-
-	name := res[1]
-
+func (loop Loop) get_tile(ctx context.Context, http_headers map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
 	root_req := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
 	loop.reqs <- root_req
 
@@ -236,11 +211,11 @@ func (loop Loop) Get(ctx context.Context, path string) (int, map[string]string, 
 	root_value := <-root_req.value
 	header := root_value.header
 
-	z, _ := strconv.ParseUint(res[2], 10, 8)
-	x, _ := strconv.ParseUint(res[3], 10, 32)
-	y, _ := strconv.ParseUint(res[4], 10, 32)
+	if z < header.MinZoom || z > header.MaxZoom {
+		return 404, http_headers, nil
+	}
 
-	tile_id := ZxyToId(uint8(z), uint32(x), uint32(y))
+	tile_id := ZxyToId(z, x, y)
 	dir_offset, dir_len := header.RootOffset, header.RootLength
 
 	for depth := 0; depth <= 2; depth++ {
@@ -260,7 +235,12 @@ func (loop Loop) Get(ctx context.Context, path string) (int, map[string]string, 
 				if err != nil {
 					return 500, http_headers, nil
 				}
-				setHTTPHeaders(header, http_headers)
+				if header_val, ok := headerContentType(header); ok {
+					http_headers["Content-Type"] = header_val
+				}
+				if header_val, ok := headerContentEncoding(header.TileCompression); ok {
+					http_headers["Content-Encoding"] = header_val
+				}
 				return 200, http_headers, b
 			} else {
 				dir_offset = header.LeafDirectoryOffset + entry.Offset
@@ -269,6 +249,30 @@ func (loop Loop) Get(ctx context.Context, path string) (int, map[string]string, 
 		} else {
 			break
 		}
+	}
+
+	return 204, http_headers, nil
+}
+
+var tilePattern = regexp.MustCompile(`^\/([-A-Za-z0-9_]+)\/(\d+)\/(\d+)\/(\d+)\.([a-z]+)$`)
+var metadataPattern = regexp.MustCompile(`^\/([-A-Za-z0-9_]+)\/metadata$`)
+
+func (loop Loop) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
+	http_headers := make(map[string]string)
+	if len(loop.cors) > 0 {
+		http_headers["Access-Control-Allow-Origin"] = loop.cors
+	}
+	if res := tilePattern.FindStringSubmatch(path); res != nil {
+		name := res[1]
+		z, _ := strconv.ParseUint(res[2], 10, 8)
+		x, _ := strconv.ParseUint(res[3], 10, 32)
+		y, _ := strconv.ParseUint(res[4], 10, 32)
+		ext := res[5]
+		return loop.get_tile(ctx, http_headers, name, uint8(z), uint32(x), uint32(y), ext)
+	}
+	if res := metadataPattern.FindStringSubmatch(path); res != nil {
+		name := res[1]
+		return loop.get_metadata(ctx, http_headers, name)
 	}
 
 	return 404, http_headers, nil
