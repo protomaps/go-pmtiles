@@ -141,6 +141,33 @@ func deserialize_entries(data *bytes.Buffer) []EntryV3 {
 	return entries
 }
 
+func find_tile(entries []EntryV3, tileId uint64) (EntryV3, bool) {
+	m := 0
+	n := len(entries) - 1
+	for m <= n {
+		k := (n + m) >> 1
+		cmp := int64(tileId) - int64(entries[k].TileId)
+		if cmp > 0 {
+			m = k + 1
+		} else if cmp < 0 {
+			n = k - 1
+		} else {
+			return entries[k], true
+		}
+	}
+
+	// at this point, m > n
+	if n >= 0 {
+		if entries[n].RunLength == 0 {
+			return entries[n], true
+		}
+		if tileId-entries[n].TileId < uint64(entries[n].RunLength) {
+			return entries[n], true
+		}
+	}
+	return EntryV3{}, false
+}
+
 func serialize_header(header HeaderV3) []byte {
 	b := make([]byte, HEADERV3_LEN_BYTES)
 	copy(b[0:7], "PMTiles")
