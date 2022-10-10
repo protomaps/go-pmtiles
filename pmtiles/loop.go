@@ -2,85 +2,62 @@ package pmtiles
 
 import (
 	"bytes"
-	"compress/gzip"
 	"container/list"
-	"fmt"
+	"context"
+	"gocloud.dev/blob"
 	"io"
 	"log"
-	"net/http"
-	"os"
-	"path"
 	"regexp"
 	"strconv"
-	"strings"
-	"time"
 )
 
-type Key struct {
-	name string
-	rng  Range
-}
-
-type DatumKind int
-
-const (
-	Root DatumKind = iota
-	Tile
-	Leaf
-)
-
-type Datum struct {
-	bytes     []byte
-	directory DirectoryV2
-	kind      DatumKind
-	hit       bool
+type CacheKey struct {
+	name   string
+	offset uint64 // is 0 for header
+	length uint64 // is 0 for header
 }
 
 type Request struct {
-	key   Key
-	kind  DatumKind
-	value chan Datum
+	key   CacheKey
+	value chan CachedValue
+}
+
+type CachedValue struct {
+	header    HeaderV3
+	directory []EntryV3
+	etag      string
 }
 
 type Response struct {
-	key    Key
-	value  Datum
-	size   int
-	ok     bool
-	misses int
+	key   CacheKey
+	value CachedValue
+	size  int
+	ok    bool
 }
 
-type Fetcher interface {
-	Do(key Key, readFunc func(io.Reader)) bool
-}
+// type HTTPFetcher struct {
+// 	bucket string
+// 	client *http.Client
+// }
 
-type HTTPFetcher struct {
-	bucket string
-	client *http.Client
-}
-
-func (fetcher HTTPFetcher) Do(key Key, readFunc func(io.Reader)) bool {
-	archive := fetcher.bucket + "/" + key.name + ".pmtiles"
-	fetch, _ := http.NewRequest("GET", archive, nil)
-	end := key.rng.Offset + uint64(key.rng.Length) - 1
-	range_header := fmt.Sprintf("bytes=%d-%d", key.rng.Offset, end)
-	fetch.Header.Add("Range", range_header)
-	fetch_resp, err := fetcher.client.Do(fetch)
-	if err != nil || fetch_resp.StatusCode >= 300 || fetch_resp.ContentLength != int64(key.rng.Length) {
-		return false
-	}
-	defer fetch_resp.Body.Close()
-	readFunc(fetch_resp.Body)
-	return true
-}
-
-type FileFetcher struct {
-	path string
-}
+// func (fetcher HTTPFetcher) Do(key Key, readFunc func(io.Reader)) bool {
+// 	archive := fetcher.bucket + "/" + key.name + ".pmtiles"
+// 	fetch, _ := http.NewRequest("GET", archive, nil)
+// 	end := key.rng.Offset + uint64(key.rng.Length) - 1
+// 	range_header := fmt.Sprintf("bytes=%d-%d", key.rng.Offset, end)
+// 	fetch.Header.Add("Range", range_header)
+// 	fetch_resp, err := fetcher.client.Do(fetch)
+// 	if err != nil || fetch_resp.StatusCode >= 300 || fetch_resp.ContentLength != int64(key.rng.Length) {
+// 		return false
+// 	}
+// 	defer fetch_resp.Body.Close()
+// 	readFunc(fetch_resp.Body)
+// 	return true
+// }
 
 type Loop struct {
 	reqs      chan Request
-	fetcher   Fetcher
+	bucket    *blob.Bucket
 	logger    *log.Logger
 	cacheSize int
 	cors      string
@@ -88,23 +65,26 @@ type Loop struct {
 
 func NewLoop(path string, logger *log.Logger, cacheSize int, cors string) Loop {
 	reqs := make(chan Request, 8)
-	var fetcher Fetcher
-	if strings.HasPrefix(path, "http") {
-		path = strings.TrimSuffix(path, "/")
-		fetcher = HTTPFetcher{client: &http.Client{}, bucket: path}
-	} else {
-		fetcher = FileFetcher{path: path}
+
+	ctx := context.Background()
+
+	// TODO: handle single-file mode as well as public HTTP endpoints
+	bucket, err := blob.OpenBucket(ctx, "file://.")
+	if err != nil {
+		logger.Fatal(err)
 	}
-	return Loop{reqs: reqs, fetcher: fetcher, logger: logger, cacheSize: cacheSize, cors: cors}
+
+	return Loop{reqs: reqs, bucket: bucket, logger: logger, cacheSize: cacheSize, cors: cors}
 }
 
 func (loop Loop) Start() {
 	go func() {
-		cache := make(map[Key]*list.Element)
-		inflight := make(map[Key][]Request)
+		cache := make(map[CacheKey]*list.Element)
+		inflight := make(map[CacheKey][]Request)
 		resps := make(chan Response, 8)
 		evictList := list.New()
 		totalSize := 0
+		ctx := context.Background()
 
 		for {
 			select {
@@ -118,44 +98,62 @@ func (loop Loop) Start() {
 				} else {
 					inflight[key] = []Request{req}
 					go func() {
-						var result Datum
-						var size int
-						ok := loop.fetcher.Do(key, func(reader io.Reader) {
-							if req.kind == Root {
-								metadata, dir := ParseHeaderV2(reader)
-								result = Datum{kind: Root, bytes: metadata, directory: dir}
-								size = len(metadata) + dir.SizeBytes()
-							} else if req.kind == Leaf {
-								dir_bytes := make([]byte, key.rng.Length)
-								io.ReadFull(reader, dir_bytes)
-								dir := ParseDirectoryV2(dir_bytes)
-								result = Datum{kind: Root, directory: dir}
-								size = dir.SizeBytes()
-							} else {
-								tile := make([]byte, key.rng.Length)
-								_, _ = io.ReadFull(reader, tile)
-								result = Datum{kind: Tile, bytes: tile}
-								size = len(tile)
-							}
-						})
-						resps <- Response{key: key, value: result, size: size, ok: ok}
-						if ok {
-							loop.logger.Printf("fetched %s %d-%d", key.name, key.rng.Offset, key.rng.Length)
-						} else {
-							loop.logger.Printf("failed to fetch %s %d-%d", key.name, key.rng.Offset, key.rng.Length)
+						var result CachedValue
+						is_root := (key.offset == 0 && key.length == 0)
+
+						offset := int64(key.offset)
+						length := int64(key.length)
+
+						if is_root {
+							offset = 0
+							length = 16384
 						}
+
+						r, err := loop.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length, nil)
+
+						// TODO: store away ETag
+						if err != nil {
+							ok = false
+							resps <- Response{key: key, value: result, size: 0, ok: true}
+							loop.logger.Printf("failed to fetch %s %d-%d", key.name, key.offset, key.length)
+							return
+						}
+						b, err := io.ReadAll(r)
+						if err != nil {
+							ok = false
+							resps <- Response{key: key, value: result, size: 0, ok: true}
+							loop.logger.Printf("failed to fetch %s %d-%d", key.name, key.offset, key.length)
+							return
+						}
+
+						if is_root {
+							header := deserialize_header(b[0:HEADERV3_LEN_BYTES])
+							result = CachedValue{header: header}
+							resps <- Response{key: key, value: result, size: 127, ok: true}
+
+							root_entries := deserialize_entries(bytes.NewBuffer(b[header.RootOffset : header.RootOffset+header.RootLength]))
+							result2 := CachedValue{directory: root_entries}
+
+							root_key := CacheKey{name: key.name, offset: header.RootOffset, length: header.RootLength}
+							resps <- Response{key: root_key, value: result2, size: 24 * len(root_entries), ok: true}
+						} else {
+							directory := deserialize_entries(bytes.NewBuffer(b))
+							result = CachedValue{directory: directory}
+							resps <- Response{key: key, value: result, size: 24 * len(directory), ok: true}
+						}
+
+						loop.logger.Printf("fetched %s %d-%d", key.name, key.offset, key.length)
 					}()
 				}
 			case resp := <-resps:
 				key := resp.key
-				resp.value.hit = false
+				// check if there are any requests waiting on the key
 				for _, v := range inflight[key] {
 					v.value <- resp.value
 				}
 				delete(inflight, key)
 
 				if resp.ok {
-					resp.value.hit = true
 					totalSize += resp.size
 					ent := &resp
 					entry := evictList.PushFront(ent)
@@ -179,139 +177,99 @@ func (loop Loop) Start() {
 	}()
 }
 
-func (loop Loop) Get(path string) (int, map[string]string, []byte) {
-	headers := make(map[string]string)
-	if len(loop.cors) > 0 {
-		headers["Access-Control-Allow-Origin"] = loop.cors
+func setHTTPHeaders(header HeaderV3, headers map[string]string) {
+	switch header.TileType {
+
 	}
-	start := time.Now()
+	// var content_type string
+	// switch ext {
+	// case "jpg":
+	// 	content_type = "image/jpeg"
+	// case "png":
+	// 	content_type = "image/png"
+	// case "pbf":
+	// 	content_type = "application/x-protobuf"
+	// }
+	// headers["Content-Type"] = content_type
+	// 	headers["Content-Length"] = strconv.Itoa(len(body))
+	// 	headers["Content-Encoding"] = "gzip"
+	// } else {
+	// 	headers["Content-Length"] = strconv.Itoa(len(tile))
+	// }
+}
+
+func (loop Loop) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
+	http_headers := make(map[string]string)
+	// if len(loop.cors) > 0 {
+	// 	headers["Access-Control-Allow-Origin"] = loop.cors
+	// }
 	rPath := regexp.MustCompile(`\/(?P<NAME>[-A-Za-z0-9_]+)\/(?P<Z>\d+)\/(?P<X>\d+)\/(?P<Y>\d+)\.(?P<EXT>png|pbf|jpg)`)
 	res := rPath.FindStringSubmatch(path)
-	misses := 0
+
+	// if len(res) == 0 {
+	// 	mPath := regexp.MustCompile(`\/(?P<NAME>[-A-Za-z0-9_]+)\/metadata`)
+	// 	res = mPath.FindStringSubmatch(path)
 
 	if len(res) == 0 {
-		mPath := regexp.MustCompile(`\/(?P<NAME>[-A-Za-z0-9_]+)\/metadata`)
-		res = mPath.FindStringSubmatch(path)
-
-		if len(res) == 0 {
-			return 404, headers, nil
-		}
-
-		name := res[1]
-		root_req := Request{kind: Root, key: Key{name: name, rng: Range{Offset: 0, Length: 512000}}, value: make(chan Datum, 1)}
-		loop.reqs <- root_req
-		root_value := <-root_req.value
-		if !root_value.hit {
-			misses++
-		}
-		headers["Content-Length"] = strconv.Itoa(len(root_value.bytes))
-		headers["Content-Type"] = "application/json"
-		headers["Pmap-Cache-Misses"] = strconv.Itoa(misses)
-		return 200, headers, root_value.bytes
+		return 404, http_headers, nil
 	}
+
+	// 	name := res[1]
+	// 	root_req := Request{kind: Root, key: Key{name: name, rng: Range{Offset: 0, Length: 512000}}, value: make(chan Datum, 1)}
+	// 	loop.reqs <- root_req
+	// 	root_value := <-root_req.value
+	// 	if !root_value.hit {
+	// 		misses++
+	// 	}
+	// 	headers["Content-Length"] = strconv.Itoa(len(root_value.bytes))
+	// 	headers["Content-Type"] = "application/json"
+	// 	headers["Pmap-Cache-Misses"] = strconv.Itoa(misses)
+	// 	return 200, headers, root_value.bytes
+	// }
 
 	name := res[1]
 
-	root_req := Request{kind: Root, key: Key{name: name, rng: Range{Offset: 0, Length: 512000}}, value: make(chan Datum, 1)}
+	root_req := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
 	loop.reqs <- root_req
 
 	// https://golang.org/doc/faq#atomic_maps
 	root_value := <-root_req.value
-	if !root_value.hit {
-		misses++
-	}
+	header := root_value.header
 
 	z, _ := strconv.ParseUint(res[2], 10, 8)
 	x, _ := strconv.ParseUint(res[3], 10, 32)
 	y, _ := strconv.ParseUint(res[4], 10, 32)
-	coord := Zxy{Z: uint8(z), X: uint32(x), Y: uint32(y)}
 
-	var tile []byte
-	if offsetlen, ok := root_value.directory.Entries[coord]; ok {
-		tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
-		loop.reqs <- tile_req
-		tile_value := <-tile_req.value
-		if !tile_value.hit {
-			misses++
-		}
-		tile = tile_value.bytes
-	} else {
-		if coord.Z < root_value.directory.LeafZ {
-			return 404, headers, nil
-		}
-		leaf := GetParentTile(coord, root_value.directory.LeafZ)
+	tile_id := ZxyToId(uint8(z), uint32(x), uint32(y))
+	dir_offset, dir_len := header.RootOffset, header.RootLength
 
-		offsetlen, ok := root_value.directory.Leaves[leaf]
-		if !ok {
-			return 404, headers, nil
-		}
-		leaf_req := Request{kind: Leaf, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
-		loop.reqs <- leaf_req
-		leaf_value := <-leaf_req.value
-		if !leaf_value.hit {
-			misses++
-		}
-
-		offsetlen, ok = leaf_value.directory.Entries[coord]
-		if !ok {
-			return 404, headers, nil
-		}
-		tile_req := Request{kind: Tile, key: Key{name: name, rng: offsetlen}, value: make(chan Datum, 1)}
-		loop.reqs <- tile_req
-		tile_value := <-tile_req.value
-		if !tile_value.hit {
-			misses++
-		}
-		tile = tile_value.bytes
-	}
-
-	ext := res[5]
-	var content_type string
-	switch ext {
-	case "jpg":
-		content_type = "image/jpeg"
-	case "png":
-		content_type = "image/png"
-	case "pbf":
-		content_type = "application/x-protobuf"
-	}
-	headers["Content-Type"] = content_type
-	headers["Pmap-Cache-Misses"] = strconv.Itoa(misses)
-
-	var body []byte
-	if ext == "pbf" {
-		if len(tile) >= 2 && tile[0] == 0x1f && tile[1] == 0x8b {
-			body = tile
+	for depth := 0; depth <= 2; depth++ {
+		dir_req := Request{key: CacheKey{name: name, offset: dir_offset, length: dir_len}, value: make(chan CachedValue, 1)}
+		loop.reqs <- dir_req
+		dir_value := <-dir_req.value
+		directory := dir_value.directory
+		entry, ok := find_tile(directory, tile_id)
+		if ok {
+			if entry.RunLength > 0 {
+				r, err := loop.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), nil)
+				defer r.Close()
+				if err != nil {
+					return 500, http_headers, nil
+				}
+				b, err := io.ReadAll(r)
+				if err != nil {
+					return 500, http_headers, nil
+				}
+				setHTTPHeaders(header, http_headers)
+				return 200, http_headers, b
+			} else {
+				dir_offset = header.LeafDirectoryOffset + entry.Offset
+				dir_len = uint64(entry.Length)
+			}
 		} else {
-			var buf bytes.Buffer
-			zw := gzip.NewWriter(&buf)
-			_, _ = zw.Write(tile)
-			zw.Close()
-			body = buf.Bytes()
+			break
 		}
-
-		headers["Content-Length"] = strconv.Itoa(len(body))
-		headers["Content-Encoding"] = "gzip"
-	} else {
-		body = tile
-		headers["Content-Length"] = strconv.Itoa(len(tile))
 	}
-	elapsed := time.Since(start)
-	loop.logger.Printf("served %s/%d/%d/%d in %s", name, z, x, y, elapsed)
 
-	return 200, headers, body
-}
-
-func (fetcher FileFetcher) Do(key Key, readFunc func(io.Reader)) bool {
-	f, err := os.Open(path.Join(fetcher.path, key.name+".pmtiles"))
-	if err != nil {
-		return false
-	}
-	_, err = f.Seek(int64(key.rng.Offset), 0)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	readFunc(f)
-	return true
+	return 404, http_headers, nil
 }

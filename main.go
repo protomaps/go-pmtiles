@@ -4,14 +4,15 @@ import (
 	"flag"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	_ "gocloud.dev/blob/azureblob"
+	_ "gocloud.dev/blob/fileblob"
 	_ "gocloud.dev/blob/gcsblob"
 	_ "gocloud.dev/blob/s3blob"
-	_ "gocloud.dev/blob/fileblob"
 	"log"
 	"net/http"
 	"os"
 	"runtime/pprof"
 	"strconv"
+	"time"
 )
 
 func main() {
@@ -40,12 +41,14 @@ func main() {
 		loop.Start()
 
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			status_code, headers, body := loop.Get(r.URL.Path)
+			start := time.Now()
+			status_code, headers, body := loop.Get(r.Context(), r.URL.Path)
 			for k, v := range headers {
 				w.Header().Set(k, v)
 			}
 			w.WriteHeader(status_code)
 			w.Write(body)
+			logger.Printf("served %s in %s", r.URL.Path, time.Since(start))
 		})
 
 		logger.Printf("Serving %s on HTTP port: %s with Access-Control-Allow-Origin: %s\n", path, *port, *cors)
