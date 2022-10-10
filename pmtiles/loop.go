@@ -26,6 +26,7 @@ type CachedValue struct {
 	header    HeaderV3
 	directory []EntryV3
 	etag      string
+	ok        bool
 }
 
 type Response struct {
@@ -68,8 +69,7 @@ func NewLoop(path string, logger *log.Logger, cacheSize int, cors string) Loop {
 
 	ctx := context.Background()
 
-	// TODO: handle single-file mode as well as public HTTP endpoints
-	bucket, err := blob.OpenBucket(ctx, "file://.")
+	bucket, err := blob.OpenBucket(ctx, path)
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -109,37 +109,38 @@ func (loop Loop) Start() {
 							length = 16384
 						}
 
+						loop.logger.Printf("fetching %s %d-%d", key.name, offset, length)
 						r, err := loop.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length, nil)
-						defer r.Close()
 
 						// TODO: store away ETag
 						if err != nil {
 							ok = false
-							resps <- Response{key: key, value: result, size: 0, ok: true}
+							resps <- Response{key: key, value: result}
 							loop.logger.Printf("failed to fetch %s %d-%d", key.name, key.offset, key.length)
 							return
 						}
+						defer r.Close()
 						b, err := io.ReadAll(r)
 						if err != nil {
 							ok = false
-							resps <- Response{key: key, value: result, size: 0, ok: true}
+							resps <- Response{key: key, value: result}
 							loop.logger.Printf("failed to fetch %s %d-%d", key.name, key.offset, key.length)
 							return
 						}
 
 						if is_root {
 							header := deserialize_header(b[0:HEADERV3_LEN_BYTES])
-							result = CachedValue{header: header}
+							result = CachedValue{header: header, ok: true}
 							resps <- Response{key: key, value: result, size: 127, ok: true}
 
 							root_entries := deserialize_entries(bytes.NewBuffer(b[header.RootOffset : header.RootOffset+header.RootLength]))
-							result2 := CachedValue{directory: root_entries}
+							result2 := CachedValue{directory: root_entries, ok: true}
 
 							root_key := CacheKey{name: key.name, offset: header.RootOffset, length: header.RootLength}
 							resps <- Response{key: root_key, value: result2, size: 24 * len(root_entries), ok: true}
 						} else {
 							directory := deserialize_entries(bytes.NewBuffer(b))
-							result = CachedValue{directory: directory}
+							result = CachedValue{directory: directory, ok: true}
 							resps <- Response{key: key, value: result, size: 24 * len(directory), ok: true}
 						}
 
@@ -184,15 +185,18 @@ func (loop Loop) get_metadata(ctx context.Context, http_headers map[string]strin
 	root_value := <-root_req.value
 	header := root_value.header
 
-	r, err := loop.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), nil)
-	defer r.Close()
-
-	if err != nil {
-		return 500, http_headers, nil
+	if !root_value.ok {
+		return 404, http_headers, []byte("Archive not found")
 	}
+
+	r, err := loop.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), nil)
+	if err != nil {
+		return 404, http_headers, []byte("Archive not found")
+	}
+	defer r.Close()
 	b, err := io.ReadAll(r)
 	if err != nil {
-		return 500, http_headers, nil
+		return 500, http_headers, []byte("I/O Error")
 	}
 
 	if header_val, ok := headerContentEncoding(header.InternalCompression); ok {
@@ -211,8 +215,31 @@ func (loop Loop) get_tile(ctx context.Context, http_headers map[string]string, n
 	root_value := <-root_req.value
 	header := root_value.header
 
+	if !root_value.ok {
+		return 404, http_headers, []byte("Archive not found")
+	}
+
 	if z < header.MinZoom || z > header.MaxZoom {
-		return 404, http_headers, nil
+		return 404, http_headers, []byte("Tile not found")
+	}
+
+	switch header.TileType {
+	case Mvt:
+		if ext != "mvt" {
+			return 400, http_headers, []byte("path mismatch: archive is type MVT (.mvt)")
+		}
+	case Png:
+		if ext != "png" {
+			return 400, http_headers, []byte("path mismatch: archive is type PNG (.png)")
+		}
+	case Jpeg:
+		if ext != "jpg" {
+			return 400, http_headers, []byte("path mismatch: archive is type JPEG (.jpg)")
+		}
+	case Webp:
+		if ext != "webp" {
+			return 400, http_headers, []byte("path mismatch: archive is type WebP (.webp)")
+		}
 	}
 
 	tile_id := ZxyToId(z, x, y)
@@ -229,11 +256,11 @@ func (loop Loop) get_tile(ctx context.Context, http_headers map[string]string, n
 				r, err := loop.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), nil)
 				defer r.Close()
 				if err != nil {
-					return 500, http_headers, nil
+					return 500, http_headers, []byte("Network error")
 				}
 				b, err := io.ReadAll(r)
 				if err != nil {
-					return 500, http_headers, nil
+					return 500, http_headers, []byte("I/O error")
 				}
 				if header_val, ok := headerContentType(header); ok {
 					http_headers["Content-Type"] = header_val
@@ -275,5 +302,5 @@ func (loop Loop) Get(ctx context.Context, path string) (int, map[string]string, 
 		return loop.get_metadata(ctx, http_headers, name)
 	}
 
-	return 404, http_headers, nil
+	return 404, http_headers, []byte("Tile not found")
 }
