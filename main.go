@@ -25,7 +25,7 @@ func main() {
 
 	switch os.Args[1] {
 	case "show":
-		pmtiles.Show(logger, os.Args)
+		pmtiles.Show(logger, os.Args[2:])
 	case "serve":
 		serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
 		port := serveCmd.String("p", "8080", "port to serve on")
@@ -37,7 +37,7 @@ func main() {
 			logger.Println("USAGE: serve  [-p PORT] [-cors VALUE] LOCAL_PATH or https://BUCKET")
 			os.Exit(1)
 		}
-		loop := pmtiles.NewLoop(path, logger, *cacheSize, "*")
+		loop := pmtiles.NewLoop(path, logger, *cacheSize, *cors)
 		loop.Start()
 
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

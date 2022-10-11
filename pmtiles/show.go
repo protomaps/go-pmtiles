@@ -2,24 +2,29 @@ package pmtiles
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"github.com/dustin/go-humanize"
 	"gocloud.dev/blob"
 	"io"
 	"log"
 )
 
 func Show(logger *log.Logger, args []string) {
-	// if a local file path, construct a bucket/key
+	cmd := flag.NewFlagSet("upload", flag.ExitOnError)
+	cmd.Parse(args)
+	bucketURL := cmd.Arg(0)
+	file := cmd.Arg(1)
 
 	ctx := context.Background()
-	bucket, err := blob.OpenBucket(ctx, "file://.")
+	bucket, err := blob.OpenBucket(ctx, bucketURL)
 	if err != nil {
 		logger.Fatal(err)
 	}
 	defer bucket.Close()
 
-	// Open the key "foo.txt" for reading at offset 1024 and read up to 4096 bytes.
-	r, err := bucket.NewRangeReader(ctx, "out5.pmtiles", 0, 16384, nil)
+	r, err := bucket.NewRangeReader(ctx, file, 0, 16384, nil)
+
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -43,6 +48,7 @@ func Show(logger *log.Logger, args []string) {
 	default:
 		tile_type = "Unknown"
 	}
+	fmt.Printf("total size: %s\n", humanize.Bytes(uint64(r.Size())))
 	fmt.Printf("tile type: %s\n", tile_type)
 	fmt.Printf("bounds: %f,%f %f,%f\n", float64(header.MinLonE7)/10000000, float64(header.MinLatE7)/10000000, float64(header.MaxLonE7)/10000000, float64(header.MaxLatE7)/10000000)
 	fmt.Printf("min zoom: %d\n", header.MinZoom)

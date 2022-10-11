@@ -130,14 +130,16 @@ func (loop Loop) Start() {
 
 						if is_root {
 							header := deserialize_header(b[0:HEADERV3_LEN_BYTES])
-							result = CachedValue{header: header, ok: true}
-							resps <- Response{key: key, value: result, size: 127, ok: true}
 
+							// populate the root first before header
 							root_entries := deserialize_entries(bytes.NewBuffer(b[header.RootOffset : header.RootOffset+header.RootLength]))
 							result2 := CachedValue{directory: root_entries, ok: true}
 
 							root_key := CacheKey{name: key.name, offset: header.RootOffset, length: header.RootLength}
 							resps <- Response{key: root_key, value: result2, size: 24 * len(root_entries), ok: true}
+
+							result = CachedValue{header: header, ok: true}
+							resps <- Response{key: key, value: result, size: 127, ok: true}
 						} else {
 							directory := deserialize_entries(bytes.NewBuffer(b))
 							result = CachedValue{directory: directory, ok: true}
