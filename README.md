@@ -46,3 +46,18 @@ For production usage, it's recommended to run behind a reverse proxy like Nginx 
 * `-cors=ORIGIN` set the value of the Access-Control-Allow-Origin. * is a valid value but must be escaped in bash. Appropriate for development use.
 * `-cache=SIZE_MB` set the total size of the header and directory LRU cache. Default is 64 MB.
 * `-port=PORT` specify the HTTP port.
+
+## Cloud Storage Permissions
+
+Example minimal S3 policy for writing/reading to a bucket:
+
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": "s3:*",
+                "Resource": "arn:aws:s3:::my-bucket-name/*"
+            }
+        ]
+    }
