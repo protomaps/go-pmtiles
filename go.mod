@@ -4,7 +4,9 @@ go 1.17
 
 require (
 	github.com/RoaringBitmap/roaring v1.2.1
+	github.com/dustin/go-humanize v1.0.0
 	github.com/schollz/progressbar/v3 v3.11.0
+	github.com/stretchr/testify v1.8.0
 	gocloud.dev v0.27.0
 	zombiezen.com/go/sqlite v0.10.1
 )
@@ -42,7 +44,6 @@ require (
 	github.com/aws/smithy-go v1.12.0 // indirect
 	github.com/bits-and-blooms/bitset v1.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/golang-jwt/jwt v3.2.1+incompatible // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
@@ -61,7 +62,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
-	github.com/stretchr/testify v1.8.0 // indirect
 	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa // indirect
 	golang.org/x/net v0.0.0-20220802222814-0bcc04d9c69b // indirect
