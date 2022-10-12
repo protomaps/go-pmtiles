@@ -283,8 +283,8 @@ func (loop Loop) get_tile(ctx context.Context, http_headers map[string]string, n
 	return 204, http_headers, nil
 }
 
-var tilePattern = regexp.MustCompile(`^\/([-A-Za-z0-9_]+)\/(\d+)\/(\d+)\/(\d+)\.([a-z]+)$`)
-var metadataPattern = regexp.MustCompile(`^\/([-A-Za-z0-9_]+)\/metadata$`)
+var tilePattern = regexp.MustCompile(`.*?\/([-A-Za-z0-9_]+)\/(\d+)\/(\d+)\/(\d+)\.([a-z]+)$`)
+var metadataPattern = regexp.MustCompile(`.*?\/([-A-Za-z0-9_]+)\/metadata$`)
 
 func (loop Loop) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
 	http_headers := make(map[string]string)
