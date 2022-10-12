@@ -3,6 +3,7 @@ package pmtiles
 import (
 	"context"
 	"flag"
+	"fmt"
 	"github.com/schollz/progressbar/v3"
 	"gocloud.dev/blob"
 	"io"
@@ -10,7 +11,7 @@ import (
 	"os"
 )
 
-func Upload(logger *log.Logger, args []string) {
+func Upload(logger *log.Logger, args []string) error {
 	cmd := flag.NewFlagSet("upload", flag.ExitOnError)
 	buffer_size := cmd.Int("buffer-size", 8, "Upload chunk size in megabytes")
 	max_concurrency := cmd.Int("max-concurrency", 5, "Number of upload threads")
@@ -20,26 +21,25 @@ func Upload(logger *log.Logger, args []string) {
 	bucketURL := cmd.Arg(1)
 
 	if file == "" || bucketURL == "" {
-		logger.Println("USAGE: upload [-buffer-size B] [-max-concurrency M] INPUT s3://BUCKET?region=region")
-		os.Exit(1)
+		return fmt.Errorf("USAGE: upload [-buffer-size B] [-max-concurrency M] INPUT s3://BUCKET?region=region")
 	}
 
 	logger.Println(file, bucketURL)
 	ctx := context.Background()
 	b, err := blob.OpenBucket(ctx, bucketURL)
 	if err != nil {
-		log.Fatalf("Failed to setup bucket: %s", err)
+		return fmt.Errorf("Failed to setup bucket: %w", err)
 	}
 	defer b.Close()
 
 	f, err := os.Open(file)
 	if err != nil {
-		log.Fatalf("Failed to open file: %s", err)
+		return fmt.Errorf("Failed to open file: %w", err)
 	}
 	defer f.Close()
 	filestat, err := f.Stat()
 	if err != nil {
-		log.Fatalf("Failed to open file: %s", err)
+		return fmt.Errorf("Failed to open file: %w", err)
 	}
 	bar := progressbar.Default(filestat.Size())
 
@@ -53,7 +53,7 @@ func Upload(logger *log.Logger, args []string) {
 
 	w, err := b.NewWriter(ctx, file, opts)
 	if err != nil {
-		log.Fatalf("Failed to obtain writer: %s", err)
+		return fmt.Errorf("Failed to obtain writer: %w", err)
 	}
 
 	for {
@@ -73,16 +73,18 @@ func Upload(logger *log.Logger, args []string) {
 
 		_, err = w.Write(buffer[:n])
 		if err != nil {
-			log.Fatalf("Failed to write to bucket: %s", err)
+			return fmt.Errorf("Failed to write to bucket: %w", err)
 		}
 		bar.Add(n)
 
 		if err != nil && err != io.EOF {
-			logger.Fatal(err)
+			return fmt.Errorf("Failed to write data, %w", err)
 		}
 	}
 
 	if err := w.Close(); err != nil {
-		log.Fatalf("Failed to close: %s", err)
+		return fmt.Errorf("Failed to close: %w", err)
 	}
+
+	return nil
 }

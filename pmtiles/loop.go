@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"container/list"
 	"context"
+	"fmt"
 	"gocloud.dev/blob"
 	"io"
 	"log"
@@ -64,20 +65,28 @@ type Loop struct {
 	cors      string
 }
 
-func NewLoop(path string, logger *log.Logger, cacheSize int, cors string) Loop {
+func NewLoop(path string, logger *log.Logger, cacheSize int, cors string) (*Loop, error) {
 	reqs := make(chan Request, 8)
 
 	ctx := context.Background()
 
 	bucket, err := blob.OpenBucket(ctx, path)
 	if err != nil {
-		logger.Fatal(err)
+		return nil, fmt.Errorf("Failed to open bucket for %s, %w", path, err)
 	}
 
-	return Loop{reqs: reqs, bucket: bucket, logger: logger, cacheSize: cacheSize, cors: cors}
+	l := &Loop{
+		reqs:      reqs,
+		bucket:    bucket,
+		logger:    logger,
+		cacheSize: cacheSize,
+		cors:      cors,
+	}
+
+	return l, nil
 }
 
-func (loop Loop) Start() {
+func (loop *Loop) Start() {
 	go func() {
 		cache := make(map[CacheKey]*list.Element)
 		inflight := make(map[CacheKey][]Request)
@@ -116,7 +125,7 @@ func (loop Loop) Start() {
 						if err != nil {
 							ok = false
 							resps <- Response{key: key, value: result}
-							loop.logger.Printf("failed to fetch %s %d-%d", key.name, key.offset, key.length)
+							loop.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
 							return
 						}
 						defer r.Close()
@@ -124,7 +133,7 @@ func (loop Loop) Start() {
 						if err != nil {
 							ok = false
 							resps <- Response{key: key, value: result}
-							loop.logger.Printf("failed to fetch %s %d-%d", key.name, key.offset, key.length)
+							loop.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
 							return
 						}
 
@@ -181,7 +190,7 @@ func (loop Loop) Start() {
 	}()
 }
 
-func (loop Loop) get_metadata(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
+func (loop *Loop) get_metadata(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
 	root_req := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
 	loop.reqs <- root_req
 	root_value := <-root_req.value
@@ -209,7 +218,7 @@ func (loop Loop) get_metadata(ctx context.Context, http_headers map[string]strin
 	return 200, http_headers, b
 }
 
-func (loop Loop) get_tile(ctx context.Context, http_headers map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
+func (loop *Loop) get_tile(ctx context.Context, http_headers map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
 	root_req := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
 	loop.reqs <- root_req
 
@@ -286,7 +295,7 @@ func (loop Loop) get_tile(ctx context.Context, http_headers map[string]string, n
 var tilePattern = regexp.MustCompile(`^\/([-A-Za-z0-9_]+)\/(\d+)\/(\d+)\/(\d+)\.([a-z]+)$`)
 var metadataPattern = regexp.MustCompile(`^\/([-A-Za-z0-9_]+)\/metadata$`)
 
-func (loop Loop) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
+func (loop *Loop) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
 	http_headers := make(map[string]string)
 	if len(loop.cors) > 0 {
 		http_headers["Access-Control-Allow-Origin"] = loop.cors

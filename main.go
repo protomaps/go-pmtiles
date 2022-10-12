@@ -25,7 +25,11 @@ func main() {
 
 	switch os.Args[1] {
 	case "show":
-		pmtiles.Show(logger, os.Args[2:])
+		err := pmtiles.Show(logger, os.Args[2:])
+
+		if err != nil {
+			logger.Fatalf("Failed to show database, %v", err)
+		}
 	case "serve":
 		serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
 		port := serveCmd.String("p", "8080", "port to serve on")
@@ -37,7 +41,12 @@ func main() {
 			logger.Println("USAGE: serve  [-p PORT] [-cors VALUE] LOCAL_PATH or https://BUCKET")
 			os.Exit(1)
 		}
-		loop := pmtiles.NewLoop(path, logger, *cacheSize, *cors)
+		loop, err := pmtiles.NewLoop(path, logger, *cacheSize, *cors)
+
+		if err != nil {
+			logger.Fatalf("Failed to create new loop, %v", err)
+		}
+
 		loop.Start()
 
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -83,9 +92,19 @@ func main() {
 		convertCmd.Parse(os.Args[2:])
 		path := convertCmd.Arg(0)
 		output := convertCmd.Arg(1)
-		pmtiles.Convert(logger, path, output)
+		err := pmtiles.Convert(logger, path, output)
+
+		if err != nil {
+			logger.Fatalf("Failed to convert %s, %v", path, err)
+		}
+
 	case "upload":
-		pmtiles.Upload(logger, os.Args[2:])
+		err := pmtiles.Upload(logger, os.Args[2:])
+
+		if err != nil {
+			logger.Fatalf("Failed to upload file, %v", err)
+		}
+
 	case "validate":
 		// pmtiles.Validate()
 	default:
