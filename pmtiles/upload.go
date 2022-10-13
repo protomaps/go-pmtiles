@@ -17,14 +17,15 @@ func Upload(logger *log.Logger, args []string) error {
 	max_concurrency := cmd.Int("max-concurrency", 5, "Number of upload threads")
 
 	cmd.Parse(args)
-	file := cmd.Arg(0)
+	source := cmd.Arg(0)
 	bucketURL := cmd.Arg(1)
+	destination := cmd.Arg(2)
 
-	if file == "" || bucketURL == "" {
-		return fmt.Errorf("USAGE: upload [-buffer-size B] [-max-concurrency M] INPUT s3://BUCKET?region=region")
+	if source == "" || bucketURL == "" || destination == "" {
+		return fmt.Errorf("USAGE: upload [-buffer-size B] [-max-concurrency M] INPUT s3://BUCKET?region=region DESTINATION")
 	}
 
-	logger.Println(file, bucketURL)
+	logger.Println(source, bucketURL, destination)
 	ctx := context.Background()
 	b, err := blob.OpenBucket(ctx, bucketURL)
 	if err != nil {
@@ -32,7 +33,7 @@ func Upload(logger *log.Logger, args []string) error {
 	}
 	defer b.Close()
 
-	f, err := os.Open(file)
+	f, err := os.Open(source)
 	if err != nil {
 		return fmt.Errorf("Failed to open file: %w", err)
 	}
@@ -51,7 +52,7 @@ func Upload(logger *log.Logger, args []string) error {
 		MaxConcurrency: *max_concurrency,
 	}
 
-	w, err := b.NewWriter(ctx, file, opts)
+	w, err := b.NewWriter(ctx, destination, opts)
 	if err != nil {
 		return fmt.Errorf("Failed to obtain writer: %w", err)
 	}
