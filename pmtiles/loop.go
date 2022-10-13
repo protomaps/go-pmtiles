@@ -292,25 +292,40 @@ func (loop *Loop) get_tile(ctx context.Context, http_headers map[string]string, 
 	return 204, http_headers, nil
 }
 
-var tilePattern = regexp.MustCompile(`.*?\/([-A-Za-z0-9_]+)\/(\d+)\/(\d+)\/(\d+)\.([a-z]+)$`)
-var metadataPattern = regexp.MustCompile(`.*?\/([-A-Za-z0-9_]+)\/metadata$`)
+var tilePattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\/(\d+)\/(\d+)\/(\d+)\.([a-z]+)$`)
+var metadataPattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\/metadata$`)
 
-func (loop *Loop) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
-	http_headers := make(map[string]string)
-	if len(loop.cors) > 0 {
-		http_headers["Access-Control-Allow-Origin"] = loop.cors
-	}
+func parse_tile_path(path string) (bool, string, uint8, uint32, uint32, string) {
 	if res := tilePattern.FindStringSubmatch(path); res != nil {
 		name := res[1]
 		z, _ := strconv.ParseUint(res[2], 10, 8)
 		x, _ := strconv.ParseUint(res[3], 10, 32)
 		y, _ := strconv.ParseUint(res[4], 10, 32)
 		ext := res[5]
-		return loop.get_tile(ctx, http_headers, name, uint8(z), uint32(x), uint32(y), ext)
+		return true, name, uint8(z), uint32(x), uint32(y), ext
 	}
+	return false, "", 0, 0, 0, ""
+}
+
+func parse_metadata_path(path string) (bool, string) {
 	if res := metadataPattern.FindStringSubmatch(path); res != nil {
 		name := res[1]
-		return loop.get_metadata(ctx, http_headers, name)
+		return true, name
+	}
+	return false, ""
+}
+
+func (loop *Loop) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
+	http_headers := make(map[string]string)
+	if len(loop.cors) > 0 {
+		http_headers["Access-Control-Allow-Origin"] = loop.cors
+	}
+
+	if ok, key, z, x, y, ext := parse_tile_path(path); ok {
+		return loop.get_tile(ctx, http_headers, key, z, x, y, ext)
+	}
+	if ok, key := parse_metadata_path(path); ok {
+		return loop.get_metadata(ctx, http_headers, key)
 	}
 
 	return 404, http_headers, []byte("Tile not found")

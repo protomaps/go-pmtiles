@@ -145,7 +145,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) error {
 	entries := make([]EntryV3, 0)
 	add_directoryv2_entries(dir, &entries, f)
 
-	// sort + RLE encoding
+	// sort
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].TileId < entries[j].TileId
 	})
@@ -174,6 +174,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) error {
 				return fmt.Errorf("Failed to read buffer, %w", err)
 			}
 		}
+		// TODO: enforce sorted order
 		if is_new, new_data := resolver.AddTileIsNew(entry.TileId, buf); is_new {
 			tmpfile.Write(new_data)
 		}
@@ -590,7 +591,7 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 		case "compression":
 			switch value {
 			case "gzip":
-				header.TileCompression = Gzip
+				header.TileCompression = Gzip // TODO: fix me for non-vector outputs
 			}
 			json_result["compression"] = value
 		// name, attribution, description, type, version
