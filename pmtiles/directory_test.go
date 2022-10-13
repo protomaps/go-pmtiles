@@ -2,9 +2,9 @@ package pmtiles
 
 import (
 	"bytes"
+	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"testing"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestDirectoryRoundtrip(t *testing.T) {
@@ -188,58 +188,58 @@ func TestOptimizeDirectories(t *testing.T) {
 }
 
 func TestFindTileMissing(t *testing.T) {
-	entries := make([]EntryV3,0)
-	_, ok := find_tile(entries,0)
+	entries := make([]EntryV3, 0)
+	_, ok := find_tile(entries, 0)
 	if ok {
 		t.Fatalf("Expected not ok")
 	}
 }
 
 func TestFindTileFirstEntry(t *testing.T) {
-	entries := []EntryV3{{TileId:100, Offset: 1, Length: 1, RunLength:1}}
-	entry, ok := find_tile(entries,100)
-	assert.Equal(t,true,ok)
-	assert.Equal(t,uint64(1),entry.Offset)
-	assert.Equal(t,uint32(1),entry.Length)
-	_, ok = find_tile(entries,101)
-	assert.Equal(t,false,ok)
+	entries := []EntryV3{{TileId: 100, Offset: 1, Length: 1, RunLength: 1}}
+	entry, ok := find_tile(entries, 100)
+	assert.Equal(t, true, ok)
+	assert.Equal(t, uint64(1), entry.Offset)
+	assert.Equal(t, uint32(1), entry.Length)
+	_, ok = find_tile(entries, 101)
+	assert.Equal(t, false, ok)
 }
 
 func TestFindTileMultipleEntries(t *testing.T) {
 	entries := []EntryV3{
-		{TileId:100, Offset: 1, Length: 1, RunLength:2},
+		{TileId: 100, Offset: 1, Length: 1, RunLength: 2},
 	}
-	entry, ok := find_tile(entries,101)
-	assert.Equal(t,true,ok)
-	assert.Equal(t,uint64(1),entry.Offset)
-	assert.Equal(t,uint32(1),entry.Length)
+	entry, ok := find_tile(entries, 101)
+	assert.Equal(t, true, ok)
+	assert.Equal(t, uint64(1), entry.Offset)
+	assert.Equal(t, uint32(1), entry.Length)
 
 	entries = []EntryV3{
-		{TileId:100, Offset: 1, Length: 1, RunLength:1},
-		{TileId:150, Offset: 2, Length: 2, RunLength:2},
+		{TileId: 100, Offset: 1, Length: 1, RunLength: 1},
+		{TileId: 150, Offset: 2, Length: 2, RunLength: 2},
 	}
-	entry, ok = find_tile(entries,151)
-	assert.Equal(t,true,ok)
-	assert.Equal(t,uint64(2),entry.Offset)
-	assert.Equal(t,uint32(2),entry.Length)
+	entry, ok = find_tile(entries, 151)
+	assert.Equal(t, true, ok)
+	assert.Equal(t, uint64(2), entry.Offset)
+	assert.Equal(t, uint32(2), entry.Length)
 
 	entries = []EntryV3{
-		{TileId:50, Offset: 1, Length: 1, RunLength:2},
-		{TileId:100, Offset: 2, Length: 2, RunLength:1},
-		{TileId:150, Offset: 3, Length: 3, RunLength:1},
+		{TileId: 50, Offset: 1, Length: 1, RunLength: 2},
+		{TileId: 100, Offset: 2, Length: 2, RunLength: 1},
+		{TileId: 150, Offset: 3, Length: 3, RunLength: 1},
 	}
-	entry, ok = find_tile(entries,51)
-	assert.Equal(t,true,ok)
-	assert.Equal(t,uint64(1),entry.Offset)
-	assert.Equal(t,uint32(1),entry.Length)
+	entry, ok = find_tile(entries, 51)
+	assert.Equal(t, true, ok)
+	assert.Equal(t, uint64(1), entry.Offset)
+	assert.Equal(t, uint32(1), entry.Length)
 }
 
 func TestFindTileLeafSearch(t *testing.T) {
 	entries := []EntryV3{
-		{TileId:100, Offset: 1, Length: 1, RunLength:0},
+		{TileId: 100, Offset: 1, Length: 1, RunLength: 0},
 	}
-	entry, ok := find_tile(entries,150)
-	assert.Equal(t,true,ok)
-	assert.Equal(t,uint64(1),entry.Offset)
-	assert.Equal(t,uint32(1),entry.Length)
+	entry, ok := find_tile(entries, 150)
+	assert.Equal(t, true, ok)
+	assert.Equal(t, uint64(1), entry.Offset)
+	assert.Equal(t, uint32(1), entry.Length)
 }

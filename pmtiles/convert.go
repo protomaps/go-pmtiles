@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/schollz/progressbar/v3"
 	"hash"
@@ -85,11 +86,11 @@ func NewResolver() *Resolver {
 	return &r
 }
 
-func Convert(logger *log.Logger, input string, output string) {
+func Convert(logger *log.Logger, input string, output string) error {
 	if strings.HasSuffix(input, ".pmtiles") {
-		ConvertPmtilesV2(logger, input, output)
+		return ConvertPmtilesV2(logger, input, output)
 	} else {
-		ConvertMbtiles(logger, input, output)
+		return ConvertMbtiles(logger, input, output)
 	}
 }
 
@@ -108,17 +109,17 @@ func add_directoryv2_entries(dir DirectoryV2, entries *[]EntryV3, f *os.File) {
 	}
 }
 
-func ConvertPmtilesV2(logger *log.Logger, input string, output string) {
+func ConvertPmtilesV2(logger *log.Logger, input string, output string) error {
 	start := time.Now()
 	f, err := os.Open(input)
 	if err != nil {
-		log.Fatalf("Failed to open file: %s", err)
+		return fmt.Errorf("Failed to open file: %w", err)
 	}
 	defer f.Close()
 	buffer := make([]byte, 512000)
 	io.ReadFull(f, buffer)
 	if string(buffer[0:7]) == "PMTiles" && buffer[7] == 3 {
-		logger.Fatal("Archive is already the latest PMTiles version (3).")
+		return fmt.Errorf("Archive is already the latest PMTiles version (3).")
 	}
 
 	v2_json_bytes, dir := ParseHeaderV2(bytes.NewReader(buffer))
@@ -132,13 +133,13 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) {
 	f.Seek(512000, 0)
 	n, err := f.Read(first4)
 	if n != 4 || err != nil {
-		panic(err)
+		return fmt.Errorf("Failed to read first 4, %w", err)
 	}
 
 	header, json_metadata, err := v2_to_header_json(v2_metadata, first4)
 
 	if err != nil {
-		logger.Fatal(err)
+		return fmt.Errorf("Failed to convert v2 to header JSON, %w", err)
 	}
 
 	entries := make([]EntryV3, 0)
@@ -151,7 +152,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) {
 
 	tmpfile, err := ioutil.TempFile("", "")
 	if err != nil {
-		logger.Fatal(err)
+		return fmt.Errorf("Failed to create temp file, %w", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -164,13 +165,13 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) {
 		}
 		_, err := f.Seek(int64(entry.Offset), 0)
 		if err != nil {
-			panic(err)
+			return fmt.Errorf("Failed to seek at offset %d, %w", entry.Offset, err)
 		}
 		buf := make([]byte, entry.Length)
 		_, err = f.Read(buf)
 		if err != nil {
 			if err != io.EOF {
-				panic(err)
+				return fmt.Errorf("Failed to read buffer, %w", err)
 			}
 		}
 		if is_new, new_data := resolver.AddTileIsNew(entry.TileId, buf); is_new {
@@ -180,13 +181,15 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) {
 
 	finalize(logger, resolver, header, tmpfile, output, json_metadata)
 	logger.Println("Finished in ", time.Since(start))
+
+	return nil
 }
 
-func ConvertMbtiles(logger *log.Logger, input string, output string) {
+func ConvertMbtiles(logger *log.Logger, input string, output string) error {
 	start := time.Now()
 	conn, err := sqlite.OpenConn(input, sqlite.OpenReadOnly)
 	if err != nil {
-		logger.Fatal(err)
+		return fmt.Errorf("Failed to create database connection, %w", err)
 	}
 	defer conn.Close()
 
@@ -194,14 +197,14 @@ func ConvertMbtiles(logger *log.Logger, input string, output string) {
 	{
 		stmt, _, err := conn.PrepareTransient("SELECT name, value FROM metadata")
 		if err != nil {
-			logger.Fatal(err)
+			return fmt.Errorf("Failed to create SQL statement, %w", err)
 		}
 		defer stmt.Finalize()
 
 		for {
 			row, err := stmt.Step()
 			if err != nil {
-				logger.Fatal(err)
+				return fmt.Errorf("Failed to step statement, %w", err)
 			}
 			if !row {
 				break
@@ -213,7 +216,7 @@ func ConvertMbtiles(logger *log.Logger, input string, output string) {
 	header, json_metadata, err := mbtiles_to_header_json(mbtiles_metadata)
 
 	if err != nil {
-		logger.Fatal(err)
+		return fmt.Errorf("Failed to convert MBTiles to header JSON, %w", err)
 	}
 
 	logger.Println("Querying total tile count...")
@@ -222,12 +225,12 @@ func ConvertMbtiles(logger *log.Logger, input string, output string) {
 	{
 		stmt, _, err := conn.PrepareTransient("SELECT count(*) FROM tiles")
 		if err != nil {
-			logger.Fatal(err)
+			return fmt.Errorf("Failed to create statement, %w", err)
 		}
 		defer stmt.Finalize()
 		row, err := stmt.Step()
 		if err != nil || !row {
-			logger.Fatal(err)
+			return fmt.Errorf("Failed to step row, %w", err)
 		}
 		total_tiles = stmt.ColumnInt64(0)
 	}
@@ -238,7 +241,7 @@ func ConvertMbtiles(logger *log.Logger, input string, output string) {
 	{
 		stmt, _, err := conn.PrepareTransient("SELECT zoom_level, tile_column, tile_row FROM tiles")
 		if err != nil {
-			logger.Fatal(err)
+			return fmt.Errorf("Failed to create statement, %w", err)
 		}
 		defer stmt.Finalize()
 
@@ -247,7 +250,7 @@ func ConvertMbtiles(logger *log.Logger, input string, output string) {
 		for {
 			row, err := stmt.Step()
 			if err != nil {
-				logger.Fatal(err)
+				return fmt.Errorf("Failed to step statement, %w", err)
 			}
 			if !row {
 				break
@@ -264,7 +267,7 @@ func ConvertMbtiles(logger *log.Logger, input string, output string) {
 
 	tmpfile, err := ioutil.TempFile("", "")
 	if err != nil {
-		logger.Fatal(err)
+		return fmt.Errorf("Failed to create temporary file, %w", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
@@ -289,10 +292,10 @@ func ConvertMbtiles(logger *log.Logger, input string, output string) {
 
 			has_row, err := stmt.Step()
 			if err != nil {
-				logger.Fatal(err)
+				return fmt.Errorf("Failed to step statement, %w", err)
 			}
 			if !has_row {
-				logger.Fatal("Missing row")
+				return fmt.Errorf("Missing row")
 			}
 
 			reader := stmt.ColumnReader(0)
@@ -313,9 +316,10 @@ func ConvertMbtiles(logger *log.Logger, input string, output string) {
 	}
 	finalize(logger, resolver, header, tmpfile, output, json_metadata)
 	logger.Println("Finished in ", time.Since(start))
+	return nil
 }
 
-func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *os.File, output string, json_metadata map[string]interface{}) {
+func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *os.File, output string, json_metadata map[string]interface{}) error {
 	logger.Println("# of addressed tiles: ", resolver.AddressedTiles)
 	logger.Println("# of tile entries (after RLE): ", len(resolver.Entries))
 	logger.Println("# of tile contents: ", len(resolver.OffsetMap))
@@ -327,7 +331,7 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 	// assemble the final file
 	outfile, err := os.Create(output)
 	if err != nil {
-		logger.Fatal(err)
+		return fmt.Errorf("Failed to create %s, %w", output, err)
 	}
 
 	root_bytes, leaves_bytes, num_leaves := optimize_directories(resolver.Entries, 16384-HEADERV3_LEN_BYTES)
@@ -348,7 +352,7 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 	{
 		metadata_bytes_uncompressed, err := json.Marshal(json_metadata)
 		if err != nil {
-			logger.Fatal(err)
+			return fmt.Errorf("Failed to marshal metadata, %w", err)
 		}
 		var b bytes.Buffer
 		w, _ := gzip.NewWriterLevel(&b, gzip.BestCompression)
@@ -379,8 +383,10 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 	tmpfile.Seek(0, 0)
 	_, err = io.Copy(outfile, tmpfile)
 	if err != nil {
-		logger.Fatal(err)
+		return fmt.Errorf("Failed to copy data to outfile, %w", err)
 	}
+
+	return nil
 }
 
 func v2_to_header_json(v2_json_metadata map[string]interface{}, first4 []byte) (HeaderV3, map[string]interface{}, error) {

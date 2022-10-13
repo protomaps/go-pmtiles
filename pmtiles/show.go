@@ -10,7 +10,7 @@ import (
 	"log"
 )
 
-func Show(logger *log.Logger, args []string) {
+func Show(logger *log.Logger, args []string) error {
 	cmd := flag.NewFlagSet("upload", flag.ExitOnError)
 	cmd.Parse(args)
 	bucketURL := cmd.Arg(0)
@@ -19,18 +19,18 @@ func Show(logger *log.Logger, args []string) {
 	ctx := context.Background()
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
 	if err != nil {
-		logger.Fatal(err)
+		return fmt.Errorf("Failed to open bucket for %s, %w", bucketURL, err)
 	}
 	defer bucket.Close()
 
 	r, err := bucket.NewRangeReader(ctx, file, 0, 16384, nil)
 
 	if err != nil {
-		logger.Fatal(err)
+		return fmt.Errorf("Failed to create range reader for %s, %w", file, err)
 	}
 	b, err := io.ReadAll(r)
 	if err != nil {
-		logger.Fatal(err)
+		return fmt.Errorf("Failed to read %s, %w", file, err)
 	}
 	r.Close()
 
@@ -64,4 +64,6 @@ func Show(logger *log.Logger, args []string) {
 	// for _, entry := range entries {
 	// 	fmt.Println(entry)
 	// }
+
+	return nil
 }

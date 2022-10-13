@@ -90,9 +90,9 @@ func TestV2UpgradeBarebones(t *testing.T) {
 
 func TestV2UpgradeStrings(t *testing.T) {
 	header, _, err := v2_to_header_json(map[string]interface{}{
-		"minzoom":     "0",
-		"maxzoom":     "14",
-		"bounds":      "-180.0,-85,178,83",
+		"minzoom": "0",
+		"maxzoom": "14",
+		"bounds":  "-180.0,-85,178,83",
 	}, []byte{0x1f, 0x8b, 0x0, 0x0})
 	if err != nil {
 		t.Fatalf("parsing error %s", err)
