@@ -23,7 +23,7 @@ Upgrade a PMTiles version 2 to the latest version:
 Upload an archive to S3-compatible cloud storage:
 
     # requires environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY credentials
-    pmtiles upload ARCHIVE.pmtiles s3://BUCKET_NAME?endpoint=https://example.com&region=region
+    pmtiles upload LOCAL.pmtiles s3://BUCKET_NAME?endpoint=https://example.com&region=region REMOTE.pmtiles
 
 ## Inspecting archives
 
