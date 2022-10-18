@@ -343,7 +343,7 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 		logger.Println("Num leaf dirs: ", num_leaves)
 		logger.Println("Total dir bytes: ", len(root_bytes)+len(leaves_bytes))
 		logger.Println("Average leaf dir bytes: ", len(leaves_bytes)/num_leaves)
-		logger.Printf("Average bytes per entry: %.2f\n", float64(len(root_bytes)+len(leaves_bytes))/float64(resolver.AddressedTiles))
+		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(root_bytes)+len(leaves_bytes))/float64(resolver.AddressedTiles))
 	} else {
 		logger.Println("Total dir bytes: ", len(root_bytes))
 		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(root_bytes))/float64(resolver.AddressedTiles))
