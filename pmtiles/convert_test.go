@@ -1,6 +1,7 @@
 package pmtiles
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -33,28 +34,14 @@ func TestResolver(t *testing.T) {
 
 func TestV2UpgradeBarebones(t *testing.T) {
 	header, json_metadata, err := v2_to_header_json(map[string]interface{}{
-		"minzoom":     4,
-		"maxzoom":     5,
 		"bounds":      "-180.0,-85,178,83",
 		"attribution": "abcd",
 	}, []byte{0x1f, 0x8b, 0x0, 0x0})
 	if err != nil {
 		t.Fatalf("parsing error %s", err)
 	}
-	if header.MinZoom != 4 {
-		t.Fatalf("expected minzoom=4, was %d", header.MinZoom)
-	}
-	if header.MaxZoom != 5 {
-		t.Fatalf("expected maxzoom=5, was %d", header.MaxZoom)
-	}
 	if _, ok := json_metadata["attribution"]; !ok {
 		t.Fatalf("expected key in result")
-	}
-	if _, ok := json_metadata["minzoom"]; ok {
-		t.Fatalf("expected minzoom not in result")
-	}
-	if _, ok := json_metadata["maxzoom"]; ok {
-		t.Fatalf("expected maxzoom not in result")
 	}
 	if header.MinLonE7 != -180*10000000 {
 		t.Fatalf(`expected min lon`)
@@ -71,15 +58,6 @@ func TestV2UpgradeBarebones(t *testing.T) {
 	if _, ok := json_metadata["bounds"]; ok {
 		t.Fatalf("expected bounds not in result")
 	}
-	if header.CenterLatE7 != -1*10000000 {
-		t.Fatalf(`expected default center lat -1`)
-	}
-	if header.CenterLonE7 != -1*10000000 {
-		t.Fatalf(`expected default center lat -1`)
-	}
-	if header.CenterZoom != 4 {
-		t.Fatalf(`expected default center zoom = minzoom`)
-	}
 	if header.TileCompression != Gzip {
 		t.Fatalf(`expected infer gzip`)
 	}
@@ -88,28 +66,9 @@ func TestV2UpgradeBarebones(t *testing.T) {
 	}
 }
 
-func TestV2UpgradeStrings(t *testing.T) {
-	header, _, err := v2_to_header_json(map[string]interface{}{
-		"minzoom": "0",
-		"maxzoom": "14",
-		"bounds":  "-180.0,-85,178,83",
-	}, []byte{0x1f, 0x8b, 0x0, 0x0})
-	if err != nil {
-		t.Fatalf("parsing error %s", err)
-	}
-	if header.MinZoom != 0 {
-		t.Fatalf("expected minzoom=0, was %d", header.MinZoom)
-	}
-	if header.MaxZoom != 14 {
-		t.Fatalf("expected maxzoom=14, was %d", header.MaxZoom)
-	}
-}
-
 func TestV2UpgradeExtra(t *testing.T) {
 	// with the fields tippecanoe usually has
 	header, json_metadata, err := v2_to_header_json(map[string]interface{}{
-		"minzoom":     1,
-		"maxzoom":     2,
 		"bounds":      "-180.0,-85,180,85",
 		"center":      "-122.1906,37.7599,11",
 		"format":      "pbf",
@@ -132,36 +91,60 @@ func TestV2UpgradeExtra(t *testing.T) {
 	}
 }
 
+func TestZoomCenterDefaults(t *testing.T) {
+	// with no center set
+	header := HeaderV3{}
+	header.MinLonE7 = -45 * 10000000
+	header.MaxLonE7 = -43 * 10000000
+	header.MinLatE7 = 21 * 10000000
+	header.MaxLatE7 = 23 * 10000000
+	entries := make([]EntryV3, 0)
+	entries = append(entries, EntryV3{ZxyToId(3, 0, 0), 0, 0, 0})
+	entries = append(entries, EntryV3{ZxyToId(4, 0, 0), 1, 1, 1})
+	set_zoom_center_defaults(&header, entries)
+	assert.Equal(t, uint8(3), header.MinZoom)
+	assert.Equal(t, uint8(4), header.MaxZoom)
+	assert.Equal(t, uint8(3), header.CenterZoom)
+	assert.Equal(t, int32(-44*10000000), header.CenterLonE7)
+	assert.Equal(t, int32(22*10000000), header.CenterLatE7)
+
+	// with a center set
+	header = HeaderV3{}
+	header.MinLonE7 = -45 * 10000000
+	header.MaxLonE7 = -43 * 10000000
+	header.MinLatE7 = 21 * 10000000
+	header.MaxLatE7 = 23 * 10000000
+	header.CenterLonE7 = header.MinLonE7
+	header.CenterLatE7 = header.MinLatE7
+	header.CenterZoom = 4
+	set_zoom_center_defaults(&header, entries)
+	assert.Equal(t, uint8(4), header.CenterZoom)
+	assert.Equal(t, int32(-45*10000000), header.CenterLonE7)
+	assert.Equal(t, int32(21*10000000), header.CenterLatE7)
+}
+
 func TestV2UpgradeInfer(t *testing.T) {
 	header, _, err := v2_to_header_json(map[string]interface{}{
-		"minzoom": 1,
-		"maxzoom": 2,
-		"bounds":  "-180.0,-85,180,85",
+		"bounds": "-180.0,-85,180,85",
 	}, []byte{0xff, 0xd8, 0xff, 0xe0})
 	if err != nil || header.TileType != Jpeg || header.TileCompression != NoCompression {
 		t.Fatalf("expected inferred tile type")
 	}
 
 	header, _, err = v2_to_header_json(map[string]interface{}{
-		"minzoom": 1,
-		"maxzoom": 2,
-		"bounds":  "-180.0,-85,180,85",
+		"bounds": "-180.0,-85,180,85",
 	}, []byte{0x89, 0x50, 0x4e, 0x47})
 	if err != nil || header.TileType != Png || header.TileCompression != NoCompression {
 		t.Fatalf("expected inferred tile type")
 	}
 	header, _, err = v2_to_header_json(map[string]interface{}{
-		"minzoom": 1,
-		"maxzoom": 2,
-		"bounds":  "-180.0,-85,180,85",
+		"bounds": "-180.0,-85,180,85",
 	}, []byte{0x00, 00, 00, 00})
 	if header.TileType != Mvt || header.TileCompression != NoCompression {
 		t.Fatalf("expected inferred tile type")
 	}
 	header, _, err = v2_to_header_json(map[string]interface{}{
-		"minzoom": 1,
-		"maxzoom": 2,
-		"bounds":  "-180.0,-85,180,85",
+		"bounds": "-180.0,-85,180,85",
 	}, []byte{0x1f, 0x8b, 00, 00})
 	if err != nil || header.TileType != Mvt || header.TileCompression != Gzip {
 		t.Fatalf("expected inferred tile type")
@@ -174,8 +157,6 @@ func TestMbtiles(t *testing.T) {
 		"format", "pbf",
 		"bounds", "-180.0,-85,180,85",
 		"center", "-122.1906,37.7599,11",
-		"minzoom", "1",
-		"maxzoom", "2",
 		"attribution", "<div>abc</div>",
 		"description", "a description",
 		"type", "overlay",
@@ -210,12 +191,6 @@ func TestMbtiles(t *testing.T) {
 	}
 	if header.CenterZoom != 11 {
 		t.Fatalf(`expected center zoom`)
-	}
-	if header.MinZoom != 1 {
-		t.Fatalf(`expected min zoom`)
-	}
-	if header.MaxZoom != 2 {
-		t.Fatalf(`expected max zoom`)
 	}
 	if header.TileCompression != Gzip {
 		t.Fatalf(`expected tile compression`)

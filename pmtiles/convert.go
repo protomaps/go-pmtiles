@@ -109,6 +109,19 @@ func add_directoryv2_entries(dir DirectoryV2, entries *[]EntryV3, f *os.File) {
 	}
 }
 
+func set_zoom_center_defaults(header *HeaderV3, entries []EntryV3) {
+	min_z, _, _ := IdToZxy(entries[0].TileId)
+	header.MinZoom = min_z
+	max_z, _, _ := IdToZxy(entries[len(entries)-1].TileId)
+	header.MaxZoom = max_z
+
+	if header.CenterZoom == 0 && header.CenterLonE7 == 0 && header.CenterLatE7 == 0 {
+		header.CenterZoom = header.MinZoom
+		header.CenterLonE7 = (header.MinLonE7 + header.MaxLonE7) / 2
+		header.CenterLatE7 = (header.MinLatE7 + header.MaxLatE7) / 2
+	}
+}
+
 func ConvertPmtilesV2(logger *log.Logger, input string, output string) error {
 	start := time.Now()
 	f, err := os.Open(input)
@@ -362,6 +375,8 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 		metadata_bytes = b.Bytes()
 	}
 
+	set_zoom_center_defaults(&header, resolver.Entries)
+
 	header.Clustered = true
 	header.InternalCompression = Gzip
 	header.TileCompression = Gzip
@@ -392,37 +407,7 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 
 func v2_to_header_json(v2_json_metadata map[string]interface{}, first4 []byte) (HeaderV3, map[string]interface{}, error) {
 	header := HeaderV3{}
-	if val, ok := v2_json_metadata["minzoom"]; ok {
-		switch v := val.(type) {
-		case int:
-			header.MinZoom = uint8(v)
-		case string:
-			i, err := strconv.ParseInt(v, 10, 8)
-			if err != nil {
-				return header, v2_json_metadata, err
-			}
-			header.MinZoom = uint8(i)
-		default:
-			return header, v2_json_metadata, errors.New("Can't parse minzoom")
-		}
-		delete(v2_json_metadata, "minzoom")
-	}
-	if val, ok := v2_json_metadata["maxzoom"]; ok {
-		switch v := val.(type) {
-		case int:
-			header.MaxZoom = uint8(v)
-		case string:
-			i, err := strconv.ParseInt(v, 10, 8)
-			if err != nil {
-				return header, v2_json_metadata, err
-			}
-			header.MaxZoom = uint8(i)
-		default:
-			return header, v2_json_metadata, errors.New("Can't parse minzoom")
-		}
 
-		delete(v2_json_metadata, "maxzoom")
-	}
 	if val, ok := v2_json_metadata["bounds"]; ok {
 		min_lon, min_lat, max_lon, max_lat, err := parse_bounds(val.(string))
 		if err != nil {
@@ -446,10 +431,6 @@ func v2_to_header_json(v2_json_metadata map[string]interface{}, first4 []byte) (
 		header.CenterLatE7 = center_lat
 		header.CenterZoom = center_zoom
 		delete(v2_json_metadata, "center")
-	} else {
-		header.CenterLatE7 = (header.MinLatE7 + header.MaxLatE7) / 2
-		header.CenterLonE7 = (header.MinLonE7 + header.MaxLonE7) / 2
-		header.CenterZoom = header.MinZoom
 	}
 
 	if val, ok := v2_json_metadata["compression"]; ok {
@@ -532,7 +513,6 @@ func parse_center(center string) (int32, int32, uint8, error) {
 		return 0, 0, 0, err
 	}
 	return int32(center_lon * E7), int32(center_lat * E7), uint8(center_zoom), nil
-
 }
 
 func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]interface{}, error) {
@@ -570,18 +550,6 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 			header.CenterLonE7 = center_lon
 			header.CenterLatE7 = center_lat
 			header.CenterZoom = center_zoom
-		case "minzoom":
-			i, err := strconv.ParseInt(value, 10, 8)
-			if err != nil {
-				return header, json_result, err
-			}
-			header.MinZoom = uint8(i)
-		case "maxzoom":
-			i, err := strconv.ParseInt(value, 10, 8)
-			if err != nil {
-				return header, json_result, err
-			}
-			header.MaxZoom = uint8(i)
 		case "json":
 			var mbtiles_json map[string]interface{}
 			json.Unmarshal([]byte(value), &mbtiles_json)
