@@ -31,6 +31,8 @@ Upload an archive to S3-compatible cloud storage:
     pmtiles show "s3://BUCKET_NAME?region=us-west-2" example.pmtiles
 
 ## Serving Z/X/Y tiles
+
+This section covers running a Z/X/Y tile server proxy for clients that read only those URLs. The simplest way to consume PMTiles on the web is directly in the browser: see the [JavaScript examples](https://github.com/protomaps/PMTiles/tree/master/js).
     
 Serve a directory of archive from local or cloud storage as a universally compatible Z/X/Y endpoint:
 
