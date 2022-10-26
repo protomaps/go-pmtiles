@@ -34,7 +34,7 @@ Upload an archive to S3-compatible cloud storage:
 
 This section covers running a Z/X/Y tile server proxy for clients that read only those URLs. The simplest way to consume PMTiles on the web is directly in the browser: see the [JavaScript examples](https://github.com/protomaps/PMTiles/tree/master/js).
     
-Serve a directory of archive from local or cloud storage as a universally compatible Z/X/Y endpoint:
+Serve a directory of archives from local or cloud storage as a Z/X/Y endpoint:
 
     pmtiles serve file://.
     # serves at http://localhost:8077/FILENAME/{z}/{x}/{y}.pbf
@@ -51,7 +51,7 @@ For production usage, it's recommended to run behind a reverse proxy like Nginx 
 
 ## Cloud Storage Permissions
 
-Example minimal S3 policy for writing/reading to a bucket:
+To upload your files to AWS S3 you will need an IAM policy for writing/reading to a bucket, at minimum this:
 
     {
         "Version": "2012-10-17",
@@ -63,3 +63,4 @@ Example minimal S3 policy for writing/reading to a bucket:
             }
         ]
     }
+    
