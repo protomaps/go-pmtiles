@@ -2,7 +2,9 @@ package pmtiles
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/dustin/go-humanize"
@@ -71,6 +73,38 @@ func Show(logger *log.Logger, args []string) error {
 		fmt.Printf("tile entries count: %d\n", header.TileEntriesCount)
 		fmt.Printf("tile contents count: %d\n", header.TileContentsCount)
 		fmt.Printf("clustered: %t\n", header.Clustered)
+
+		metadata_reader, err := bucket.NewRangeReader(ctx, file, int64(header.MetadataOffset), int64(header.MetadataLength), nil)
+		if err != nil {
+			return fmt.Errorf("Failed to create range reader for %s, %w", file, err)
+		}
+
+		var metadata_bytes []byte
+		if header.InternalCompression == Gzip {
+			r, _ := gzip.NewReader(metadata_reader)
+			metadata_bytes, err = io.ReadAll(r)
+			if err != nil {
+				return fmt.Errorf("Failed to read %s, %w", file, err)
+			}
+		} else {
+			metadata_bytes, err = io.ReadAll(metadata_reader)
+			if err != nil {
+				return fmt.Errorf("Failed to read %s, %w", file, err)
+			}
+		}
+		metadata_reader.Close()
+
+		var metadata_map map[string]interface{}
+		json.Unmarshal(metadata_bytes, &metadata_map)
+		for k, v := range metadata_map {
+			switch v := v.(type) {
+			case string:
+				fmt.Println(k, v)
+			default:
+				fmt.Println(k, "<object...>")
+			}
+		}
+
 	} else {
 		// write the tile to stdout
 
