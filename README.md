@@ -23,12 +23,12 @@ Upgrade a PMTiles version 2 to the latest version:
 Upload an archive to S3-compatible cloud storage:
 
     # requires environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY credentials
-    pmtiles upload LOCAL.pmtiles s3://BUCKET_NAME?endpoint=https://example.com&region=region REMOTE.pmtiles
+    pmtiles upload INPUT.pmtiles s3://BUCKET_NAME REMOTE.pmtiles
 
 ## Inspecting archives
 
-    pmtiles show file:// example.pmtiles
-    pmtiles show "s3://BUCKET_NAME?region=us-west-2" example.pmtiles
+    pmtiles show file:// INPUT.pmtiles
+    pmtiles show "s3://BUCKET_NAME" INPUT.pmtiles
 
 ## Serving Z/X/Y tiles
 
@@ -39,7 +39,7 @@ Serve a directory of archives from local or cloud storage as a Z/X/Y endpoint:
     pmtiles serve file://.
     # serves at http://localhost:8077/FILENAME/{z}/{x}/{y}.pbf
 
-    pmtiles serve "s3://example_bucket?region=us-west-2"
+    pmtiles serve "s3://BUCKET_NAME?region=REGION"
     
 For production usage, it's recommended to run behind a reverse proxy like Nginx or Caddy to manage HTTP headers (`Access-Control-Allow-Origin`, `Cache-Control`...) and SSL certificates.
 
@@ -48,6 +48,14 @@ For production usage, it's recommended to run behind a reverse proxy like Nginx 
 * `-cors=ORIGIN` set the value of the Access-Control-Allow-Origin. * is a valid value but must be escaped in bash. Appropriate for development use.
 * `-cache=SIZE_MB` set the total size of the header and directory LRU cache. Default is 64 MB.
 * `-port=PORT` specify the HTTP port.
+
+## Remote URLs
+
+Cloud storage URLs can be any URL recognized by [gocloud](https://gocloud.dev/concepts/urls/). Configure a custom endpoint and region:
+
+```sh
+s3://BUCKET_NAME?endpoint=https://example.com&region=REGION
+```
 
 ## Cloud Storage Permissions
 
