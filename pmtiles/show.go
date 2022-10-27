@@ -49,6 +49,10 @@ func Show(logger *log.Logger, args []string) error {
 	header, err := deserialize_header(b[0:HEADERV3_LEN_BYTES])
 	if err != nil {
 		// check to see if it's a V2 file
+		if string(b[0:2]) == "PM" {
+			spec_version := b[2]
+			return fmt.Errorf("PMTiles version %d detected; please use 'pmtiles convert' to upgrade to version 3.", spec_version)
+		}
 
 		return fmt.Errorf("Failed to read %s, %w", file, err)
 	}
