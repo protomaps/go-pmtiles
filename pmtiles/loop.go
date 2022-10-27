@@ -138,7 +138,11 @@ func (loop *Loop) Start() {
 						}
 
 						if is_root {
-							header := deserialize_header(b[0:HEADERV3_LEN_BYTES])
+							header, err := deserialize_header(b[0:HEADERV3_LEN_BYTES])
+							if err != nil {
+								loop.logger.Printf("parsing header failed: %v", err)
+								return
+							}
 
 							// populate the root first before header
 							root_entries := deserialize_entries(bytes.NewBuffer(b[header.RootOffset : header.RootOffset+header.RootLength]))

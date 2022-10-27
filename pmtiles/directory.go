@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
+	"fmt"
 )
 
 type Compression uint8
@@ -30,6 +31,7 @@ const (
 const HEADERV3_LEN_BYTES = 127
 
 type HeaderV3 struct {
+	SpecVersion         uint8
 	RootOffset          uint64
 	RootLength          uint64
 	MetadataOffset      uint64
@@ -228,8 +230,19 @@ func serialize_header(header HeaderV3) []byte {
 	return b
 }
 
-func deserialize_header(d []byte) HeaderV3 {
+func deserialize_header(d []byte) (HeaderV3, error) {
 	h := HeaderV3{}
+	magic_number := d[0:7]
+	if string(magic_number) != "PMTiles" {
+		return h, fmt.Errorf("Magic number not detected. Are you sure this is a PMTiles archive?")
+	}
+
+	spec_version := d[7]
+	if spec_version > uint8(3) {
+		return h, fmt.Errorf("Archive is spec version %d, but this program only supports version 3: upgrade your pmtiles program.", spec_version)
+	}
+
+	h.SpecVersion = spec_version
 	h.RootOffset = binary.LittleEndian.Uint64(d[8 : 8+8])
 	h.RootLength = binary.LittleEndian.Uint64(d[16 : 16+8])
 	h.MetadataOffset = binary.LittleEndian.Uint64(d[24 : 24+8])
@@ -255,7 +268,7 @@ func deserialize_header(d []byte) HeaderV3 {
 	h.CenterLonE7 = int32(binary.LittleEndian.Uint32(d[119 : 119+4]))
 	h.CenterLatE7 = int32(binary.LittleEndian.Uint32(d[123 : 123+4]))
 
-	return h
+	return h, nil
 }
 
 func build_roots_leaves(entries []EntryV3, leaf_size int) ([]byte, []byte, int) {

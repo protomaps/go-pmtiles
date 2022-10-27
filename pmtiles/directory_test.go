@@ -83,7 +83,7 @@ func TestHeaderRoundtrip(t *testing.T) {
 	header.CenterLonE7 = 3.1 * 10000000
 	header.CenterLatE7 = 3.2 * 10000000
 	b := serialize_header(header)
-	result := deserialize_header(b)
+	result, _ := deserialize_header(b)
 	if result.RootOffset != 1 {
 		t.Fatalf(`expected to be 1`)
 	}

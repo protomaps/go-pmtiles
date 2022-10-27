@@ -46,7 +46,12 @@ func Show(logger *log.Logger, args []string) error {
 	}
 	r.Close()
 
-	header := deserialize_header(b[0:HEADERV3_LEN_BYTES])
+	header, err := deserialize_header(b[0:HEADERV3_LEN_BYTES])
+	if err != nil {
+		// check to see if it's a V2 file
+
+		return fmt.Errorf("Failed to read %s, %w", file, err)
+	}
 
 	if arg_z == "" {
 		var tile_type string
@@ -62,6 +67,7 @@ func Show(logger *log.Logger, args []string) error {
 		default:
 			tile_type = "Unknown"
 		}
+		fmt.Printf("pmtiles spec version: %d\n", header.SpecVersion)
 		fmt.Printf("total size: %s\n", humanize.Bytes(uint64(r.Size())))
 		fmt.Printf("tile type: %s\n", tile_type)
 		fmt.Printf("bounds: %f,%f %f,%f\n", float64(header.MinLonE7)/10000000, float64(header.MinLatE7)/10000000, float64(header.MaxLonE7)/10000000, float64(header.MaxLatE7)/10000000)
