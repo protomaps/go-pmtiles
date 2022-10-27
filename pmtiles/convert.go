@@ -100,9 +100,16 @@ func add_directoryv2_entries(dir DirectoryV2, entries *[]EntryV3, f *os.File) {
 		*entries = append(*entries, EntryV3{tile_id, rng.Offset, rng.Length, 1})
 	}
 
+	var unique = map[uint64]uint32{}
+
+	// uniqify the offset/length pairs
 	for _, rng := range dir.Leaves {
-		f.Seek(int64(rng.Offset), 0)
-		leaf_bytes := make([]byte, rng.Length)
+		unique[rng.Offset] = rng.Length
+	}
+
+	for offset, length := range unique {
+		f.Seek(int64(offset), 0)
+		leaf_bytes := make([]byte, length)
 		f.Read(leaf_bytes)
 		leaf_dir := ParseDirectoryV2(leaf_bytes)
 		add_directoryv2_entries(leaf_dir, entries, f)
@@ -172,6 +179,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) error {
 	// re-use resolver, because even if archives are de-duplicated we may need to recompress.
 	resolver := NewResolver()
 
+	bar := progressbar.Default(int64(len(entries)))
 	for _, entry := range entries {
 		if entry.Length == 0 {
 			continue
@@ -191,6 +199,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) error {
 		if is_new, new_data := resolver.AddTileIsNew(entry.TileId, buf); is_new {
 			tmpfile.Write(new_data)
 		}
+		bar.Add(1)
 	}
 
 	finalize(logger, resolver, header, tmpfile, output, json_metadata)
