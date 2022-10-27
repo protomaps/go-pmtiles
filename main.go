@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	_ "gocloud.dev/blob/azureblob"
 	_ "gocloud.dev/blob/fileblob"
@@ -15,11 +16,27 @@ import (
 	"time"
 )
 
+
 func main() {
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 
 	if len(os.Args) < 2 {
-		logger.Println("Command is required.")
+helptext := `Usage: pmtiles [COMMAND] [ARGS]
+
+Inspecting pmtiles:
+pmtiles show file:// INPUT.pmtiles
+pmtiles show "s3://BUCKET_NAME INPUT.pmtiles
+
+Creating pmtiles:
+pmtiles convert INPUT.mbtiles OUTPUT.pmtiles
+pmtiles convert INPUT_V2.pmtiles OUTPUT_V3.pmtiles
+
+Uploading pmtiles:
+pmtiles upload INPUT.pmtiles s3://BUCKET_NAME REMOTE.pmtiles
+
+Running a proxy server:
+pmtiles serve "s3://BUCKET_NAME"`
+		fmt.Println(helptext)
 		os.Exit(1)
 	}
 
