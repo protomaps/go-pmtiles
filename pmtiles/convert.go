@@ -481,6 +481,18 @@ func v2_to_header_json(v2_json_metadata map[string]interface{}, first4 []byte) (
 		}
 	}
 
+	// deserialize embedded JSON and lift keys to top-level
+	// to avoid "json-in-json"
+	if val, ok := v2_json_metadata["json"]; ok {
+		string_val := val.(string)
+		var inside map[string]interface{}
+		json.Unmarshal([]byte(string_val), &inside)
+		for k, v := range inside {
+			v2_json_metadata[k] = v
+		}
+		delete(v2_json_metadata, "json")
+	}
+
 	return header, v2_json_metadata, nil
 }
 

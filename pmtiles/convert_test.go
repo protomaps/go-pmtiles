@@ -73,6 +73,7 @@ func TestV2UpgradeExtra(t *testing.T) {
 		"center":      "-122.1906,37.7599,11",
 		"format":      "pbf",
 		"compression": "gzip",
+		"json": "{\"abc\":\"def\"}",
 	}, []byte{0x0, 0x0, 0x0, 0x0})
 	if err != nil {
 		t.Fatalf("parsing error %s", err)
@@ -88,6 +89,9 @@ func TestV2UpgradeExtra(t *testing.T) {
 	}
 	if _, ok := json_metadata["center"]; ok {
 		t.Fatalf("expected center not in result")
+	}
+	if _, ok := json_metadata["abc"]; !ok {
+		t.Fatalf("expected abc in result")
 	}
 }
 
