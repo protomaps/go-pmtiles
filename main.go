@@ -16,12 +16,11 @@ import (
 	"time"
 )
 
-
 func main() {
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 
 	if len(os.Args) < 2 {
-helptext := `Usage: pmtiles [COMMAND] [ARGS]
+		helptext := `Usage: pmtiles [COMMAND] [ARGS]
 
 Inspecting pmtiles:
 pmtiles show file:// INPUT.pmtiles
@@ -106,10 +105,11 @@ pmtiles serve "s3://BUCKET_NAME"`
 		pmtiles.SubpyramidXY(logger, path, output, uint8(num_args[0]), uint32(num_args[1]), uint32(num_args[2]), uint32(num_args[3]), uint32(num_args[4]), bounds)
 	case "convert":
 		convertCmd := flag.NewFlagSet("convert", flag.ExitOnError)
+		no_deduplication := convertCmd.Bool("no-deduplication", false, "Don't deduplicate data")
 		convertCmd.Parse(os.Args[2:])
 		path := convertCmd.Arg(0)
 		output := convertCmd.Arg(1)
-		err := pmtiles.Convert(logger, path, output)
+		err := pmtiles.Convert(logger, path, output, !(*no_deduplication))
 
 		if err != nil {
 			logger.Fatalf("Failed to convert %s, %v", path, err)

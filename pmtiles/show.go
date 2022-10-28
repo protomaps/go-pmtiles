@@ -83,6 +83,8 @@ func Show(logger *log.Logger, args []string) error {
 		fmt.Printf("tile entries count: %d\n", header.TileEntriesCount)
 		fmt.Printf("tile contents count: %d\n", header.TileContentsCount)
 		fmt.Printf("clustered: %t\n", header.Clustered)
+		fmt.Printf("internal compression: %d\n", header.InternalCompression)
+		fmt.Printf("tile compression: %d\n", header.TileCompression)
 
 		metadata_reader, err := bucket.NewRangeReader(ctx, file, int64(header.MetadataOffset), int64(header.MetadataLength), nil)
 		if err != nil {

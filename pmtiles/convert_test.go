@@ -6,7 +6,7 @@ import (
 )
 
 func TestResolver(t *testing.T) {
-	resolver := NewResolver()
+	resolver := NewResolver(true,true)
 	resolver.AddTileIsNew(1, []byte{0x1, 0x2})
 	if len(resolver.Entries) != 1 {
 		t.Fatalf("expected length 1")
@@ -134,7 +134,6 @@ func TestV2UpgradeInfer(t *testing.T) {
 	if err != nil || header.TileType != Jpeg || header.TileCompression != NoCompression {
 		t.Fatalf("expected inferred tile type")
 	}
-
 	header, _, err = v2_to_header_json(map[string]interface{}{
 		"bounds": "-180.0,-85,180,85",
 	}, []byte{0x89, 0x50, 0x4e, 0x47})
