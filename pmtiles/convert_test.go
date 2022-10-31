@@ -143,7 +143,7 @@ func TestV2UpgradeInfer(t *testing.T) {
 	header, _, err = v2_to_header_json(map[string]interface{}{
 		"bounds": "-180.0,-85,180,85",
 	}, []byte{0x00, 00, 00, 00})
-	if header.TileType != Mvt || header.TileCompression != NoCompression {
+	if header.TileType != Mvt || header.TileCompression != UnknownCompression {
 		t.Fatalf("expected inferred tile type")
 	}
 	header, _, err = v2_to_header_json(map[string]interface{}{
