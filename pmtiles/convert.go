@@ -404,6 +404,9 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 
 	header.Clustered = true
 	header.InternalCompression = Gzip
+	if header.TileType == Mvt {
+		header.TileCompression = Gzip
+	}
 
 	header.RootOffset = HEADERV3_LEN_BYTES
 	header.RootLength = uint64(len(root_bytes))
