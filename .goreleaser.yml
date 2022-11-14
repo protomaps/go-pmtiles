@@ -3,15 +3,42 @@ before:
     - go mod tidy
 builds:
   - binary: pmtiles
+    id: go-pmtiles
     env:
       - CGO_ENABLED=0
     goos:
       - linux
       - windows
-      - darwin
     goarch:
       - amd64
       - arm64
+  - binary: pmtiles
+    id: pmtiles-macos-amd64
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+    hooks:
+      post:
+        - gon .gon-amd64.hcl
+        - mv dist/pmtiles-darwin-amd64.dmg dist/go-pmtiles-{{ .Version }}_Darwin_x86_64.dmg
+        - mv dist/pmtiles-darwin-amd64.zip dist/go-pmtiles-{{ .Version }}_Darwin_x86_64.zip
+  - binary: pmtiles
+    id: pmtiles-macos-arm64
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - arm64
+    hooks:
+      post:
+        - gon .gon-arm64.hcl
+        - mv dist/pmtiles-darwin-arm64.dmg dist/go-pmtiles-{{ .Version }}_Darwin_arm64.dmg
+        - mv dist/pmtiles-darwin-arm64.zip dist/go-pmtiles-{{ .Version }}_Darwin_arm64.zip
+
 archives:
   - replacements:
       darwin: Darwin
