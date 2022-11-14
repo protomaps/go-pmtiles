@@ -6,8 +6,6 @@ The single-file utility for creating and working with [PMTiles](https://github.c
 
 See [Releases](https://github.com/protomaps/go-pmtiles/releases) for your OS and architecture.
 
-MacOS users temporarily need a [few extra steps on running app for the first time.](https://github.com/hashicorp/terraform/issues/23033#issuecomment-542302933)
-
 ## Creating PMTiles archives
 
 Convert an [MBTiles](https://github.com/mapbox/mbtiles-spec/tree/master/1.3) archive:
