@@ -39,15 +39,15 @@ builds:
         - mv dist/pmtiles-darwin-arm64.zip dist/go-pmtiles-{{ .Version }}_Darwin_arm64.zip
 
 archives:
-  - replacements:
-      darwin: Darwin
+  - id: default
+    builds:
+      - go-pmtiles
+    replacements:
       linux: Linux
       windows: Windows
       amd64: x86_64
     format_overrides:
       - goos: windows
-        format: zip
-      - goos: darwin
         format: zip
 
 checksum:
@@ -55,9 +55,15 @@ checksum:
 
 snapshot:
   name_template: "{{ .Tag }}-next"
+
 changelog:
   sort: asc
   filters:
     exclude:
       - '^docs:'
       - '^test:'
+
+release:
+  extra_files:
+    - glob: ./dist/*_Darwin_arm64.zip
+    - glob: ./dist/*_Darwin_x86_64.zip
