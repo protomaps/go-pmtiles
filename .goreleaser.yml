@@ -1,3 +1,4 @@
+# AC_USERNAME= AC_PASSWORD= goreleaser release --rm-dist --parallelism 1
 before:
   hooks:
     - go mod tidy
@@ -22,8 +23,7 @@ builds:
       - amd64
     hooks:
       post:
-        - gon .gon-amd64.hcl
-        - mv dist/pmtiles-darwin-amd64.dmg dist/go-pmtiles-{{ .Version }}_Darwin_x86_64.dmg
+        - gon -log-level debug .gon-amd64.hcl
         - mv dist/pmtiles-darwin-amd64.zip dist/go-pmtiles-{{ .Version }}_Darwin_x86_64.zip
   - binary: pmtiles
     id: pmtiles-macos-arm64
@@ -35,8 +35,7 @@ builds:
       - arm64
     hooks:
       post:
-        - gon .gon-arm64.hcl
-        - mv dist/pmtiles-darwin-arm64.dmg dist/go-pmtiles-{{ .Version }}_Darwin_arm64.dmg
+        - gon -log-level debug .gon-arm64.hcl
         - mv dist/pmtiles-darwin-arm64.zip dist/go-pmtiles-{{ .Version }}_Darwin_arm64.zip
 
 archives:
@@ -50,8 +49,10 @@ archives:
         format: zip
       - goos: darwin
         format: zip
+
 checksum:
-  name_template: 'checksums.txt'
+  disable: true
+
 snapshot:
   name_template: "{{ .Tag }}-next"
 changelog:
