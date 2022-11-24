@@ -13,8 +13,7 @@ import (
 
 func Upload(logger *log.Logger, args []string) error {
 	cmd := flag.NewFlagSet("upload", flag.ExitOnError)
-	buffer_size := cmd.Int("buffer-size", 8, "Upload chunk size in megabytes")
-	max_concurrency := cmd.Int("max-concurrency", 5, "Number of upload threads")
+	max_concurrency := cmd.Int("max-concurrency", 2, "Number of upload threads")
 
 	cmd.Parse(args)
 	source := cmd.Arg(0)
@@ -22,7 +21,7 @@ func Upload(logger *log.Logger, args []string) error {
 	destination := cmd.Arg(2)
 
 	if source == "" || bucketURL == "" || destination == "" {
-		return fmt.Errorf("USAGE: upload [-buffer-size B] [-max-concurrency M] INPUT s3://BUCKET?region=region DESTINATION")
+		return fmt.Errorf("USAGE: upload [-max-concurrency M] INPUT s3://BUCKET?region=region DESTINATION")
 	}
 
 	logger.Println(source, bucketURL, destination)
@@ -45,10 +44,10 @@ func Upload(logger *log.Logger, args []string) error {
 	bar := progressbar.Default(filestat.Size())
 
 	nChunks := int64(0)
-	buffer := make([]byte, 16*1024*1024)
+	buffer := make([]byte, 8*1024)
 
 	opts := &blob.WriterOptions{
-		BufferSize:     *buffer_size * 1000 * 1000,
+		BufferSize:     256 * 1024 * 1024,
 		MaxConcurrency: *max_concurrency,
 	}
 

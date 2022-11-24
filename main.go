@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	_ "gocloud.dev/blob/azureblob"
 	_ "gocloud.dev/blob/fileblob"
@@ -19,7 +20,22 @@ func main() {
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 
 	if len(os.Args) < 2 {
-		logger.Println("Command is required.")
+		helptext := `Usage: pmtiles [COMMAND] [ARGS]
+
+Inspecting pmtiles:
+pmtiles show file:// INPUT.pmtiles
+pmtiles show "s3://BUCKET_NAME INPUT.pmtiles
+
+Creating pmtiles:
+pmtiles convert INPUT.mbtiles OUTPUT.pmtiles
+pmtiles convert INPUT_V2.pmtiles OUTPUT_V3.pmtiles
+
+Uploading pmtiles:
+pmtiles upload INPUT.pmtiles s3://BUCKET_NAME REMOTE.pmtiles
+
+Running a proxy server:
+pmtiles serve "s3://BUCKET_NAME"`
+		fmt.Println(helptext)
 		os.Exit(1)
 	}
 
@@ -89,10 +105,11 @@ func main() {
 		pmtiles.SubpyramidXY(logger, path, output, uint8(num_args[0]), uint32(num_args[1]), uint32(num_args[2]), uint32(num_args[3]), uint32(num_args[4]), bounds)
 	case "convert":
 		convertCmd := flag.NewFlagSet("convert", flag.ExitOnError)
+		no_deduplication := convertCmd.Bool("no-deduplication", false, "Don't deduplicate data")
 		convertCmd.Parse(os.Args[2:])
 		path := convertCmd.Arg(0)
 		output := convertCmd.Arg(1)
-		err := pmtiles.Convert(logger, path, output)
+		err := pmtiles.Convert(logger, path, output, !(*no_deduplication))
 
 		if err != nil {
 			logger.Fatalf("Failed to convert %s, %v", path, err)

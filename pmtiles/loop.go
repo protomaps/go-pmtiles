@@ -138,7 +138,11 @@ func (loop *Loop) Start() {
 						}
 
 						if is_root {
-							header := deserialize_header(b[0:HEADERV3_LEN_BYTES])
+							header, err := deserialize_header(b[0:HEADERV3_LEN_BYTES])
+							if err != nil {
+								loop.logger.Printf("parsing header failed: %v", err)
+								return
+							}
 
 							// populate the root first before header
 							root_entries := deserialize_entries(bytes.NewBuffer(b[header.RootOffset : header.RootOffset+header.RootLength]))
@@ -256,7 +260,7 @@ func (loop *Loop) get_tile(ctx context.Context, http_headers map[string]string, 
 	tile_id := ZxyToId(z, x, y)
 	dir_offset, dir_len := header.RootOffset, header.RootLength
 
-	for depth := 0; depth <= 2; depth++ {
+	for depth := 0; depth <= 3; depth++ {
 		dir_req := Request{key: CacheKey{name: name, offset: dir_offset, length: dir_len}, value: make(chan CachedValue, 1)}
 		loop.reqs <- dir_req
 		dir_value := <-dir_req.value
@@ -265,10 +269,10 @@ func (loop *Loop) get_tile(ctx context.Context, http_headers map[string]string, 
 		if ok {
 			if entry.RunLength > 0 {
 				r, err := loop.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), nil)
-				defer r.Close()
 				if err != nil {
 					return 500, http_headers, []byte("Network error")
 				}
+				defer r.Close()
 				b, err := io.ReadAll(r)
 				if err != nil {
 					return 500, http_headers, []byte("I/O error")
