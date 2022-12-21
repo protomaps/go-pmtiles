@@ -107,7 +107,7 @@ pmtiles serve "s3://BUCKET_NAME"`
 	case "convert":
 		convertCmd := flag.NewFlagSet("convert", flag.ExitOnError)
 		no_deduplication := convertCmd.Bool("no-deduplication", false, "Don't deduplicate data")
-		tmproot := convertCmd.String("tmpdir", "", "An explicit path to write tmp data to")
+		tmproot := convertCmd.String("tmpdir", "", "An optional path to a folder to write tmp data to")
 		convertCmd.Parse(os.Args[2:])
 		path := convertCmd.Arg(0)
 		output := convertCmd.Arg(1)
