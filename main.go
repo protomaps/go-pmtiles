@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 	"strconv"
 	"time"
@@ -106,13 +107,55 @@ pmtiles serve "s3://BUCKET_NAME"`
 	case "convert":
 		convertCmd := flag.NewFlagSet("convert", flag.ExitOnError)
 		no_deduplication := convertCmd.Bool("no-deduplication", false, "Don't deduplicate data")
+		tmproot := convertCmd.String("tmpdir", "", "An explicit path to write tmp data to")
 		convertCmd.Parse(os.Args[2:])
 		path := convertCmd.Arg(0)
 		output := convertCmd.Arg(1)
-		err := pmtiles.Convert(logger, path, output, !(*no_deduplication))
 
-		if err != nil {
-			logger.Fatalf("Failed to convert %s, %v", path, err)
+		if *tmproot == "" {
+			err := pmtiles.Convert(logger, path, output, !(*no_deduplication))
+
+			if err != nil {
+				logger.Fatalf("Failed to convert %s, %v", path, err)
+			}
+
+		} else {
+
+			abs_tmproot, err := filepath.Abs(*tmproot)
+
+			if err != nil {
+				logger.Fatalf("Failed to derive absolute path for %s, %v", tmproot, err)
+			}
+
+			info, err := os.Stat(abs_tmproot)
+
+			if err != nil {
+				logger.Fatalf("Failed to stat %s, %v", abs_tmproot, err)
+			}
+
+			if !info.IsDir() {
+				logger.Fatalf("%s is not a directory", abs_tmproot)
+			}
+
+			now := time.Now()
+			tmpname := fmt.Sprintf("convert-%d", now.UnixMilli())
+
+			tmpfile := filepath.Join(abs_tmproot, tmpname)
+
+			f, err := os.OpenFile(tmpfile, os.O_RDWR|os.O_CREATE, 0644)
+
+			if err != nil {
+				logger.Fatalf("Failed to open %s for writing, %v", tmpfile, err)
+			}
+
+			defer os.Remove(tmpfile)
+
+			err = pmtiles.ConvertWithTempFile(logger, path, output, !(*no_deduplication), f)
+
+			if err != nil {
+				logger.Fatalf("Failed to convert %s, %v", path, err)
+			}
+
 		}
 
 	case "upload":
