@@ -6,7 +6,7 @@ import (
 )
 
 func TestResolver(t *testing.T) {
-	resolver := NewResolver(true,true)
+	resolver := NewResolver(true, true)
 	resolver.AddTileIsNew(1, []byte{0x1, 0x2})
 	assert.Equal(t,1,len(resolver.Entries))
 	resolver.AddTileIsNew(2, []byte{0x1, 0x3})
@@ -45,7 +45,7 @@ func TestV2UpgradeExtra(t *testing.T) {
 		"center":      "-122.1906,37.7599,11",
 		"format":      "pbf",
 		"compression": "gzip",
-		"json": "{\"abc\":\"def\"}",
+		"json":        "{\"abc\":\"def\"}",
 	}, []byte{0x0, 0x0, 0x0, 0x0})
 	assert.Nil(t,err)
 	assert.Equal(t, int32(-122.1906*10000000), header.CenterLonE7)

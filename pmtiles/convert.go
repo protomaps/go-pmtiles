@@ -111,6 +111,14 @@ func Convert(logger *log.Logger, input string, output string, deduplicate bool) 
 	}
 }
 
+func ConvertWithTempFile(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
+	if strings.HasSuffix(input, ".pmtiles") {
+		return ConvertPmtilesV2WithTempFile(logger, input, output, deduplicate, tmpfile)
+	} else {
+		return ConvertMbtilesWithTempFile(logger, input, output, deduplicate, tmpfile)
+	}
+}
+
 func add_directoryv2_entries(dir DirectoryV2, entries *[]EntryV3, f *os.File) {
 	for zxy, rng := range dir.Entries {
 		tile_id := ZxyToId(zxy.Z, zxy.X, zxy.Y)
@@ -147,6 +155,19 @@ func set_zoom_center_defaults(header *HeaderV3, entries []EntryV3) {
 }
 
 func ConvertPmtilesV2(logger *log.Logger, input string, output string, deduplicate bool) error {
+
+	tmpfile, err := ioutil.TempFile("", "")
+
+	if err != nil {
+		return fmt.Errorf("Failed to create temp file, %w", err)
+	}
+
+	defer os.Remove(tmpfile.Name())
+
+	return ConvertPmtilesV2WithTempFile(logger, input, output, deduplicate, tmpfile)
+}
+
+func ConvertPmtilesV2WithTempFile(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
 	start := time.Now()
 	f, err := os.Open(input)
 	if err != nil {
@@ -187,12 +208,6 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 		return entries[i].TileId < entries[j].TileId
 	})
 
-	tmpfile, err := ioutil.TempFile("", "")
-	if err != nil {
-		return fmt.Errorf("Failed to create temp file, %w", err)
-	}
-	defer os.Remove(tmpfile.Name())
-
 	// re-use resolver, because even if archives are de-duplicated we may need to recompress.
 	resolver := NewResolver(deduplicate, header.TileType == Mvt)
 
@@ -226,6 +241,17 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 }
 
 func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate bool) error {
+
+	tmpfile, err := ioutil.TempFile("", "")
+	if err != nil {
+		return fmt.Errorf("Failed to create temporary file, %w", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	return ConvertMbtilesWithTempFile(logger, input, output, deduplicate, tmpfile)
+}
+
+func ConvertMbtilesWithTempFile(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
 	start := time.Now()
 	conn, err := sqlite.OpenConn(input, sqlite.OpenReadOnly)
 	if err != nil {
@@ -304,12 +330,6 @@ func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate
 			bar.Add(1)
 		}
 	}
-
-	tmpfile, err := ioutil.TempFile("", "")
-	if err != nil {
-		return fmt.Errorf("Failed to create temporary file, %w", err)
-	}
-	defer os.Remove(tmpfile.Name())
 
 	logger.Println("Pass 2: writing tiles")
 	resolver := NewResolver(deduplicate, header.TileType == Mvt)
