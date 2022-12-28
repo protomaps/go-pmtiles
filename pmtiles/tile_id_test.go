@@ -1,6 +1,7 @@
 package pmtiles
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -60,5 +61,29 @@ func TestManyTileIds(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestExtremes(t *testing.T) {
+	var tz uint8
+	for tz = 0; tz < 32; tz++ {
+		var dim uint32
+		dim = (1 << tz) - 1
+		z, x, y := IdToZxy(ZxyToId(tz, 0, 0))
+		assert.Equal(t, tz, z)
+		assert.Equal(t, uint32(0), x)
+		assert.Equal(t, uint32(0), y)
+		z, x, y = IdToZxy(ZxyToId(z, dim, 0))
+		assert.Equal(t, tz, z)
+		assert.Equal(t, dim, x)
+		assert.Equal(t, uint32(0), y)
+		z, x, y = IdToZxy(ZxyToId(z, 0, dim))
+		assert.Equal(t, tz, z)
+		assert.Equal(t, uint32(0), x)
+		assert.Equal(t, dim, y)
+		z, x, y = IdToZxy(ZxyToId(z, dim, dim))
+		assert.Equal(t, tz, z)
+		assert.Equal(t, dim, x)
+		assert.Equal(t, dim, y)
 	}
 }
