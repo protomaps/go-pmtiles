@@ -1,8 +1,7 @@
 package main
 
 import (
-	"flag"
-	"fmt"
+	"github.com/alecthomas/kong"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	_ "gocloud.dev/blob/azureblob"
 	_ "gocloud.dev/blob/fileblob"
@@ -12,53 +11,59 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime/pprof"
 	"strconv"
 	"time"
 )
 
+var cli struct {
+	Convert struct {
+		Input           string `arg:"" help:"Input archive." type:"path"`
+		Output          string `arg:"" help:"Output PMTiles archive." type:"path"`
+		Force           bool   `help:"Force removal."`
+		NoDeduplication bool   `help:"Don't attempt to deduplicate tiles."`
+		Tmpdir          string `help:"An optional path to a folder for tmp data." type:"existingdir"`
+	} `cmd:"" help:"Convert an MBTiles or older spec version to PMTiles."`
+
+	Show struct {
+		Bucket string `arg:"" help:"Remote bucket or local file:// dir"`
+		Key    string `arg:""`
+		Z      *int   `arg:"" optional:""`
+		X      *int   `arg:"" optional:""`
+		Y      *int   `arg:"" optional:""`
+	} `cmd:"" help:"Inspect a local dir (file://) or remote (s3://) PMTiles."`
+
+	Serve struct {
+		Bucket    string `arg:""`
+		Port      int    `default:8080`
+		Cors      string `help:"Value of HTTP CORS header."`
+		CacheSize int    `default:64 help:"Size of cache in Megabytes."`
+	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
+
+	Upload struct {
+		Input          string `arg:""`
+		Bucket         string `arg:""`
+		Key            string `arg:""`
+		MaxConcurrency int    `default:2 help:"# of upload threads"`
+	} `cmd:"" help:"Upload a local PMTiles to remote storage."`
+}
+
 func main() {
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
+	ctx := kong.Parse(&cli)
 
-	if len(os.Args) < 2 {
-		helptext := `Usage: pmtiles [COMMAND] [ARGS]
-
-Inspecting pmtiles:
-pmtiles show file:// INPUT.pmtiles
-pmtiles show "s3://BUCKET_NAME INPUT.pmtiles
-
-Creating pmtiles:
-pmtiles convert INPUT.mbtiles OUTPUT.pmtiles
-pmtiles convert INPUT_V2.pmtiles OUTPUT_V3.pmtiles
-
-Uploading pmtiles:
-pmtiles upload INPUT.pmtiles s3://BUCKET_NAME REMOTE.pmtiles
-
-Running a proxy server:
-pmtiles serve "s3://BUCKET_NAME"`
-		fmt.Println(helptext)
-		os.Exit(1)
-	}
-
-	switch os.Args[1] {
-	case "show":
-		err := pmtiles.Show(logger, os.Args[2:])
-
+	switch ctx.Command() {
+	case "show <bucket> <key>":
+		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Key, cli.Show.Z, cli.Show.X, cli.Show.Y)
 		if err != nil {
 			logger.Fatalf("Failed to show database, %v", err)
 		}
-	case "serve":
-		serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
-		port := serveCmd.String("p", "8080", "port to serve on")
-		cors := serveCmd.String("cors", "", "CORS allowed origin value")
-		cacheSize := serveCmd.Int("cache", 64, "Cache size in mb")
-		serveCmd.Parse(os.Args[2:])
-		path := serveCmd.Arg(0)
-		if path == "" {
-			logger.Println("USAGE: serve  [-p PORT] [-cors VALUE] LOCAL_PATH or https://BUCKET")
-			os.Exit(1)
+	case "show <bucket> <key> <z> <x> <y>":
+		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Key, cli.Show.Z, cli.Show.X, cli.Show.Y)
+		if err != nil {
+			logger.Fatalf("Failed to show database, %v", err)
 		}
-		loop, err := pmtiles.NewLoop(path, logger, *cacheSize, *cors)
+	case "serve <bucket>":
+		loop, err := pmtiles.NewLoop(cli.Serve.Bucket, logger, cli.Serve.Port, cli.Serve.Cors)
 
 		if err != nil {
 			logger.Fatalf("Failed to create new loop, %v", err)
@@ -77,44 +82,17 @@ pmtiles serve "s3://BUCKET_NAME"`
 			logger.Printf("served %s in %s", r.URL.Path, time.Since(start))
 		})
 
-		logger.Printf("Serving %s on HTTP port: %s with Access-Control-Allow-Origin: %s\n", path, *port, *cors)
-		logger.Fatal(http.ListenAndServe(":"+*port, nil))
-	case "subpyramid":
-		subpyramidCmd := flag.NewFlagSet("subpyramid", flag.ExitOnError)
-		cpuProfile := subpyramidCmd.Bool("profile", false, "profiling output")
-		subpyramidCmd.Parse(os.Args[2:])
-		path := subpyramidCmd.Arg(0)
-		output := subpyramidCmd.Arg(1)
-
-		var err error
-		num_args := make([]int, 5)
-		for i := 0; i < 5; i++ {
-			if num_args[i], err = strconv.Atoi(subpyramidCmd.Arg(i + 2)); err != nil {
-				panic(err)
-			}
-		}
-
-		if *cpuProfile {
-			f, err := os.Create("output.profile")
-			if err != nil {
-				log.Fatal(err)
-			}
-			pprof.StartCPUProfile(f)
-			defer pprof.StopCPUProfile()
-		}
-		bounds := "-180,-90,180,90" // TODO deal with antimeridian, center of tile, etc
-		pmtiles.SubpyramidXY(logger, path, output, uint8(num_args[0]), uint32(num_args[1]), uint32(num_args[2]), uint32(num_args[3]), uint32(num_args[4]), bounds)
-	case "convert":
-		convertCmd := flag.NewFlagSet("convert", flag.ExitOnError)
-		no_deduplication := convertCmd.Bool("no-deduplication", false, "Don't deduplicate data")
-		tmproot := convertCmd.String("tmpdir", "", "An optional path to a folder to write tmp data to")
-		convertCmd.Parse(os.Args[2:])
-		path := convertCmd.Arg(0)
-		output := convertCmd.Arg(1)
+		logger.Printf("Serving %s on HTTP port: %s with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Port, cli.Serve.Cors)
+		logger.Fatal(http.ListenAndServe(":"+strconv.Itoa(cli.Serve.Port), nil))
+	case "extract <input>":
+		// not yet implemented
+	case "convert <input> <output>":
+		path := cli.Convert.Input
+		output := cli.Convert.Output
 
 		var tmpfile *os.File
 
-		if *tmproot == "" {
+		if cli.Convert.Tmpdir == "" {
 			var err error
 			tmpfile, err = os.CreateTemp("", "pmtiles")
 
@@ -122,10 +100,10 @@ pmtiles serve "s3://BUCKET_NAME"`
 				logger.Fatalf("Failed to create temp file, %w", err)
 			}
 		} else {
-			abs_tmproot, err := filepath.Abs(*tmproot)
+			abs_tmproot, err := filepath.Abs(cli.Convert.Tmpdir)
 
 			if err != nil {
-				logger.Fatalf("Failed to derive absolute path for %s, %v", tmproot, err)
+				logger.Fatalf("Failed to derive absolute path for %s, %v", cli.Convert.Tmpdir, err)
 			}
 
 			info, err := os.Stat(abs_tmproot)
@@ -146,24 +124,22 @@ pmtiles serve "s3://BUCKET_NAME"`
 		}
 
 		defer os.Remove(tmpfile.Name())
-		err := pmtiles.Convert(logger, path, output, !(*no_deduplication), tmpfile)
+		err := pmtiles.Convert(logger, path, output, !cli.Convert.NoDeduplication, tmpfile)
 
 		if err != nil {
 			logger.Fatalf("Failed to convert %s, %v", path, err)
 		}
-	case "upload":
-		err := pmtiles.Upload(logger, os.Args[2:])
+	case "upload <input> <bucket> <key>":
+
+		err := pmtiles.Upload(logger, cli.Upload.Input, cli.Upload.Bucket, cli.Upload.Key, cli.Upload.MaxConcurrency)
 
 		if err != nil {
 			logger.Fatalf("Failed to upload file, %v", err)
 		}
-
-	case "validate":
-		// pmtiles.Validate()
+	case "validate <path>":
+		// not yet implemented
 	default:
-		logger.Println("unrecognized command.")
-		flag.PrintDefaults()
-		os.Exit(1)
+		panic(ctx.Command())
 	}
 
 }

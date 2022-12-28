@@ -2,7 +2,6 @@ package pmtiles
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"github.com/schollz/progressbar/v3"
 	"gocloud.dev/blob"
@@ -11,28 +10,15 @@ import (
 	"os"
 )
 
-func Upload(logger *log.Logger, args []string) error {
-	cmd := flag.NewFlagSet("upload", flag.ExitOnError)
-	max_concurrency := cmd.Int("max-concurrency", 2, "Number of upload threads")
-
-	cmd.Parse(args)
-	source := cmd.Arg(0)
-	bucketURL := cmd.Arg(1)
-	destination := cmd.Arg(2)
-
-	if source == "" || bucketURL == "" || destination == "" {
-		return fmt.Errorf("USAGE: upload [-max-concurrency M] INPUT s3://BUCKET?region=region DESTINATION")
-	}
-
-	logger.Println(source, bucketURL, destination)
+func Upload(logger *log.Logger, input string, bucket string, key string, max_concurrency int) error {
 	ctx := context.Background()
-	b, err := blob.OpenBucket(ctx, bucketURL)
+	b, err := blob.OpenBucket(ctx, bucket)
 	if err != nil {
 		return fmt.Errorf("Failed to setup bucket: %w", err)
 	}
 	defer b.Close()
 
-	f, err := os.Open(source)
+	f, err := os.Open(input)
 	if err != nil {
 		return fmt.Errorf("Failed to open file: %w", err)
 	}
@@ -48,10 +34,10 @@ func Upload(logger *log.Logger, args []string) error {
 
 	opts := &blob.WriterOptions{
 		BufferSize:     256 * 1024 * 1024,
-		MaxConcurrency: *max_concurrency,
+		MaxConcurrency: max_concurrency,
 	}
 
-	w, err := b.NewWriter(ctx, destination, opts)
+	w, err := b.NewWriter(ctx, key, opts)
 	if err != nil {
 		return fmt.Errorf("Failed to obtain writer: %w", err)
 	}

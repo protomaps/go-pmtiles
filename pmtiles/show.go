@@ -5,25 +5,15 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"github.com/dustin/go-humanize"
 	"gocloud.dev/blob"
 	"io"
 	"log"
 	"os"
-	"strconv"
 )
 
-func Show(logger *log.Logger, args []string) error {
-	cmd := flag.NewFlagSet("show", flag.ExitOnError)
-	cmd.Parse(args)
-	bucketURL := cmd.Arg(0)
-	file := cmd.Arg(1)
-	arg_z := cmd.Arg(2)
-	arg_x := cmd.Arg(3)
-	arg_y := cmd.Arg(4)
-
+func Show(logger *log.Logger, bucketURL string, file string, z *int, x *int, y *int) error {
 	if bucketURL == "" || file == "" {
 		return fmt.Errorf("USAGE: show BUCKET_URL KEY")
 	}
@@ -57,7 +47,7 @@ func Show(logger *log.Logger, args []string) error {
 		return fmt.Errorf("Failed to read %s, %w", file, err)
 	}
 
-	if arg_z == "" {
+	if z == nil {
 		var tile_type string
 		switch header.TileType {
 		case Mvt:
@@ -120,10 +110,7 @@ func Show(logger *log.Logger, args []string) error {
 	} else {
 		// write the tile to stdout
 
-		z, _ := strconv.ParseUint(arg_z, 10, 8)
-		x, _ := strconv.ParseUint(arg_x, 10, 32)
-		y, _ := strconv.ParseUint(arg_y, 10, 32)
-		tile_id := ZxyToId(uint8(z), uint32(x), uint32(y))
+		tile_id := ZxyToId(uint8(*z), uint32(*x), uint32(*y))
 
 		dir_offset := header.RootOffset
 		dir_length := header.RootLength

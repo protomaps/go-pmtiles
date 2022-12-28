@@ -4,6 +4,7 @@ go 1.18
 
 require (
 	github.com/RoaringBitmap/roaring v1.2.1
+	github.com/alecthomas/kong v0.7.1
 	github.com/dustin/go-humanize v1.0.0
 	github.com/schollz/progressbar/v3 v3.11.0
 	github.com/stretchr/testify v1.8.0
