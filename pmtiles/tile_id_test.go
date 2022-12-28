@@ -6,45 +6,27 @@ import (
 )
 
 func TestZxyToId(t *testing.T) {
-	id := ZxyToId(0, 0, 0)
-	if id != 0 {
-		t.Fatalf(`expected %d to be 0`, id)
-	}
-	id = ZxyToId(1, 0, 0)
-	if id != 1 {
-		t.Fatalf(`expected %d to be 1`, id)
-	}
-	id = ZxyToId(1, 0, 1)
-	if id != 2 {
-		t.Fatalf(`expected %d to be 2`, id)
-	}
-	id = ZxyToId(1, 1, 1)
-	if id != 3 {
-		t.Fatalf(`expected %d to be 3`, id)
-	}
-	id = ZxyToId(1, 1, 0)
-	if id != 4 {
-		t.Fatalf(`expected %d to be 4`, id)
-	}
-	id = ZxyToId(2, 0, 0)
-	if id != 5 {
-		t.Fatalf(`expected %d to be 5`, id)
-	}
+	assert.Equal(t, uint64(0), ZxyToId(0, 0, 0))
+	assert.Equal(t, uint64(1), ZxyToId(1, 0, 0))
+	assert.Equal(t, uint64(2), ZxyToId(1, 0, 1))
+	assert.Equal(t, uint64(3), ZxyToId(1, 1, 1))
+	assert.Equal(t, uint64(4), ZxyToId(1, 1, 0))
+	assert.Equal(t, uint64(5), ZxyToId(2, 0, 0))
 }
 
 func TestIdToZxy(t *testing.T) {
 	z, x, y := IdToZxy(0)
-	if !(z == 0 && x == 0 && y == 0) {
-		t.Fatalf(`expected to be (0,0,0)`)
-	}
+	assert.Equal(t, uint8(0), z)
+	assert.Equal(t, uint32(0), x)
+	assert.Equal(t, uint32(0), y)
 	z, x, y = IdToZxy(1)
-	if !(z == 1 && x == 0 && y == 0) {
-		t.Fatalf(`expected to be (1,0,0)`)
-	}
+	assert.Equal(t, uint8(1), z)
+	assert.Equal(t, uint32(0), x)
+	assert.Equal(t, uint32(0), y)
 	z, x, y = IdToZxy(19078479)
-	if !(z == 12 && x == 3423 && y == 1763) {
-		t.Fatalf(`expected to be (12,3423,1763)`)
-	}
+	assert.Equal(t, uint8(12), z)
+	assert.Equal(t, uint32(3423), x)
+	assert.Equal(t, uint32(1763), y)
 }
 
 func TestManyTileIds(t *testing.T) {
