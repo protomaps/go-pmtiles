@@ -112,15 +112,16 @@ pmtiles serve "s3://BUCKET_NAME"`
 		path := convertCmd.Arg(0)
 		output := convertCmd.Arg(1)
 
+		var tmpfile *os.File
+
 		if *tmproot == "" {
-			err := pmtiles.Convert(logger, path, output, !(*no_deduplication))
+			var err error
+			tmpfile, err = os.CreateTemp("", "pmtiles")
 
 			if err != nil {
-				logger.Fatalf("Failed to convert %s, %v", path, err)
+				logger.Fatalf("Failed to create temp file, %w", err)
 			}
-
 		} else {
-
 			abs_tmproot, err := filepath.Abs(*tmproot)
 
 			if err != nil {
@@ -137,27 +138,19 @@ pmtiles serve "s3://BUCKET_NAME"`
 				logger.Fatalf("%s is not a directory", abs_tmproot)
 			}
 
-			now := time.Now()
-			tmpname := fmt.Sprintf("convert-%d", now.UnixMilli())
-
-			tmpfile := filepath.Join(abs_tmproot, tmpname)
-
-			f, err := os.OpenFile(tmpfile, os.O_RDWR|os.O_CREATE, 0644)
+			tmpfile, err = os.CreateTemp(abs_tmproot, "pmtiles")
 
 			if err != nil {
-				logger.Fatalf("Failed to open %s for writing, %v", tmpfile, err)
+				logger.Fatalf("Failed to create temp file, %w", err)
 			}
-
-			defer os.Remove(tmpfile)
-
-			err = pmtiles.ConvertWithTempFile(logger, path, output, !(*no_deduplication), f)
-
-			if err != nil {
-				logger.Fatalf("Failed to convert %s, %v", path, err)
-			}
-
 		}
 
+		defer os.Remove(tmpfile.Name())
+		err := pmtiles.Convert(logger, path, output, !(*no_deduplication), tmpfile)
+
+		if err != nil {
+			logger.Fatalf("Failed to convert %s, %v", path, err)
+		}
 	case "upload":
 		err := pmtiles.Upload(logger, os.Args[2:])
 
