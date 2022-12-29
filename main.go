@@ -67,6 +67,10 @@ var cli struct {
 }
 
 func main() {
+	if len(os.Args) < 2 {
+		os.Args = append(os.Args, "--help")
+	}
+
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 	ctx := kong.Parse(&cli)
 
@@ -101,7 +105,7 @@ func main() {
 			logger.Printf("served %s in %s", r.URL.Path, time.Since(start))
 		})
 
-		logger.Printf("Serving %s on port %d with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Port, cli.Serve.Cors)
+		logger.Printf("Serving %s %s on port %d with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Cors)
 		logger.Fatal(http.ListenAndServe(":"+strconv.Itoa(cli.Serve.Port), nil))
 	case "extract <input>":
 		logger.Fatalf("This command is not yet implemented.")
