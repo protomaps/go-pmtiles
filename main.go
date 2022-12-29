@@ -51,7 +51,7 @@ var cli struct {
 	} `cmd:"" help:"Verifies that a local archive is valid."`
 
 	Serve struct {
-		Dir       string `arg:"" help:"Local path or bucket prefix"`
+		Path      string `arg:"" help:"Local path or bucket prefix"`
 		Port      int    `default:8080`
 		Cors      string `help:"Value of HTTP CORS header."`
 		CacheSize int    `default:64 help:"Size of cache in Megabytes."`
@@ -81,8 +81,8 @@ func main() {
 		if err != nil {
 			logger.Fatalf("Failed to show database, %v", err)
 		}
-	case "serve <dir>":
-		loop, err := pmtiles.NewLoop(cli.Serve.Bucket, logger, cli.Serve.Port, cli.Serve.Cors)
+	case "serve <path>":
+		loop, err := pmtiles.NewLoop(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.Port, cli.Serve.Cors)
 
 		if err != nil {
 			logger.Fatalf("Failed to create new loop, %v", err)
@@ -104,7 +104,7 @@ func main() {
 		logger.Printf("Serving %s on port %d with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Port, cli.Serve.Cors)
 		logger.Fatal(http.ListenAndServe(":"+strconv.Itoa(cli.Serve.Port), nil))
 	case "extract <input>":
-		// not yet implemented
+		logger.Fatalf("This command is not yet implemented.")
 	case "convert <input> <output>":
 		path := cli.Convert.Input
 		output := cli.Convert.Output
@@ -145,7 +145,7 @@ func main() {
 			logger.Fatalf("Failed to upload file, %v", err)
 		}
 	case "verify <path>":
-		// not yet implemented
+		logger.Fatalf("This command is not yet implemented.")
 	default:
 		panic(ctx.Command())
 	}

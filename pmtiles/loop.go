@@ -10,7 +10,9 @@ import (
 	"log"
 	"regexp"
 	"strconv"
-	"net/url"
+	"strings"
+	"path"
+	"os"
 )
 
 type CacheKey struct {
@@ -66,23 +68,29 @@ type Loop struct {
 	cors      string
 }
 
-func NewLoop(path string, logger *log.Logger, cacheSize int, cors string) (*Loop, error) {
-	if path == "" {
-		path = "file:///"
-	}
-
-	u, err := url.Parse(path)
-	if u.Scheme == "" {
-		path = "file://" + path
+func NewLoop(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string) (*Loop, error) {
+	if bucketURL == "" {
+		if strings.HasPrefix(prefix,"/") {
+			bucketURL = "file:///"
+		} else {
+			bucketURL = "file://"
+		}
 	}
 
 	reqs := make(chan Request, 8)
 
 	ctx := context.Background()
 
-	bucket, err := blob.OpenBucket(ctx, path)
+	bucket, err := blob.OpenBucket(ctx, bucketURL)
+
+
+	if prefix != "/" && prefix != "." {
+		bucket = blob.PrefixedBucket(bucket, path.Clean(prefix) + string(os.PathSeparator))
+	}
+
+
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open bucket for %s, %w", path, err)
+		return nil, fmt.Errorf("Failed to open bucket for %s, %w", prefix, err)
 	}
 
 	l := &Loop{
