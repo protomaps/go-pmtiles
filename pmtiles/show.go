@@ -11,11 +11,16 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 )
 
-func Show(logger *log.Logger, bucketURL string, file string, z *int, x *int, y *int) error {
-	if bucketURL == "" || file == "" {
-		return fmt.Errorf("USAGE: show BUCKET_URL KEY")
+func Show(logger *log.Logger, bucketURL string, file string, show_tile bool, z int, x int, y int) error {
+	if bucketURL == "" {
+		if strings.HasPrefix(file,"/") {
+			bucketURL = "file:///"
+		} else {
+			bucketURL = "file://"
+		}
 	}
 
 	ctx := context.Background()
@@ -47,7 +52,7 @@ func Show(logger *log.Logger, bucketURL string, file string, z *int, x *int, y *
 		return fmt.Errorf("Failed to read %s, %w", file, err)
 	}
 
-	if z == nil {
+	if !show_tile {
 		var tile_type string
 		switch header.TileType {
 		case Mvt:
@@ -110,7 +115,7 @@ func Show(logger *log.Logger, bucketURL string, file string, z *int, x *int, y *
 	} else {
 		// write the tile to stdout
 
-		tile_id := ZxyToId(uint8(*z), uint32(*x), uint32(*y))
+		tile_id := ZxyToId(uint8(z), uint32(x), uint32(y))
 
 		dir_offset := header.RootOffset
 		dir_length := header.RootLength

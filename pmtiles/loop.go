@@ -10,6 +10,7 @@ import (
 	"log"
 	"regexp"
 	"strconv"
+	"net/url"
 )
 
 type CacheKey struct {
@@ -66,6 +67,15 @@ type Loop struct {
 }
 
 func NewLoop(path string, logger *log.Logger, cacheSize int, cors string) (*Loop, error) {
+	if path == "" {
+		path = "file:///"
+	}
+
+	u, err := url.Parse(path)
+	if u.Scheme == "" {
+		path = "file://" + path
+	}
+
 	reqs := make(chan Request, 8)
 
 	ctx := context.Background()
