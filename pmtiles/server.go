@@ -60,7 +60,7 @@ type Response struct {
 // 	return true
 // }
 
-type Loop struct {
+type Server struct {
 	reqs      chan Request
 	bucket    *blob.Bucket
 	logger    *log.Logger
@@ -68,7 +68,7 @@ type Loop struct {
 	cors      string
 }
 
-func NewLoop(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string) (*Loop, error) {
+func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string) (*Server, error) {
 	if bucketURL == "" {
 		if strings.HasPrefix(prefix,"/") {
 			bucketURL = "file:///"
@@ -93,7 +93,7 @@ func NewLoop(bucketURL string, prefix string, logger *log.Logger, cacheSize int,
 		return nil, fmt.Errorf("Failed to open bucket for %s, %w", prefix, err)
 	}
 
-	l := &Loop{
+	l := &Server{
 		reqs:      reqs,
 		bucket:    bucket,
 		logger:    logger,
@@ -104,7 +104,7 @@ func NewLoop(bucketURL string, prefix string, logger *log.Logger, cacheSize int,
 	return l, nil
 }
 
-func (loop *Loop) Start() {
+func (server *Server) Start() {
 	go func() {
 		cache := make(map[CacheKey]*list.Element)
 		inflight := make(map[CacheKey][]Request)
@@ -115,7 +115,7 @@ func (loop *Loop) Start() {
 
 		for {
 			select {
-			case req := <-loop.reqs:
+			case req := <-server.reqs:
 				key := req.key
 				if val, ok := cache[key]; ok {
 					evictList.MoveToFront(val)
@@ -136,14 +136,14 @@ func (loop *Loop) Start() {
 							length = 16384
 						}
 
-						loop.logger.Printf("fetching %s %d-%d", key.name, offset, length)
-						r, err := loop.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length, nil)
+						server.logger.Printf("fetching %s %d-%d", key.name, offset, length)
+						r, err := server.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length, nil)
 
 						// TODO: store away ETag
 						if err != nil {
 							ok = false
 							resps <- Response{key: key, value: result}
-							loop.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
+							server.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
 							return
 						}
 						defer r.Close()
@@ -151,14 +151,14 @@ func (loop *Loop) Start() {
 						if err != nil {
 							ok = false
 							resps <- Response{key: key, value: result}
-							loop.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
+							server.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
 							return
 						}
 
 						if is_root {
 							header, err := deserialize_header(b[0:HEADERV3_LEN_BYTES])
 							if err != nil {
-								loop.logger.Printf("parsing header failed: %v", err)
+								server.logger.Printf("parsing header failed: %v", err)
 								return
 							}
 
@@ -177,7 +177,7 @@ func (loop *Loop) Start() {
 							resps <- Response{key: key, value: result, size: 24 * len(directory), ok: true}
 						}
 
-						loop.logger.Printf("fetched %s %d-%d", key.name, key.offset, key.length)
+						server.logger.Printf("fetched %s %d-%d", key.name, key.offset, key.length)
 					}()
 				}
 			case resp := <-resps:
@@ -195,7 +195,7 @@ func (loop *Loop) Start() {
 					cache[key] = entry
 
 					for {
-						if totalSize < loop.cacheSize*1000*1000 {
+						if totalSize < server.cacheSize*1000*1000 {
 							break
 						}
 						ent := evictList.Back()
@@ -212,9 +212,9 @@ func (loop *Loop) Start() {
 	}()
 }
 
-func (loop *Loop) get_metadata(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
+func (server *Server) get_metadata(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
 	root_req := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
-	loop.reqs <- root_req
+	server.reqs <- root_req
 	root_value := <-root_req.value
 	header := root_value.header
 
@@ -222,7 +222,7 @@ func (loop *Loop) get_metadata(ctx context.Context, http_headers map[string]stri
 		return 404, http_headers, []byte("Archive not found")
 	}
 
-	r, err := loop.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), nil)
+	r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), nil)
 	if err != nil {
 		return 404, http_headers, []byte("Archive not found")
 	}
@@ -240,9 +240,9 @@ func (loop *Loop) get_metadata(ctx context.Context, http_headers map[string]stri
 	return 200, http_headers, b
 }
 
-func (loop *Loop) get_tile(ctx context.Context, http_headers map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
+func (server *Server) get_tile(ctx context.Context, http_headers map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
 	root_req := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
-	loop.reqs <- root_req
+	server.reqs <- root_req
 
 	// https://golang.org/doc/faq#atomic_maps
 	root_value := <-root_req.value
@@ -280,13 +280,13 @@ func (loop *Loop) get_tile(ctx context.Context, http_headers map[string]string, 
 
 	for depth := 0; depth <= 3; depth++ {
 		dir_req := Request{key: CacheKey{name: name, offset: dir_offset, length: dir_len}, value: make(chan CachedValue, 1)}
-		loop.reqs <- dir_req
+		server.reqs <- dir_req
 		dir_value := <-dir_req.value
 		directory := dir_value.directory
 		entry, ok := find_tile(directory, tile_id)
 		if ok {
 			if entry.RunLength > 0 {
-				r, err := loop.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), nil)
+				r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), nil)
 				if err != nil {
 					return 500, http_headers, []byte("Network error")
 				}
@@ -337,17 +337,17 @@ func parse_metadata_path(path string) (bool, string) {
 	return false, ""
 }
 
-func (loop *Loop) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
+func (server *Server) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
 	http_headers := make(map[string]string)
-	if len(loop.cors) > 0 {
-		http_headers["Access-Control-Allow-Origin"] = loop.cors
+	if len(server.cors) > 0 {
+		http_headers["Access-Control-Allow-Origin"] = server.cors
 	}
 
 	if ok, key, z, x, y, ext := parse_tile_path(path); ok {
-		return loop.get_tile(ctx, http_headers, key, z, x, y, ext)
+		return server.get_tile(ctx, http_headers, key, z, x, y, ext)
 	}
 	if ok, key := parse_metadata_path(path); ok {
-		return loop.get_metadata(ctx, http_headers, key)
+		return server.get_metadata(ctx, http_headers, key)
 	}
 
 	return 404, http_headers, []byte("Tile not found")

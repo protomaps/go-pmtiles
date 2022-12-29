@@ -82,17 +82,17 @@ func main() {
 			logger.Fatalf("Failed to show database, %v", err)
 		}
 	case "serve <path>":
-		loop, err := pmtiles.NewLoop(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.Port, cli.Serve.Cors)
+		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.Port, cli.Serve.Cors)
 
 		if err != nil {
-			logger.Fatalf("Failed to create new loop, %v", err)
+			logger.Fatalf("Failed to create new server, %v", err)
 		}
 
-		loop.Start()
+		server.Start()
 
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			status_code, headers, body := loop.Get(r.Context(), r.URL.Path)
+			status_code, headers, body := server.Get(r.Context(), r.URL.Path)
 			for k, v := range headers {
 				w.Header().Set(k, v)
 			}
