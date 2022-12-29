@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/alecthomas/kong"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	_ "gocloud.dev/blob/azureblob"
@@ -13,6 +14,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+)
+
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
 )
 
 var cli struct {
@@ -64,6 +71,9 @@ var cli struct {
 		MaxConcurrency int    `default:2 help:"# of upload threads"`
 		Bucket         string `required:"" help:"Bucket to upload to."`
 	} `cmd:"" help:"Upload a local archive to remote storage."`
+
+	Version struct {
+	} `cmd:"" help:"Show the program version."`
 }
 
 func main() {
@@ -150,6 +160,8 @@ func main() {
 		}
 	case "verify <path>":
 		logger.Fatalf("This command is not yet implemented.")
+	case "version":
+		fmt.Printf("pmtiles %s, commit %s, built at %s\n", version, commit, date)
 	default:
 		panic(ctx.Command())
 	}
