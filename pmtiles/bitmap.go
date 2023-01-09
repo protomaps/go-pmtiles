@@ -59,11 +59,8 @@ func generalizeOr(r *roaring64.Bitmap) {
 	for current_z := int(max_z); current_z > 0; current_z-- {
 		iter := to_iterate.Iterator()
 		for iter.HasNext() {
-			z, x, y := IdToZxy(iter.Next())
-			parent_z := z - 1
-			parent_x := x >> 1
-			parent_y := y >> 1
-			temp.Add(ZxyToId(parent_z, parent_x, parent_y))
+			parent_id := ParentId(iter.Next())
+			temp.Add(parent_id)
 		}
 		to_iterate = temp
 		r.Or(temp)
@@ -89,8 +86,7 @@ func generalizeAnd(r *roaring64.Bitmap) {
 		current := uint64(0) // check me...
 		for iter.HasNext() {
 			id := iter.Next()
-			z, x, y := IdToZxy(id)
-			parent_id := ZxyToId(z-1, x>>1, y>>1)
+			parent_id := ParentId(id)
 			if parent_id == current {
 				filled += 1
 				if filled == 4 {
