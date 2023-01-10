@@ -1,8 +1,8 @@
 package main
 
 import (
-	"flag"
 	"fmt"
+	"github.com/alecthomas/kong"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	_ "gocloud.dev/blob/azureblob"
 	_ "gocloud.dev/blob/fileblob"
@@ -11,63 +11,102 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"runtime/pprof"
+	"path/filepath"
 	"strconv"
 	"time"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
+var cli struct {
+	Convert struct {
+		Input           string `arg:"" help:"Input archive." type:"existingfile"`
+		Output          string `arg:"" help:"Output PMTiles archive." type:"path"`
+		Force           bool   `help:"Force removal."`
+		NoDeduplication bool   `help:"Don't attempt to deduplicate tiles."`
+		Tmpdir          string `help:"An optional path to a folder for tmp data." type:"existingdir"`
+	} `cmd:"" help:"Convert an MBTiles or older spec version to PMTiles."`
+
+	Show struct {
+		Path   string `arg:""`
+		Bucket string `help:"Remote bucket"`
+	} `cmd:"" help:"Inspect a local or remote archive."`
+
+	Tile struct {
+		Path   string `arg:""`
+		Z      int    `arg:""`
+		X      int    `arg:""`
+		Y      int    `arg:""`
+		Bucket string `help:"Remote bucket"`
+	} `cmd:"" help:"Fetch one tile from a local or remote archive and output on stdout."`
+
+	Extract struct {
+		Input   string `arg:"" help:"Input local or remote archive."`
+		Output  string `arg:"" help:"Output archive." type:"path"`
+		Bucket  string `help:"Remote bucket of input archive."`
+		Region  string `help:"local GeoJSON Polygon or MultiPolygon file for area of interest." type:"existingfile"`
+		Maxzoom int    `help:"Maximum zoom level, inclusive."`
+		DryRun  bool   `help:"Calculate tiles to extract based on header and directories, but don't download them."`
+	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region."`
+
+	Verify struct {
+		Input string `arg:"" help:"Input archive." type:"existingfile"`
+	} `cmd:"" help:"Verifies that a local archive is valid."`
+
+	Serve struct {
+		Path      string `arg:"" help:"Local path or bucket prefix"`
+		Port      int    `default:8080`
+		Cors      string `help:"Value of HTTP CORS header."`
+		CacheSize int    `default:64 help:"Size of cache in Megabytes."`
+		Bucket    string `help:"Remote bucket"`
+	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
+
+	Upload struct {
+		Input          string `arg:"" type:"existingfile"`
+		Key            string `arg:""`
+		MaxConcurrency int    `default:2 help:"# of upload threads"`
+		Bucket         string `required:"" help:"Bucket to upload to."`
+	} `cmd:"" help:"Upload a local archive to remote storage."`
+
+	Version struct {
+	} `cmd:"" help:"Show the program version."`
+}
+
 func main() {
-	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
-
 	if len(os.Args) < 2 {
-		helptext := `Usage: pmtiles [COMMAND] [ARGS]
-
-Inspecting pmtiles:
-pmtiles show file:// INPUT.pmtiles
-pmtiles show "s3://BUCKET_NAME INPUT.pmtiles
-
-Creating pmtiles:
-pmtiles convert INPUT.mbtiles OUTPUT.pmtiles
-pmtiles convert INPUT_V2.pmtiles OUTPUT_V3.pmtiles
-
-Uploading pmtiles:
-pmtiles upload INPUT.pmtiles s3://BUCKET_NAME REMOTE.pmtiles
-
-Running a proxy server:
-pmtiles serve "s3://BUCKET_NAME"`
-		fmt.Println(helptext)
-		os.Exit(1)
+		os.Args = append(os.Args, "--help")
 	}
 
-	switch os.Args[1] {
-	case "show":
-		err := pmtiles.Show(logger, os.Args[2:])
+	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
+	ctx := kong.Parse(&cli)
 
+	switch ctx.Command() {
+	case "show <path>":
+		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, false, 0, 0, 0)
 		if err != nil {
 			logger.Fatalf("Failed to show database, %v", err)
 		}
-	case "serve":
-		serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
-		port := serveCmd.String("p", "8080", "port to serve on")
-		cors := serveCmd.String("cors", "", "CORS allowed origin value")
-		cacheSize := serveCmd.Int("cache", 64, "Cache size in mb")
-		serveCmd.Parse(os.Args[2:])
-		path := serveCmd.Arg(0)
-		if path == "" {
-			logger.Println("USAGE: serve  [-p PORT] [-cors VALUE] LOCAL_PATH or https://BUCKET")
-			os.Exit(1)
+	case "tile <path> <z> <x> <y>":
+		err := pmtiles.Show(logger, cli.Tile.Bucket, cli.Tile.Path, true, cli.Tile.Z, cli.Tile.X, cli.Tile.Y)
+		if err != nil {
+			logger.Fatalf("Failed to show database, %v", err)
 		}
-		loop, err := pmtiles.NewLoop(path, logger, *cacheSize, *cors)
+	case "serve <path>":
+		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.Port, cli.Serve.Cors)
 
 		if err != nil {
-			logger.Fatalf("Failed to create new loop, %v", err)
+			logger.Fatalf("Failed to create new server, %v", err)
 		}
 
-		loop.Start()
+		server.Start()
 
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			status_code, headers, body := loop.Get(r.Context(), r.URL.Path)
+			status_code, headers, body := server.Get(r.Context(), r.URL.Path)
 			for k, v := range headers {
 				w.Header().Set(k, v)
 			}
@@ -76,58 +115,55 @@ pmtiles serve "s3://BUCKET_NAME"`
 			logger.Printf("served %s in %s", r.URL.Path, time.Since(start))
 		})
 
-		logger.Printf("Serving %s on HTTP port: %s with Access-Control-Allow-Origin: %s\n", path, *port, *cors)
-		logger.Fatal(http.ListenAndServe(":"+*port, nil))
-	case "subpyramid":
-		subpyramidCmd := flag.NewFlagSet("subpyramid", flag.ExitOnError)
-		cpuProfile := subpyramidCmd.Bool("profile", false, "profiling output")
-		subpyramidCmd.Parse(os.Args[2:])
-		path := subpyramidCmd.Arg(0)
-		output := subpyramidCmd.Arg(1)
+		logger.Printf("Serving %s %s on port %d with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Cors)
+		logger.Fatal(http.ListenAndServe(":"+strconv.Itoa(cli.Serve.Port), nil))
+	case "extract <input>":
+		logger.Fatalf("This command is not yet implemented.")
+	case "convert <input> <output>":
+		path := cli.Convert.Input
+		output := cli.Convert.Output
 
-		var err error
-		num_args := make([]int, 5)
-		for i := 0; i < 5; i++ {
-			if num_args[i], err = strconv.Atoi(subpyramidCmd.Arg(i + 2)); err != nil {
-				panic(err)
-			}
-		}
+		var tmpfile *os.File
 
-		if *cpuProfile {
-			f, err := os.Create("output.profile")
+		if cli.Convert.Tmpdir == "" {
+			var err error
+			tmpfile, err = os.CreateTemp("", "pmtiles")
+
 			if err != nil {
-				log.Fatal(err)
+				logger.Fatalf("Failed to create temp file, %w", err)
 			}
-			pprof.StartCPUProfile(f)
-			defer pprof.StopCPUProfile()
+		} else {
+			abs_tmproot, err := filepath.Abs(cli.Convert.Tmpdir)
+
+			if err != nil {
+				logger.Fatalf("Failed to derive absolute path for %s, %v", cli.Convert.Tmpdir, err)
+			}
+
+			tmpfile, err = os.CreateTemp(abs_tmproot, "pmtiles")
+
+			if err != nil {
+				logger.Fatalf("Failed to create temp file, %w", err)
+			}
 		}
-		bounds := "-180,-90,180,90" // TODO deal with antimeridian, center of tile, etc
-		pmtiles.SubpyramidXY(logger, path, output, uint8(num_args[0]), uint32(num_args[1]), uint32(num_args[2]), uint32(num_args[3]), uint32(num_args[4]), bounds)
-	case "convert":
-		convertCmd := flag.NewFlagSet("convert", flag.ExitOnError)
-		no_deduplication := convertCmd.Bool("no-deduplication", false, "Don't deduplicate data")
-		convertCmd.Parse(os.Args[2:])
-		path := convertCmd.Arg(0)
-		output := convertCmd.Arg(1)
-		err := pmtiles.Convert(logger, path, output, !(*no_deduplication))
+
+		defer os.Remove(tmpfile.Name())
+		err := pmtiles.Convert(logger, path, output, !cli.Convert.NoDeduplication, tmpfile)
 
 		if err != nil {
 			logger.Fatalf("Failed to convert %s, %v", path, err)
 		}
-
-	case "upload":
-		err := pmtiles.Upload(logger, os.Args[2:])
+	case "upload <input> <key>":
+		err := pmtiles.Upload(logger, cli.Upload.Input, cli.Upload.Bucket, cli.Upload.Key, cli.Upload.MaxConcurrency)
 
 		if err != nil {
 			logger.Fatalf("Failed to upload file, %v", err)
 		}
-
-	case "validate":
-		// pmtiles.Validate()
+	case "verify <path>":
+		logger.Fatalf("This command is not yet implemented.")
+	case "version":
+		fmt.Printf("pmtiles %s, commit %s, built at %s\n", version, commit, date)
 	default:
-		logger.Println("unrecognized command.")
-		flag.PrintDefaults()
-		os.Exit(1)
+		panic(ctx.Command())
 	}
 
 }
