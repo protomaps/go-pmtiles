@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/alecthomas/kong"
-	"github.com/protomaps/go-pmtiles/pmtiles"
+	"github.com/protomaps/go-pmtiles/v2/pmtiles"
 	_ "gocloud.dev/blob/azureblob"
 	_ "gocloud.dev/blob/fileblob"
 	_ "gocloud.dev/blob/gcsblob"
@@ -130,7 +130,7 @@ func main() {
 			tmpfile, err = os.CreateTemp("", "pmtiles")
 
 			if err != nil {
-				logger.Fatalf("Failed to create temp file, %w", err)
+				logger.Fatalf("Failed to create temp file, %v", err)
 			}
 		} else {
 			abs_tmproot, err := filepath.Abs(cli.Convert.Tmpdir)
@@ -142,7 +142,7 @@ func main() {
 			tmpfile, err = os.CreateTemp(abs_tmproot, "pmtiles")
 
 			if err != nil {
-				logger.Fatalf("Failed to create temp file, %w", err)
+				logger.Fatalf("Failed to create temp file, %v", err)
 			}
 		}
 
