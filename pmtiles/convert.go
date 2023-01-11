@@ -11,7 +11,6 @@ import (
 	"hash"
 	"hash/fnv"
 	"io"
-	"io/ioutil"
 	"log"
 	"math"
 	"os"
@@ -28,6 +27,8 @@ type OffsetLen struct {
 }
 
 type Resolver struct {
+	deduplicate    bool
+	compress       bool
 	Entries        []EntryV3
 	Offset         uint64
 	OffsetMap      map[string]OffsetLen
@@ -37,16 +38,29 @@ type Resolver struct {
 	hashfunc       hash.Hash
 }
 
+func (r *Resolver) NumContents() uint64 {
+	if r.deduplicate {
+		return uint64(len(r.OffsetMap))
+	} else {
+		return r.AddressedTiles
+	}
+}
+
 // must be called in increasing tile_id order, uniquely
 func (r *Resolver) AddTileIsNew(tile_id uint64, data []byte) (bool, []byte) {
 	r.AddressedTiles++
-	r.hashfunc.Reset()
-	r.hashfunc.Write(data)
-	var tmp []byte
-	sum := r.hashfunc.Sum(tmp)
-	sum_string := string(sum)
+	var found OffsetLen
+	var ok bool
+	var sum_string string
+	if r.deduplicate {
+		r.hashfunc.Reset()
+		r.hashfunc.Write(data)
+		var tmp []byte
+		sum_string = string(r.hashfunc.Sum(tmp))
+		found, ok = r.OffsetMap[sum_string]
+	}
 
-	if found, ok := r.OffsetMap[sum_string]; ok {
+	if r.deduplicate && ok {
 		last_entry := r.Entries[len(r.Entries)-1]
 		if tile_id == last_entry.TileId+uint64(last_entry.RunLength) && last_entry.Offset == found.Offset {
 			// RLE
@@ -61,8 +75,8 @@ func (r *Resolver) AddTileIsNew(tile_id uint64, data []byte) (bool, []byte) {
 		return false, nil
 	} else {
 		var new_data []byte
-		if len(data) >= 2 && data[0] == 31 && data[1] == 139 {
-			// the tile is already gzipped
+		if !r.compress || (len(data) >= 2 && data[0] == 31 && data[1] == 139) {
+			// the tile is already compressed
 			new_data = data
 		} else {
 			r.compress_tmp.Reset()
@@ -72,25 +86,27 @@ func (r *Resolver) AddTileIsNew(tile_id uint64, data []byte) (bool, []byte) {
 			new_data = r.compress_tmp.Bytes()
 		}
 
-		r.OffsetMap[sum_string] = OffsetLen{r.Offset, uint32(len(new_data))}
+		if r.deduplicate {
+			r.OffsetMap[sum_string] = OffsetLen{r.Offset, uint32(len(new_data))}
+		}
 		r.Entries = append(r.Entries, EntryV3{tile_id, r.Offset, uint32(len(new_data)), 1})
 		r.Offset += uint64(len(new_data))
 		return true, new_data
 	}
 }
 
-func NewResolver() *Resolver {
+func NewResolver(deduplicate bool, compress bool) *Resolver {
 	b := new(bytes.Buffer)
 	compressor, _ := gzip.NewWriterLevel(b, gzip.BestCompression)
-	r := Resolver{make([]EntryV3, 0), 0, make(map[string]OffsetLen), 0, compressor, b, fnv.New128a()}
+	r := Resolver{deduplicate, compress, make([]EntryV3, 0), 0, make(map[string]OffsetLen), 0, compressor, b, fnv.New128a()}
 	return &r
 }
 
-func Convert(logger *log.Logger, input string, output string) error {
+func Convert(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
 	if strings.HasSuffix(input, ".pmtiles") {
-		return ConvertPmtilesV2(logger, input, output)
+		return ConvertPmtilesV2(logger, input, output, deduplicate, tmpfile)
 	} else {
-		return ConvertMbtiles(logger, input, output)
+		return ConvertMbtiles(logger, input, output, deduplicate, tmpfile)
 	}
 }
 
@@ -100,16 +116,36 @@ func add_directoryv2_entries(dir DirectoryV2, entries *[]EntryV3, f *os.File) {
 		*entries = append(*entries, EntryV3{tile_id, rng.Offset, rng.Length, 1})
 	}
 
+	var unique = map[uint64]uint32{}
+
+	// uniqify the offset/length pairs
 	for _, rng := range dir.Leaves {
-		f.Seek(int64(rng.Offset), 0)
-		leaf_bytes := make([]byte, rng.Length)
+		unique[rng.Offset] = rng.Length
+	}
+
+	for offset, length := range unique {
+		f.Seek(int64(offset), 0)
+		leaf_bytes := make([]byte, length)
 		f.Read(leaf_bytes)
 		leaf_dir := ParseDirectoryV2(leaf_bytes)
 		add_directoryv2_entries(leaf_dir, entries, f)
 	}
 }
 
-func ConvertPmtilesV2(logger *log.Logger, input string, output string) error {
+func set_zoom_center_defaults(header *HeaderV3, entries []EntryV3) {
+	min_z, _, _ := IdToZxy(entries[0].TileId)
+	header.MinZoom = min_z
+	max_z, _, _ := IdToZxy(entries[len(entries)-1].TileId)
+	header.MaxZoom = max_z
+
+	if header.CenterZoom == 0 && header.CenterLonE7 == 0 && header.CenterLatE7 == 0 {
+		header.CenterZoom = header.MinZoom
+		header.CenterLonE7 = (header.MinLonE7 + header.MaxLonE7) / 2
+		header.CenterLatE7 = (header.MinLatE7 + header.MaxLatE7) / 2
+	}
+}
+
+func ConvertPmtilesV2(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
 	start := time.Now()
 	f, err := os.Open(input)
 	if err != nil {
@@ -150,15 +186,10 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) error {
 		return entries[i].TileId < entries[j].TileId
 	})
 
-	tmpfile, err := ioutil.TempFile("", "")
-	if err != nil {
-		return fmt.Errorf("Failed to create temp file, %w", err)
-	}
-	defer os.Remove(tmpfile.Name())
-
 	// re-use resolver, because even if archives are de-duplicated we may need to recompress.
-	resolver := NewResolver()
+	resolver := NewResolver(deduplicate, header.TileType == Mvt)
 
+	bar := progressbar.Default(int64(len(entries)))
 	for _, entry := range entries {
 		if entry.Length == 0 {
 			continue
@@ -178,6 +209,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) error {
 		if is_new, new_data := resolver.AddTileIsNew(entry.TileId, buf); is_new {
 			tmpfile.Write(new_data)
 		}
+		bar.Add(1)
 	}
 
 	finalize(logger, resolver, header, tmpfile, output, json_metadata)
@@ -186,7 +218,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string) error {
 	return nil
 }
 
-func ConvertMbtiles(logger *log.Logger, input string, output string) error {
+func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
 	start := time.Now()
 	conn, err := sqlite.OpenConn(input, sqlite.OpenReadOnly)
 	if err != nil {
@@ -266,15 +298,8 @@ func ConvertMbtiles(logger *log.Logger, input string, output string) error {
 		}
 	}
 
-	tmpfile, err := ioutil.TempFile("", "")
-	if err != nil {
-		return fmt.Errorf("Failed to create temporary file, %w", err)
-	}
-	defer os.Remove(tmpfile.Name())
-
 	logger.Println("Pass 2: writing tiles")
-	// write tiles to tmpfile with deduplication
-	resolver := NewResolver()
+	resolver := NewResolver(deduplicate, header.TileType == Mvt)
 	{
 		bar := progressbar.Default(int64(tileset.GetCardinality()))
 		i := tileset.Iterator()
@@ -323,11 +348,11 @@ func ConvertMbtiles(logger *log.Logger, input string, output string) error {
 func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *os.File, output string, json_metadata map[string]interface{}) error {
 	logger.Println("# of addressed tiles: ", resolver.AddressedTiles)
 	logger.Println("# of tile entries (after RLE): ", len(resolver.Entries))
-	logger.Println("# of tile contents: ", len(resolver.OffsetMap))
+	logger.Println("# of tile contents: ", resolver.NumContents())
 
 	header.AddressedTilesCount = resolver.AddressedTiles
 	header.TileEntriesCount = uint64(len(resolver.Entries))
-	header.TileContentsCount = uint64(len(resolver.OffsetMap))
+	header.TileContentsCount = resolver.NumContents()
 
 	// assemble the final file
 	outfile, err := os.Create(output)
@@ -343,7 +368,7 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 		logger.Println("Num leaf dirs: ", num_leaves)
 		logger.Println("Total dir bytes: ", len(root_bytes)+len(leaves_bytes))
 		logger.Println("Average leaf dir bytes: ", len(leaves_bytes)/num_leaves)
-		logger.Printf("Average bytes per entry: %.2f\n", float64(len(root_bytes)+len(leaves_bytes))/float64(resolver.AddressedTiles))
+		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(root_bytes)+len(leaves_bytes))/float64(resolver.AddressedTiles))
 	} else {
 		logger.Println("Total dir bytes: ", len(root_bytes))
 		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(root_bytes))/float64(resolver.AddressedTiles))
@@ -362,9 +387,13 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 		metadata_bytes = b.Bytes()
 	}
 
+	set_zoom_center_defaults(&header, resolver.Entries)
+
 	header.Clustered = true
 	header.InternalCompression = Gzip
-	header.TileCompression = Gzip
+	if header.TileType == Mvt {
+		header.TileCompression = Gzip
+	}
 
 	header.RootOffset = HEADERV3_LEN_BYTES
 	header.RootLength = uint64(len(root_bytes))
@@ -392,37 +421,7 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 
 func v2_to_header_json(v2_json_metadata map[string]interface{}, first4 []byte) (HeaderV3, map[string]interface{}, error) {
 	header := HeaderV3{}
-	if val, ok := v2_json_metadata["minzoom"]; ok {
-		switch v := val.(type) {
-		case int:
-			header.MinZoom = uint8(v)
-		case string:
-			i, err := strconv.ParseInt(v, 10, 8)
-			if err != nil {
-				return header, v2_json_metadata, err
-			}
-			header.MinZoom = uint8(i)
-		default:
-			return header, v2_json_metadata, errors.New("Can't parse minzoom")
-		}
-		delete(v2_json_metadata, "minzoom")
-	}
-	if val, ok := v2_json_metadata["maxzoom"]; ok {
-		switch v := val.(type) {
-		case int:
-			header.MaxZoom = uint8(v)
-		case string:
-			i, err := strconv.ParseInt(v, 10, 8)
-			if err != nil {
-				return header, v2_json_metadata, err
-			}
-			header.MaxZoom = uint8(i)
-		default:
-			return header, v2_json_metadata, errors.New("Can't parse minzoom")
-		}
 
-		delete(v2_json_metadata, "maxzoom")
-	}
 	if val, ok := v2_json_metadata["bounds"]; ok {
 		min_lon, min_lat, max_lon, max_lat, err := parse_bounds(val.(string))
 		if err != nil {
@@ -446,10 +445,6 @@ func v2_to_header_json(v2_json_metadata map[string]interface{}, first4 []byte) (
 		header.CenterLatE7 = center_lat
 		header.CenterZoom = center_zoom
 		delete(v2_json_metadata, "center")
-	} else {
-		header.CenterLatE7 = (header.MinLatE7 + header.MaxLatE7) / 2
-		header.CenterLonE7 = (header.MinLonE7 + header.MaxLonE7) / 2
-		header.CenterZoom = header.MinZoom
 	}
 
 	if val, ok := v2_json_metadata["compression"]; ok {
@@ -462,8 +457,6 @@ func v2_to_header_json(v2_json_metadata map[string]interface{}, first4 []byte) (
 	} else {
 		if first4[0] == 0x1f && first4[1] == 0x8b {
 			header.TileCompression = Gzip
-		} else {
-			header.TileCompression = NoCompression
 		}
 	}
 
@@ -473,22 +466,39 @@ func v2_to_header_json(v2_json_metadata map[string]interface{}, first4 []byte) (
 			header.TileType = Mvt
 		case "png":
 			header.TileType = Png
+			header.TileCompression = NoCompression
 		case "jpg":
 			header.TileType = Jpeg
+			header.TileCompression = NoCompression
 		case "webp":
 			header.TileType = Webp
+			header.TileCompression = NoCompression
 		default:
 			return header, v2_json_metadata, errors.New("Unknown tile type")
 		}
 	} else {
 		if first4[0] == 0x89 && first4[1] == 0x50 && first4[2] == 0x4e && first4[3] == 0x47 {
 			header.TileType = Png
+			header.TileCompression = NoCompression
 		} else if first4[0] == 0xff && first4[1] == 0xd8 && first4[2] == 0xff && first4[3] == 0xe0 {
 			header.TileType = Jpeg
+			header.TileCompression = NoCompression
 		} else {
 			// assume it is a vector tile
 			header.TileType = Mvt
 		}
+	}
+
+	// deserialize embedded JSON and lift keys to top-level
+	// to avoid "json-in-json"
+	if val, ok := v2_json_metadata["json"]; ok {
+		string_val := val.(string)
+		var inside map[string]interface{}
+		json.Unmarshal([]byte(string_val), &inside)
+		for k, v := range inside {
+			v2_json_metadata[k] = v
+		}
+		delete(v2_json_metadata, "json")
 	}
 
 	return header, v2_json_metadata, nil
@@ -532,7 +542,6 @@ func parse_center(center string) (int32, int32, uint8, error) {
 		return 0, 0, 0, err
 	}
 	return int32(center_lon * E7), int32(center_lat * E7), uint8(center_zoom), nil
-
 }
 
 func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]interface{}, error) {
@@ -547,10 +556,13 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 				header.TileType = Mvt
 			case "png":
 				header.TileType = Png
+				header.TileCompression = NoCompression
 			case "jpg":
 				header.TileType = Jpeg
+				header.TileCompression = NoCompression
 			case "webp":
 				header.TileType = Webp
+				header.TileCompression = NoCompression
 			}
 			json_result["format"] = value
 		case "bounds":
@@ -570,18 +582,6 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 			header.CenterLonE7 = center_lon
 			header.CenterLatE7 = center_lat
 			header.CenterZoom = center_zoom
-		case "minzoom":
-			i, err := strconv.ParseInt(value, 10, 8)
-			if err != nil {
-				return header, json_result, err
-			}
-			header.MinZoom = uint8(i)
-		case "maxzoom":
-			i, err := strconv.ParseInt(value, 10, 8)
-			if err != nil {
-				return header, json_result, err
-			}
-			header.MaxZoom = uint8(i)
 		case "json":
 			var mbtiles_json map[string]interface{}
 			json.Unmarshal([]byte(value), &mbtiles_json)
@@ -591,7 +591,11 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 		case "compression":
 			switch value {
 			case "gzip":
-				header.TileCompression = Gzip // TODO: fix me for non-vector outputs
+				if header.TileType == Mvt {
+					header.TileCompression = Gzip
+				} else {
+					header.TileCompression = NoCompression
+				}
 			}
 			json_result["compression"] = value
 		// name, attribution, description, type, version

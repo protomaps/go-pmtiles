@@ -1,35 +1,69 @@
+# AC_USERNAME= AC_PASSWORD= goreleaser release --rm-dist --parallelism 1
 before:
   hooks:
     - go mod tidy
 builds:
   - binary: pmtiles
+    id: go-pmtiles
     env:
       - CGO_ENABLED=0
     goos:
       - linux
       - windows
-      - darwin
     goarch:
       - amd64
       - arm64
+  - binary: pmtiles
+    id: pmtiles-macos-amd64
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+    hooks:
+      post:
+        - gon -log-level debug .gon-amd64.hcl
+        - mv dist/pmtiles-darwin-amd64.zip dist/go-pmtiles-{{ .Version }}_Darwin_x86_64.zip
+  - binary: pmtiles
+    id: pmtiles-macos-arm64
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - arm64
+    hooks:
+      post:
+        - gon -log-level debug .gon-arm64.hcl
+        - mv dist/pmtiles-darwin-arm64.zip dist/go-pmtiles-{{ .Version }}_Darwin_arm64.zip
+
 archives:
-  - replacements:
-      darwin: Darwin
+  - id: default
+    builds:
+      - go-pmtiles
+    replacements:
       linux: Linux
       windows: Windows
       amd64: x86_64
     format_overrides:
       - goos: windows
         format: zip
-      - goos: darwin
-        format: zip
+
 checksum:
-  name_template: 'checksums.txt'
+  disable: true
+
 snapshot:
   name_template: "{{ .Tag }}-next"
+
 changelog:
   sort: asc
   filters:
     exclude:
       - '^docs:'
       - '^test:'
+
+release:
+  extra_files:
+    - glob: ./dist/*_Darwin_arm64.zip
+    - glob: ./dist/*_Darwin_x86_64.zip

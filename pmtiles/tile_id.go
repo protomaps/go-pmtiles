@@ -57,10 +57,10 @@ func ZxyToId(z uint8, x uint32, y uint32) uint64 {
 }
 
 func IdToZxy(i uint64) (uint8, uint32, uint32) {
-	var num_tiles uint64
 	var acc uint64
 	var z uint8
 	for {
+		var num_tiles uint64
 		num_tiles = (1 << z) * (1 << z)
 		if acc+num_tiles > i {
 			return t_on_level(z, i-acc)
@@ -68,4 +68,22 @@ func IdToZxy(i uint64) (uint8, uint32, uint32) {
 		acc += num_tiles
 		z++
 	}
+}
+
+// fast parent ID calculation without converting to ZXY.
+func ParentId(i uint64) uint64 {
+	var acc uint64
+	var last_acc uint64
+	var z uint8
+	for {
+		var num_tiles uint64
+		num_tiles = (1 << z) * (1 << z)
+		if acc+num_tiles > i {
+			return last_acc + (i-acc)/4
+		}
+		last_acc = acc
+		acc += num_tiles
+		z++
+	}
+
 }
