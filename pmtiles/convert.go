@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/RoaringBitmap/roaring/roaring64"
-	"github.com/schollz/progressbar/v3"
 	"hash"
 	"hash/fnv"
 	"io"
@@ -18,6 +16,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/schollz/progressbar/v3"
 	"zombiezen.com/go/sqlite"
 )
 
@@ -207,14 +208,20 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 		}
 		// TODO: enforce sorted order
 		if is_new, new_data := resolver.AddTileIsNew(entry.TileId, buf); is_new {
-			tmpfile.Write(new_data)
+			_, err = tmpfile.Write(new_data)
+			if err != nil {
+				return fmt.Errorf("Failed to write to tempfile, %w", err)
+			}
 		}
 		bar.Add(1)
 	}
 
-	finalize(logger, resolver, header, tmpfile, output, json_metadata)
-	logger.Println("Finished in ", time.Since(start))
+	err = finalize(logger, resolver, header, tmpfile, output, json_metadata)
+	if err != nil {
+		return err
+	}
 
+	logger.Println("Finished in ", time.Since(start))
 	return nil
 }
 
@@ -331,7 +338,10 @@ func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate
 
 			if len(data) > 0 {
 				if is_new, new_data := resolver.AddTileIsNew(id, data); is_new {
-					tmpfile.Write(new_data)
+					_, err := tmpfile.Write(new_data)
+					if err != nil {
+						return fmt.Errorf("Failed to write to tempfile: %s", err)
+					}
 				}
 			}
 
@@ -340,7 +350,10 @@ func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate
 			bar.Add(1)
 		}
 	}
-	finalize(logger, resolver, header, tmpfile, output, json_metadata)
+	err = finalize(logger, resolver, header, tmpfile, output, json_metadata)
+	if err != nil {
+		return err
+	}
 	logger.Println("Finished in ", time.Since(start))
 	return nil
 }
@@ -406,11 +419,26 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 
 	header_bytes := serialize_header(header)
 
-	outfile.Write(header_bytes)
-	outfile.Write(root_bytes)
-	outfile.Write(metadata_bytes)
-	outfile.Write(leaves_bytes)
-	tmpfile.Seek(0, 0)
+	_, err = outfile.Write(header_bytes)
+	if err != nil {
+		return fmt.Errorf("Failed to write header to outfile, %w", err)
+	}
+	_, err = outfile.Write(root_bytes)
+	if err != nil {
+		return fmt.Errorf("Failed to write header to outfile, %w", err)
+	}
+	_, err = outfile.Write(metadata_bytes)
+	if err != nil {
+		return fmt.Errorf("Failed to write header to outfile, %w", err)
+	}
+	_, err = outfile.Write(leaves_bytes)
+	if err != nil {
+		return fmt.Errorf("Failed to write header to outfile, %w", err)
+	}
+	_, err = tmpfile.Seek(0, 0)
+	if err != nil {
+		return fmt.Errorf("Failed to seek to start of tempfile, %w", err)
+	}
 	_, err = io.Copy(outfile, tmpfile)
 	if err != nil {
 		return fmt.Errorf("Failed to copy data to outfile, %w", err)
