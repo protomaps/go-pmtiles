@@ -3,10 +3,10 @@ name: publish
 on: [push]
 
 jobs:
-  master_push_to_registry:
+  main_push_to_registry:
     name: Push Docker image to GitHub Packages as with Tag 'latest'
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Check out the repo
         uses: actions/checkout@v2
@@ -19,4 +19,4 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
           registry: ghcr.io
           repository: protomaps/go-pmtiles
-          tags: master
+          tags: main

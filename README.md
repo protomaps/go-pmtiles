@@ -30,7 +30,7 @@ Upload an archive to S3-compatible cloud storage:
 
 ## Serving Z/X/Y tiles
 
-This section covers running a Z/X/Y tile server proxy for clients that read only those URLs. The simplest way to consume PMTiles on the web is directly in the browser: see the [JavaScript examples](https://github.com/protomaps/PMTiles/tree/master/js).
+This section covers running a Z/X/Y tile server proxy for clients that read only those URLs. The simplest way to consume PMTiles on the web is directly in the browser: see the [JavaScript examples](https://github.com/protomaps/PMTiles/tree/main/js).
     
 Serve a directory of archives from local or cloud storage as a Z/X/Y endpoint:
 
