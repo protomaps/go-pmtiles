@@ -35,7 +35,7 @@ This section covers running a Z/X/Y tile server proxy for clients that read only
 Serve a directory of archives from local or cloud storage as a Z/X/Y endpoint:
 
     pmtiles serve .
-    # serves at http://localhost:8077/FILENAME/{z}/{x}/{y}.pbf
+    # serves at http://localhost:8077/FILENAME/{z}/{x}/{y}.mvt
 
     pmtiles serve / --bucket=s3://BUCKET_NAME
     pmtiles serve prefix --bucket=s3://BUCKET_NAME
@@ -47,6 +47,10 @@ For production usage, it's recommended to run behind a reverse proxy like Nginx 
 * `--cors=ORIGIN` set the value of the Access-Control-Allow-Origin. * is a valid value but must be escaped in your shell. Appropriate for development use.
 * `--cache-size=SIZE_MB` set the total size of the header and directory LRU cache. Default is 64 MB.
 * `--port=PORT` specify the HTTP port.
+
+Metadata is served at the URL path `/<archive_name>/metadata`.
+
+Tiles are served at the URL path `/<archive_name>/<z>/<x>/<y>.<ext>`, where the extension `<ext>` is one of `mvt`, `png`, `jpg`, or `webp`.
 
 ## Remote URLs
 
