@@ -211,8 +211,6 @@ func (server *Server) Start() {
 						server.logger.Printf("fetching %s %d-%d", key.name, offset, length)
 						r, err := server.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length, nil)
 
-						server.logger.Printf("WTF", key.name, err)
-
 						// TODO: store away ETag
 						if err != nil {
 							ok = false
