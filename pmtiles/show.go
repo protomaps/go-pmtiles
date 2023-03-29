@@ -16,7 +16,7 @@ import (
 
 func Show(logger *log.Logger, bucketURL string, file string, show_tile bool, z int, x int, y int) error {
 	if bucketURL == "" {
-		if strings.HasPrefix(file,"/") {
+		if strings.HasPrefix(file, "/") {
 			bucketURL = "file:///"
 		} else {
 			bucketURL = "file://"

@@ -5,14 +5,17 @@ import (
 	"container/list"
 	"context"
 	"fmt"
-	"gocloud.dev/blob"
 	"io"
+	"io/fs"
 	"log"
+	"os"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
-	"path"
-	"os"
+
+	"gocloud.dev/blob"
+	_ "gocloud.dev/blob/memblob"
 )
 
 type CacheKey struct {
@@ -69,29 +72,81 @@ type Server struct {
 }
 
 func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string) (*Server, error) {
+
 	if bucketURL == "" {
-		if strings.HasPrefix(prefix,"/") {
+		if strings.HasPrefix(prefix, "/") {
 			bucketURL = "file:///"
 		} else {
 			bucketURL = "file://"
 		}
 	}
 
-	reqs := make(chan Request, 8)
-
 	ctx := context.Background()
 
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
 
-
-	if prefix != "/" && prefix != "." {
-		bucket = blob.PrefixedBucket(bucket, path.Clean(prefix) + string(os.PathSeparator))
-	}
-
-
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open bucket for %s, %w", prefix, err)
 	}
+
+	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors)
+}
+
+func NewServerWithFS(bucket_fs fs.FS, prefix string, logger *log.Logger, cacheSize int, cors string) (*Server, error) {
+
+	ctx := context.Background()
+
+	bucket, err := blob.OpenBucket(ctx, "mem://")
+
+	if err != nil {
+		return nil, fmt.Errorf("Failed to open bucket, %v", err)
+	}
+
+	err = fs.WalkDir(bucket_fs, ".", func(path string, d fs.DirEntry, err error) error {
+
+		if err != nil {
+			return fmt.Errorf("Failed to walk %s, %w", path, err)
+		}
+
+		r, err := bucket_fs.Open(path)
+
+		if err != nil {
+			return fmt.Errorf("Failed to open %s for reading, %w", path, err)
+		}
+
+		defer r.Close()
+
+		wr, err := bucket.NewWriter(ctx, path, nil)
+
+		if err != nil {
+			return fmt.Errorf("Failed to create %s for writing, %w", path, err)
+		}
+
+		_, err = io.Copy(wr, r)
+
+		if err != nil {
+			return fmt.Errorf("Failed to copy %s, %w", path, err)
+		}
+
+		err = wr.Close()
+
+		if err != nil {
+			return fmt.Errorf("Failed to close %s, %w", path, err)
+		}
+
+		return nil
+	})
+
+	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors)
+}
+
+func NewServerWithBucket(bucket *blob.Bucket, prefix string, logger *log.Logger, cacheSize int, cors string) (*Server, error) {
+
+	if prefix != "/" && prefix != "." {
+		bucket = blob.PrefixedBucket(bucket, path.Clean(prefix)+string(os.PathSeparator))
+	}
+
+	reqs := make(chan Request, 8)
 
 	l := &Server{
 		reqs:      reqs,
