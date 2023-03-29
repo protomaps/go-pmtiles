@@ -102,10 +102,21 @@ func NewServerWithFS(bucket_fs fs.FS, prefix string, logger *log.Logger, cacheSi
 		return nil, fmt.Errorf("Failed to open bucket, %v", err)
 	}
 
-	err = fs.WalkDir(bucket_fs, ".", func(path string, d fs.DirEntry, err error) error {
+	var walk_func func(path string, d fs.DirEntry, err error) error
+
+	walk_func = func(path string, d fs.DirEntry, err error) error {
 
 		if err != nil {
 			return fmt.Errorf("Failed to walk %s, %w", path, err)
+		}
+
+		if d.IsDir() {
+
+			if path == "." {
+				return nil
+			}
+
+			return fs.WalkDir(bucket_fs, path, walk_func)
 		}
 
 		r, err := bucket_fs.Open(path)
@@ -135,14 +146,20 @@ func NewServerWithFS(bucket_fs fs.FS, prefix string, logger *log.Logger, cacheSi
 		}
 
 		return nil
-	})
+	}
+
+	err = fs.WalkDir(bucket_fs, ".", walk_func)
+
+	if err != nil {
+		return nil, fmt.Errorf("Failed to walk filesystem, %w", err)
+	}
 
 	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors)
 }
 
 func NewServerWithBucket(bucket *blob.Bucket, prefix string, logger *log.Logger, cacheSize int, cors string) (*Server, error) {
 
-	if prefix != "/" && prefix != "." {
+	if prefix != "" && prefix != "/" && prefix != "." {
 		bucket = blob.PrefixedBucket(bucket, path.Clean(prefix)+string(os.PathSeparator))
 	}
 
@@ -193,6 +210,8 @@ func (server *Server) Start() {
 
 						server.logger.Printf("fetching %s %d-%d", key.name, offset, length)
 						r, err := server.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length, nil)
+
+						server.logger.Printf("WTF", key.name, err)
 
 						// TODO: store away ETag
 						if err != nil {
