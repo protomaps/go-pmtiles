@@ -163,3 +163,11 @@ func TestFindTileLeafSearch(t *testing.T) {
 	assert.Equal(t, uint64(1), entry.Offset)
 	assert.Equal(t, uint32(1), entry.Length)
 }
+
+func TestBuildRootsLeaves(t *testing.T) {
+	entries := []EntryV3{
+		{TileId: 100, Offset: 1, Length: 1, RunLength: 0},
+	}
+	_, _, num_leaves := build_roots_leaves(entries,1)
+	assert.Equal(t, 1, num_leaves)
+}

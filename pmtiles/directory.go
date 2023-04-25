@@ -276,7 +276,7 @@ func build_roots_leaves(entries []EntryV3, leaf_size int) ([]byte, []byte, int) 
 	leaves_bytes := make([]byte, 0)
 	num_leaves := 0
 
-	for idx := 0; idx <= len(entries); idx += leaf_size {
+	for idx := 0; idx < len(entries); idx += leaf_size {
 		num_leaves++
 		end := idx + leaf_size
 		if idx+leaf_size > len(entries) {
@@ -290,7 +290,6 @@ func build_roots_leaves(entries []EntryV3, leaf_size int) ([]byte, []byte, int) 
 
 	root_bytes := serialize_entries(root_entries)
 	return root_bytes, leaves_bytes, num_leaves
-
 }
 
 func optimize_directories(entries []EntryV3, target_root_len int) ([]byte, []byte, int) {
