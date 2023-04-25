@@ -158,7 +158,7 @@ func main() {
 		if err != nil {
 			logger.Fatalf("Failed to upload file, %v", err)
 		}
-	case "verify <path>":
+	case "verify <input>":
 		logger.Fatalf("This command is not yet implemented.")
 	case "version":
 		fmt.Printf("pmtiles %s, commit %s, built at %s\n", version, commit, date)
