@@ -117,7 +117,7 @@ func main() {
 
 		logger.Printf("Serving %s %s on port %d with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Cors)
 		logger.Fatal(http.ListenAndServe(":"+strconv.Itoa(cli.Serve.Port), nil))
-	case "extract <input>":
+	case "extract <input> <output>":
 		logger.Fatalf("This command is not yet implemented.")
 	case "convert <input> <output>":
 		path := cli.Convert.Input
