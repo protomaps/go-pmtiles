@@ -96,7 +96,7 @@ func main() {
 			logger.Fatalf("Failed to show database, %v", err)
 		}
 	case "serve <path>":
-		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.Port, cli.Serve.Cors)
+		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors)
 
 		if err != nil {
 			logger.Fatalf("Failed to create new server, %v", err)
