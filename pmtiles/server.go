@@ -5,9 +5,9 @@ import (
 	"compress/gzip"
 	"container/list"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	// "encoding/json"
 	"gocloud.dev/blob"
 	"io"
 	"log"
@@ -64,14 +64,15 @@ type Response struct {
 // }
 
 type Server struct {
-	reqs      chan Request
-	bucket    *blob.Bucket
-	logger    *log.Logger
-	cacheSize int
-	cors      string
+	reqs           chan Request
+	bucket         *blob.Bucket
+	logger         *log.Logger
+	cacheSize      int
+	cors           string
+	publicHostname string
 }
 
-func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string) (*Server, error) {
+func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicHostname string) (*Server, error) {
 	if bucketURL == "" {
 		if strings.HasPrefix(prefix, "/") {
 			bucketURL = "file:///"
@@ -95,11 +96,12 @@ func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize in
 	}
 
 	l := &Server{
-		reqs:      reqs,
-		bucket:    bucket,
-		logger:    logger,
-		cacheSize: cacheSize,
-		cors:      cors,
+		reqs:           reqs,
+		bucket:         bucket,
+		logger:         logger,
+		cacheSize:      cacheSize,
+		cors:           cors,
+		publicHostname: publicHostname,
 	}
 
 	return l, nil
@@ -243,6 +245,47 @@ func (server *Server) get_header_metadata(ctx context.Context, name string) (err
 	return nil, true, header, metadata_bytes
 }
 
+func (server *Server) get_tilejson(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
+	err, found, header, metadata_bytes := server.get_header_metadata(ctx, name)
+
+	if err != nil {
+		return 500, http_headers, []byte("I/O Error")
+	}
+
+	if !found {
+		return 404, http_headers, []byte("Archive not found")
+	}
+
+	var metadata_map map[string]interface{}
+	json.Unmarshal(metadata_bytes, &metadata_map)
+
+	tilejson := make(map[string]interface{})
+
+	if server.publicHostname == "" {
+		return 501, http_headers, []byte("PUBLIC_HOSTNAME must be set for TileJSON")
+	}
+
+	http_headers["Content-Type"] = "application/json"
+	tilejson["tilejson"] = "3.0.0"
+	tilejson["scheme"] = "xyz"
+	tilejson["tiles"] = []string{server.publicHostname + "/" + name + "/{z}/{x}/{y}" + headerExt(header)}
+	tilejson["vector_layers"] = metadata_map["vector_layers"]
+	tilejson["attribution"] = metadata_map["attribution"]
+	tilejson["description"] = metadata_map["description"]
+	tilejson["name"] = metadata_map["name"]
+	tilejson["version"] = metadata_map["version"]
+
+	E7 := 10000000.0
+	tilejson["bounds"] = []float64{float64(header.MinLonE7) / E7, float64(header.MinLatE7) / E7, float64(header.MaxLonE7) / E7, float64(header.MaxLatE7) / E7}
+	tilejson["center"] = []interface{}{float64(header.CenterLonE7) / E7, float64(header.CenterLatE7) / E7, header.CenterZoom}
+	tilejson["minzoom"] = header.MinZoom
+	tilejson["maxzoom"] = header.MaxZoom
+
+	tilejson_bytes, err := json.Marshal(tilejson)
+
+	return 200, http_headers, tilejson_bytes
+}
+
 func (server *Server) get_metadata(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
 	err, found, _, metadata_bytes := server.get_header_metadata(ctx, name)
 
@@ -352,6 +395,14 @@ func parse_tile_path(path string) (bool, string, uint8, uint32, uint32, string) 
 	return false, "", 0, 0, 0, ""
 }
 
+func parse_tilejson_path(path string) (bool, string) {
+	if res := tileJSONPattern.FindStringSubmatch(path); res != nil {
+		name := res[1]
+		return true, name
+	}
+	return false, ""
+}
+
 func parse_metadata_path(path string) (bool, string) {
 	if res := metadataPattern.FindStringSubmatch(path); res != nil {
 		name := res[1]
@@ -368,6 +419,9 @@ func (server *Server) Get(ctx context.Context, path string) (int, map[string]str
 
 	if ok, key, z, x, y, ext := parse_tile_path(path); ok {
 		return server.get_tile(ctx, http_headers, key, z, x, y, ext)
+	}
+	if ok, key := parse_tilejson_path(path); ok {
+		return server.get_tilejson(ctx, http_headers, key)
 	}
 	if ok, key := parse_metadata_path(path); ok {
 		return server.get_metadata(ctx, http_headers, key)

@@ -33,4 +33,7 @@ func TestRegex(t *testing.T) {
 	ok, key = parse_metadata_path("/!-_.*'()/metadata")
 	assert.True(t, ok)
 	assert.Equal(t, key, "!-_.*'()")
+	ok, key = parse_tilejson_path("/!-_.*'().json")
+	assert.True(t, ok)
+	assert.Equal(t, key, "!-_.*'()")
 }
