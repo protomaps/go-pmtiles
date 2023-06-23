@@ -8,11 +8,11 @@ import (
 	"gocloud.dev/blob"
 	"io"
 	"log"
+	"os"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
-	"path"
-	"os"
 )
 
 type CacheKey struct {
@@ -70,7 +70,7 @@ type Server struct {
 
 func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string) (*Server, error) {
 	if bucketURL == "" {
-		if strings.HasPrefix(prefix,"/") {
+		if strings.HasPrefix(prefix, "/") {
 			bucketURL = "file:///"
 		} else {
 			bucketURL = "file://"
@@ -83,11 +83,9 @@ func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize in
 
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
 
-
 	if prefix != "/" && prefix != "." {
-		bucket = blob.PrefixedBucket(bucket, path.Clean(prefix) + string(os.PathSeparator))
+		bucket = blob.PrefixedBucket(bucket, path.Clean(prefix)+string(os.PathSeparator))
 	}
-
 
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open bucket for %s, %w", prefix, err)
@@ -272,6 +270,10 @@ func (server *Server) get_tile(ctx context.Context, http_headers map[string]stri
 	case Webp:
 		if ext != "webp" {
 			return 400, http_headers, []byte("path mismatch: archive is type WebP (.webp)")
+		}
+	case Avif:
+		if ext != "avif" {
+			return 400, http_headers, []byte("path mismatch: archive is type AVIF (.avif)")
 		}
 	}
 

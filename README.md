@@ -50,7 +50,7 @@ For production usage, it's recommended to run behind a reverse proxy like Nginx 
 
 Metadata is served at the URL path `/<archive_name>/metadata`.
 
-Tiles are served at the URL path `/<archive_name>/<z>/<x>/<y>.<ext>`, where the extension `<ext>` is one of `mvt`, `png`, `jpg`, or `webp`.
+Tiles are served at the URL path `/<archive_name>/<z>/<x>/<y>.<ext>`, where the extension `<ext>` is one of `mvt`, `png`, `jpg`, `webp`, `avif`.
 
 ## Remote URLs
 
