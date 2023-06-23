@@ -58,11 +58,12 @@ var cli struct {
 	} `cmd:"" help:"Verifies that a local archive is valid."`
 
 	Serve struct {
-		Path      string `arg:"" help:"Local path or bucket prefix"`
-		Port      int    `default:8080`
-		Cors      string `help:"Value of HTTP CORS header."`
-		CacheSize int    `default:64 help:"Size of cache in Megabytes."`
-		Bucket    string `help:"Remote bucket"`
+		Path           string `arg:"" help:"Local path or bucket prefix"`
+		Port           int    `default:8080`
+		Cors           string `help:"Value of HTTP CORS header."`
+		CacheSize      int    `default:64 help:"Size of cache in Megabytes."`
+		Bucket         string `help:"Remote bucket"`
+		PublicHostname string `help:"Public hostname of tile endpoint e.g. https://example.com"`
 	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
 
 	Upload struct {
@@ -96,7 +97,7 @@ func main() {
 			logger.Fatalf("Failed to show database, %v", err)
 		}
 	case "serve <path>":
-		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors)
+		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors, cli.Serve.PublicHostname)
 
 		if err != nil {
 			logger.Fatalf("Failed to create new server, %v", err)

@@ -76,6 +76,23 @@ func headerContentType(header HeaderV3) (string, bool) {
 	}
 }
 
+func headerExt(header HeaderV3) string {
+	switch header.TileType {
+	case Mvt:
+		return ".mvt"
+	case Png:
+		return ".png"
+	case Jpeg:
+		return ".jpg"
+	case Webp:
+		return ".webp"
+	case Avif:
+		return ".avif"
+	default:
+		return ""
+	}
+}
+
 func headerContentEncoding(compression Compression) (string, bool) {
 	switch compression {
 	case Gzip:
