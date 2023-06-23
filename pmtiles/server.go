@@ -2,9 +2,12 @@ package pmtiles
 
 import (
 	"bytes"
+	"compress/gzip"
 	"container/list"
 	"context"
+	"errors"
 	"fmt"
+	// "encoding/json"
 	"gocloud.dev/blob"
 	"io"
 	"log"
@@ -210,32 +213,49 @@ func (server *Server) Start() {
 	}()
 }
 
-func (server *Server) get_metadata(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
+func (server *Server) get_header_metadata(ctx context.Context, name string) (error, bool, HeaderV3, []byte) {
 	root_req := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
 	server.reqs <- root_req
 	root_value := <-root_req.value
 	header := root_value.header
 
 	if !root_value.ok {
-		return 404, http_headers, []byte("Archive not found")
+		return nil, false, HeaderV3{}, nil
 	}
 
 	r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), nil)
 	if err != nil {
-		return 404, http_headers, []byte("Archive not found")
+		return nil, false, HeaderV3{}, nil
 	}
 	defer r.Close()
-	b, err := io.ReadAll(r)
+
+	var metadata_bytes []byte
+	if header.InternalCompression == Gzip {
+		metadata_reader, _ := gzip.NewReader(r)
+		defer metadata_reader.Close()
+		metadata_bytes, err = io.ReadAll(metadata_reader)
+	} else if header.InternalCompression == NoCompression {
+		metadata_bytes, err = io.ReadAll(r)
+	} else {
+		return errors.New("Unknown compression"), true, HeaderV3{}, nil
+	}
+
+	return nil, true, header, metadata_bytes
+}
+
+func (server *Server) get_metadata(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
+	err, found, _, metadata_bytes := server.get_header_metadata(ctx, name)
+
 	if err != nil {
 		return 500, http_headers, []byte("I/O Error")
 	}
 
-	if header_val, ok := headerContentEncoding(header.InternalCompression); ok {
-		http_headers["Content-Encoding"] = header_val
+	if !found {
+		return 404, http_headers, []byte("Archive not found")
 	}
-	http_headers["Content-Type"] = "application/json"
 
-	return 200, http_headers, b
+	http_headers["Content-Type"] = "application/json"
+	return 200, http_headers, metadata_bytes
 }
 
 func (server *Server) get_tile(ctx context.Context, http_headers map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
@@ -318,6 +338,7 @@ func (server *Server) get_tile(ctx context.Context, http_headers map[string]stri
 
 var tilePattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\/(\d+)\/(\d+)\/(\d+)\.([a-z]+)$`)
 var metadataPattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\/metadata$`)
+var tileJSONPattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\.json$`)
 
 func parse_tile_path(path string) (bool, string, uint8, uint32, uint32, string) {
 	if res := tilePattern.FindStringSubmatch(path); res != nil {
