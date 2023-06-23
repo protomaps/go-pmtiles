@@ -26,6 +26,7 @@ const (
 	Png                      = 2
 	Jpeg                     = 3
 	Webp                     = 4
+	Avif                     = 5
 )
 
 const HEADERV3_LEN_BYTES = 127
@@ -68,6 +69,8 @@ func headerContentType(header HeaderV3) (string, bool) {
 		return "image/jpeg", true
 	case Webp:
 		return "image/webp", true
+	case Avif:
+		return "image/avif", true
 	default:
 		return "", false
 	}

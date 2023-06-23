@@ -501,6 +501,9 @@ func v2_to_header_json(v2_json_metadata map[string]interface{}, first4 []byte) (
 		case "webp":
 			header.TileType = Webp
 			header.TileCompression = NoCompression
+		case "avif":
+			header.TileType = Avif
+			header.TileCompression = NoCompression
 		default:
 			return header, v2_json_metadata, errors.New("Unknown tile type")
 		}
@@ -590,6 +593,9 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 				header.TileCompression = NoCompression
 			case "webp":
 				header.TileType = Webp
+				header.TileCompression = NoCompression
+			case "avif":
+				header.TileType = Avif
 				header.TileCompression = NoCompression
 			}
 			json_result["format"] = value

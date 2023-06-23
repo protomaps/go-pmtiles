@@ -16,7 +16,7 @@ import (
 
 func Show(logger *log.Logger, bucketURL string, file string, show_tile bool, z int, x int, y int) error {
 	if bucketURL == "" {
-		if strings.HasPrefix(file,"/") {
+		if strings.HasPrefix(file, "/") {
 			bucketURL = "file:///"
 		} else {
 			bucketURL = "file://"
@@ -63,6 +63,8 @@ func Show(logger *log.Logger, bucketURL string, file string, show_tile bool, z i
 			tile_type = "Raster Jpeg"
 		case Webp:
 			tile_type = "Raster WebP"
+		case Avif:
+			tile_type = "Raster AVIF"
 		default:
 			tile_type = "Unknown"
 		}
