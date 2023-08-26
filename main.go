@@ -2,18 +2,20 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
+
 	"github.com/alecthomas/kong"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	_ "gocloud.dev/blob/azureblob"
 	_ "gocloud.dev/blob/fileblob"
 	_ "gocloud.dev/blob/gcsblob"
 	_ "gocloud.dev/blob/s3blob"
-	"log"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strconv"
-	"time"
 )
 
 var (
@@ -105,7 +107,7 @@ func main() {
 
 		server.Start()
 
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			status_code, headers, body := server.Get(r.Context(), r.URL.Path)
 			for k, v := range headers {
@@ -115,6 +117,12 @@ func main() {
 			w.Write(body)
 			logger.Printf("served %s in %s", r.URL.Path, time.Since(start))
 		})
+
+		publicUrl, err := url.Parse(cli.Serve.PublicHostname)
+		if err != nil {
+			logger.Fatalf("Invalid url, %v", err)
+		}
+		http.Handle("/", http.StripPrefix(publicUrl.EscapedPath(), handler))
 
 		logger.Printf("Serving %s %s on port %d with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Cors)
 		logger.Fatal(http.ListenAndServe(":"+strconv.Itoa(cli.Serve.Port), nil))
