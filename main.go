@@ -45,12 +45,13 @@ var cli struct {
 	} `cmd:"" help:"Fetch one tile from a local or remote archive and output on stdout."`
 
 	Extract struct {
-		Input   string `arg:"" help:"Input local or remote archive."`
-		Output  string `arg:"" help:"Output archive." type:"path"`
-		Bucket  string `help:"Remote bucket of input archive."`
-		Region  string `help:"local GeoJSON Polygon or MultiPolygon file for area of interest." type:"existingfile"`
-		Maxzoom int    `help:"Maximum zoom level, inclusive."`
-		DryRun  bool   `help:"Calculate tiles to extract based on header and directories, but don't download them."`
+		Input     string  `arg:"" help:"Input local or remote archive."`
+		Output    string  `arg:"" help:"Output archive." type:"path"`
+		Bucket    string  `help:"Remote bucket of input archive."`
+		Region    string  `help:"local GeoJSON Polygon or MultiPolygon file for area of interest." type:"existingfile"`
+		Maxzoom   uint8   `help:"Maximum zoom level, inclusive."`
+		DryRun    bool    `help:"Calculate tiles to extract based on header and directories, but don't download them."`
+		Overfetch float32 `default:0.1 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
 	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region."`
 
 	Verify struct {
@@ -119,7 +120,10 @@ func main() {
 		logger.Printf("Serving %s %s on port %d with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Cors)
 		logger.Fatal(http.ListenAndServe(":"+strconv.Itoa(cli.Serve.Port), nil))
 	case "extract <input> <output>":
-		logger.Fatalf("This command is not yet implemented.")
+		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Output, cli.Extract.Overfetch)
+		if err != nil {
+			logger.Fatalf("Failed to extract, %v", err)
+		}
 	case "convert <input> <output>":
 		path := cli.Convert.Input
 		output := cli.Convert.Output
@@ -160,6 +164,8 @@ func main() {
 			logger.Fatalf("Failed to upload file, %v", err)
 		}
 	case "verify <input>":
+		// check clustered
+		// check counts (addressed tiles, tile entries, # tile contents)
 		logger.Fatalf("This command is not yet implemented.")
 	case "version":
 		fmt.Printf("pmtiles %s, commit %s, built at %s\n", version, commit, date)

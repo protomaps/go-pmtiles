@@ -72,7 +72,7 @@ func DownloadParts(getter func (Range) []byte, ranges []Range, numThreads int) c
 
 // an number for overhead: 0.2 is 20% overhead, 1.0 is 100% overhead
 // a number of maximum chunk size: n chunks * threads is the max memory usage
-// store the smallest gaps in a heap
+// store the smallest gaps in a heap; merge ranges until overhead budget is reached
 func DownloadBatchedParts(getter func (Range) []byte, ranges []Range, overhead float32, maxSizeBytes int, numThreads int) chan []byte {
 	orderedOutput := make(chan []byte, 8)
 	return orderedOutput
