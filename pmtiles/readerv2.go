@@ -14,7 +14,7 @@ type Zxy struct {
 
 type Range struct {
 	Offset uint64
-	Length uint32
+	Length uint64
 }
 
 type DirectoryV2 struct {
@@ -51,7 +51,7 @@ func ParseEntryV2(b []byte) (uint8, Zxy, Range) {
 	x := readUint24(x_raw)
 	y := readUint24(y_raw)
 	offset := readUint48(offset_raw)
-	length := binary.LittleEndian.Uint32(length_raw)
+	length := uint64(binary.LittleEndian.Uint32(length_raw))
 	if z_raw&0b10000000 == 0 {
 		return 0, Zxy{Z: uint8(z_raw), X: uint32(x), Y: uint32(y)}, Range{Offset: offset, Length: length}
 	} else {

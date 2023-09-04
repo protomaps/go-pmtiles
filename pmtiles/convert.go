@@ -114,14 +114,14 @@ func Convert(logger *log.Logger, input string, output string, deduplicate bool, 
 func add_directoryv2_entries(dir DirectoryV2, entries *[]EntryV3, f *os.File) {
 	for zxy, rng := range dir.Entries {
 		tile_id := ZxyToId(zxy.Z, zxy.X, zxy.Y)
-		*entries = append(*entries, EntryV3{tile_id, rng.Offset, rng.Length, 1})
+		*entries = append(*entries, EntryV3{tile_id, rng.Offset, uint32(rng.Length), 1})
 	}
 
 	var unique = map[uint64]uint32{}
 
 	// uniqify the offset/length pairs
 	for _, rng := range dir.Leaves {
-		unique[rng.Offset] = rng.Length
+		unique[rng.Offset] = uint32(rng.Length)
 	}
 
 	for offset, length := range unique {
