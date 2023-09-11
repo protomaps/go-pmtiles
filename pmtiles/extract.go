@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/dustin/go-humanize"
-	"github.com/paulmach/orb"
-	"github.com/paulmach/orb/geojson"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 	"io"
@@ -250,7 +248,7 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 // 10. write the leaf directories (if any)
 // 11. Get all tiles, and write directly to the output.
 
-func Extract(logger *log.Logger, bucketURL string, key string, maxzoom uint8, region_file string, output string, download_threads int, overfetch float32, dry_run bool) error {
+func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, region_file string, output string, download_threads int, overfetch float32, dry_run bool) error {
 	// 1. fetch the header
 
 	fmt.Println("WARNING: extract is an experimental feature and results may not be suitable for production use.")
@@ -294,27 +292,26 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom uint8, re
 	source_metadata_offset := header.MetadataOffset
 	source_tile_data_offset := header.TileDataOffset
 
-	if header.MaxZoom < maxzoom {
-		maxzoom = header.MaxZoom
+	fmt.Println(maxzoom)
+
+	if maxzoom == -1 || int8(header.MaxZoom) < maxzoom {
+		maxzoom = int8(header.MaxZoom)
 	}
 
 	var relevant_set *roaring64.Bitmap
 	if region_file != "" {
+
 		// 2. construct a relevance bitmap
 		dat, _ := ioutil.ReadFile(region_file)
-		f, _ := geojson.UnmarshalFeature(dat)
+		multipolygon, err := UnmarshalRegion(dat)
 
-		var multipolygon orb.MultiPolygon
-		switch v := f.Geometry.(type) {
-		case orb.Polygon:
-			multipolygon = []orb.Polygon{v}
-		case orb.MultiPolygon:
-			multipolygon = v
+		if err != nil {
+			return err
 		}
 
 		bound := multipolygon.Bound()
 
-		boundary_set, interior_set := bitmapMultiPolygon(maxzoom, multipolygon)
+		boundary_set, interior_set := bitmapMultiPolygon(uint8(maxzoom), multipolygon)
 		relevant_set = boundary_set
 		relevant_set.Or(interior_set)
 		generalizeOr(relevant_set)
@@ -327,7 +324,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom uint8, re
 		header.CenterLatE7 = int32(bound.Center().Y() * 10000000)
 	} else {
 		relevant_set = roaring64.New()
-		relevant_set.AddRange(0, ZxyToId(maxzoom+1, 0, 0))
+		relevant_set.AddRange(0, ZxyToId(uint8(maxzoom)+1, 0, 0))
 	}
 
 	// 3. get relevant entries from root
@@ -346,7 +343,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom uint8, re
 
 	root_dir := deserialize_entries(bytes.NewBuffer(root_bytes))
 
-	tile_entries, leaves := RelevantEntries(relevant_set, maxzoom, root_dir)
+	tile_entries, leaves := RelevantEntries(relevant_set, uint8(maxzoom), root_dir)
 
 	// 4. get all relevant leaf entries
 
@@ -378,7 +375,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom uint8, re
 				return err
 			}
 			leafdir := deserialize_entries(bytes.NewBuffer(leaf_bytes))
-			new_entries, new_leaves := RelevantEntries(relevant_set, maxzoom, leafdir)
+			new_entries, new_leaves := RelevantEntries(relevant_set, uint8(maxzoom), leafdir)
 
 			if len(new_leaves) > 0 {
 				panic("This doesn't support leaf level 2+.")
@@ -425,7 +422,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom uint8, re
 	header.TileEntriesCount = uint64(len(tile_entries))
 	header.TileContentsCount = tile_contents
 
-	header.MaxZoom = maxzoom
+	header.MaxZoom = uint8(maxzoom)
 
 	header_bytes := serialize_header(header)
 
