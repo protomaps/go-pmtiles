@@ -7,15 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"gocloud.dev/blob"
 	"io"
 	"log"
-	"os"
-	"path"
 	"regexp"
 	"strconv"
-	"strings"
 )
 
 type CacheKey struct {
@@ -43,29 +38,9 @@ type Response struct {
 	ok    bool
 }
 
-// type HTTPFetcher struct {
-// 	bucket string
-// 	client *http.Client
-// }
-
-// func (fetcher HTTPFetcher) Do(key Key, readFunc func(io.Reader)) bool {
-// 	archive := fetcher.bucket + "/" + key.name + ".pmtiles"
-// 	fetch, _ := http.NewRequest("GET", archive, nil)
-// 	end := key.rng.Offset + uint64(key.rng.Length) - 1
-// 	range_header := fmt.Sprintf("bytes=%d-%d", key.rng.Offset, end)
-// 	fetch.Header.Add("Range", range_header)
-// 	fetch_resp, err := fetcher.client.Do(fetch)
-// 	if err != nil || fetch_resp.StatusCode >= 300 || fetch_resp.ContentLength != int64(key.rng.Length) {
-// 		return false
-// 	}
-// 	defer fetch_resp.Body.Close()
-// 	readFunc(fetch_resp.Body)
-// 	return true
-// }
-
 type Server struct {
 	reqs           chan Request
-	bucket         *blob.Bucket
+	bucket         Bucket
 	logger         *log.Logger
 	cacheSize      int
 	cors           string
@@ -73,26 +48,19 @@ type Server struct {
 }
 
 func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicHostname string) (*Server, error) {
-	if bucketURL == "" {
-		if strings.HasPrefix(prefix, "/") {
-			bucketURL = "file:///"
-		} else {
-			bucketURL = "file://"
-		}
-	}
-
 	reqs := make(chan Request, 8)
 
 	ctx := context.Background()
 
-	bucket, err := blob.OpenBucket(ctx, bucketURL)
-
-	if prefix != "/" && prefix != "." {
-		bucket = blob.PrefixedBucket(bucket, path.Clean(prefix)+string(os.PathSeparator))
-	}
+	bucketURL, _, err := NormalizeBucketKey(bucketURL, prefix, "")
 
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open bucket for %s, %w", prefix, err)
+		return nil, err
+	}
+
+	bucket, err := OpenBucket(ctx, bucketURL, prefix)
+	if err != nil {
+		return nil, err
 	}
 
 	l := &Server{
@@ -140,7 +108,7 @@ func (server *Server) Start() {
 						}
 
 						server.logger.Printf("fetching %s %d-%d", key.name, offset, length)
-						r, err := server.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length, nil)
+						r, err := server.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length)
 
 						// TODO: store away ETag
 						if err != nil {
@@ -225,7 +193,7 @@ func (server *Server) get_header_metadata(ctx context.Context, name string) (err
 		return nil, false, HeaderV3{}, nil
 	}
 
-	r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), nil)
+	r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength))
 	if err != nil {
 		return nil, false, HeaderV3{}, nil
 	}
@@ -351,7 +319,7 @@ func (server *Server) get_tile(ctx context.Context, http_headers map[string]stri
 		entry, ok := find_tile(directory, tile_id)
 		if ok {
 			if entry.RunLength > 0 {
-				r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), nil)
+				r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length))
 				if err != nil {
 					return 500, http_headers, []byte("Network error")
 				}

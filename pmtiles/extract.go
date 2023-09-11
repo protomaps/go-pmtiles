@@ -2,15 +2,14 @@ package pmtiles
 
 import (
 	"bytes"
-	"context"
 	"container/list"
+	"context"
 	"fmt"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/dustin/go-humanize"
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/geojson"
 	"github.com/schollz/progressbar/v3"
-	"gocloud.dev/blob"
 	"golang.org/x/sync/errgroup"
 	"io"
 	"io/ioutil"
@@ -18,7 +17,6 @@ import (
 	"math"
 	"os"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 )
@@ -252,31 +250,34 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 // 10. write the leaf directories (if any)
 // 11. Get all tiles, and write directly to the output.
 
-func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, region_file string, output string, download_threads int, overfetch float32, dry_run bool) error {
+func Extract(logger *log.Logger, bucketURL string, key string, maxzoom uint8, region_file string, output string, download_threads int, overfetch float32, dry_run bool) error {
 	// 1. fetch the header
-
-	if bucketURL == "" {
-		if strings.HasPrefix(file, "/") {
-			bucketURL = "file:///"
-		} else {
-			bucketURL = "file://"
-		}
-	}
 
 	fmt.Println("WARNING: extract is an experimental feature and results may not be suitable for production use.")
 	start := time.Now()
-
 	ctx := context.Background()
-	bucket, err := blob.OpenBucket(ctx, bucketURL)
+
+	bucketURL, key, err := NormalizeBucketKey(bucketURL, "", key)
+
+	if err != nil {
+		return err
+	}
+
+	bucket, err := OpenBucket(ctx, bucketURL, "")
+
+	if err != nil {
+		return err
+	}
+
 	if err != nil {
 		return fmt.Errorf("Failed to open bucket for %s, %w", bucketURL, err)
 	}
 	defer bucket.Close()
 
-	r, err := bucket.NewRangeReader(ctx, file, 0, HEADERV3_LEN_BYTES, nil)
+	r, err := bucket.NewRangeReader(ctx, key, 0, HEADERV3_LEN_BYTES)
 
 	if err != nil {
-		return fmt.Errorf("Failed to create range reader for %s, %w", file, err)
+		return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
 	}
 	b, err := io.ReadAll(r)
 	if err != nil {
@@ -321,7 +322,7 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 	dir_offset := header.RootOffset
 	dir_length := header.RootLength
 
-	root_reader, err := bucket.NewRangeReader(ctx, file, int64(dir_offset), int64(dir_length), nil)
+	root_reader, err := bucket.NewRangeReader(ctx, key, int64(dir_offset), int64(dir_length))
 	if err != nil {
 		return err
 	}
@@ -352,7 +353,7 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 		}
 		or := overfetch_leaves.Remove(overfetch_leaves.Front()).(OverfetchRange)
 
-		slab_r, err := bucket.NewRangeReader(ctx, file, int64(or.Rng.SrcOffset), int64(or.Rng.Length), nil)
+		slab_r, err := bucket.NewRangeReader(ctx, key, int64(or.Rng.SrcOffset), int64(or.Rng.Length))
 		if err != nil {
 			return err
 		}
@@ -446,7 +447,7 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 		}
 
 		// 9. get and write the metadata
-		metadata_reader, err := bucket.NewRangeReader(ctx, file, int64(source_metadata_offset), int64(header.MetadataLength), nil)
+		metadata_reader, err := bucket.NewRangeReader(ctx, key, int64(source_metadata_offset), int64(header.MetadataLength))
 		if err != nil {
 			return err
 		}
@@ -472,7 +473,7 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 		var mu sync.Mutex
 
 		downloadPart := func(or OverfetchRange) error {
-			tile_r, err := bucket.NewRangeReader(ctx, file, int64(source_tile_data_offset+or.Rng.SrcOffset), int64(or.Rng.Length), nil)
+			tile_r, err := bucket.NewRangeReader(ctx, key, int64(source_tile_data_offset+or.Rng.SrcOffset), int64(or.Rng.Length))
 			if err != nil {
 				return err
 			}
@@ -533,9 +534,9 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 	}
 
 	fmt.Printf("Completed in %v with %v download threads.\n", time.Since(start), download_threads)
-	total_requests := 2                     // header + root
+	total_requests := 2                    // header + root
 	total_requests += num_overfetch_leaves // leaves
-	total_requests += 1                     // metadata
+	total_requests += 1                    // metadata
 	total_requests += num_overfetch_ranges
 	fmt.Printf("Extract required %d total requests.\n", total_requests)
 	fmt.Printf("Extract transferred %s (overfetch %v) for an archive size of %s\n", humanize.Bytes(total_bytes), overfetch, humanize.Bytes(total_actual_bytes))
