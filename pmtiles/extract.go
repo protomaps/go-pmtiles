@@ -292,8 +292,6 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, reg
 	source_metadata_offset := header.MetadataOffset
 	source_tile_data_offset := header.TileDataOffset
 
-	fmt.Println(maxzoom)
-
 	if maxzoom == -1 || int8(header.MaxZoom) < maxzoom {
 		maxzoom = int8(header.MaxZoom)
 	}
