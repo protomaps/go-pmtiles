@@ -516,7 +516,10 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 					if done {
 						return nil
 					}
-					downloadPart(or)
+					err := downloadPart(or)
+					if err != nil {
+						return err
+					}
 				}
 
 				return nil
