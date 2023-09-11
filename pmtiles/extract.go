@@ -294,29 +294,41 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom uint8, re
 	source_metadata_offset := header.MetadataOffset
 	source_tile_data_offset := header.TileDataOffset
 
-	if header.MaxZoom < maxzoom || maxzoom == 0 {
+	if header.MaxZoom < maxzoom {
 		maxzoom = header.MaxZoom
 	}
 
-	// 2. construct a relevance bitmap
-	dat, _ := ioutil.ReadFile(region_file)
-	f, _ := geojson.UnmarshalFeature(dat)
+	var relevant_set *roaring64.Bitmap
+	if region_file != "" {
+		// 2. construct a relevance bitmap
+		dat, _ := ioutil.ReadFile(region_file)
+		f, _ := geojson.UnmarshalFeature(dat)
 
-	var multipolygon orb.MultiPolygon
-	switch v := f.Geometry.(type) {
-	case orb.Polygon:
-		multipolygon = []orb.Polygon{v}
-	case orb.MultiPolygon:
-		multipolygon = v
+		var multipolygon orb.MultiPolygon
+		switch v := f.Geometry.(type) {
+		case orb.Polygon:
+			multipolygon = []orb.Polygon{v}
+		case orb.MultiPolygon:
+			multipolygon = v
+		}
+
+		bound := multipolygon.Bound()
+
+		boundary_set, interior_set := bitmapMultiPolygon(maxzoom, multipolygon)
+		relevant_set = boundary_set
+		relevant_set.Or(interior_set)
+		generalizeOr(relevant_set)
+
+		header.MinLonE7 = int32(bound.Left() * 10000000)
+		header.MinLatE7 = int32(bound.Bottom() * 10000000)
+		header.MaxLonE7 = int32(bound.Right() * 10000000)
+		header.MaxLatE7 = int32(bound.Top() * 10000000)
+		header.CenterLonE7 = int32(bound.Center().X() * 10000000)
+		header.CenterLatE7 = int32(bound.Center().Y() * 10000000)
+	} else {
+		relevant_set = roaring64.New()
+		relevant_set.AddRange(0, ZxyToId(maxzoom+1, 0, 0))
 	}
-
-	bound := multipolygon.Bound()
-
-	boundary_set, interior_set := bitmapMultiPolygon(maxzoom, multipolygon)
-
-	relevant_set := boundary_set
-	relevant_set.Or(interior_set)
-	generalizeOr(relevant_set)
 
 	// 3. get relevant entries from root
 	dir_offset := header.RootOffset
@@ -413,12 +425,6 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom uint8, re
 	header.TileEntriesCount = uint64(len(tile_entries))
 	header.TileContentsCount = tile_contents
 
-	header.MinLonE7 = int32(bound.Left() * 10000000)
-	header.MinLatE7 = int32(bound.Bottom() * 10000000)
-	header.MaxLonE7 = int32(bound.Right() * 10000000)
-	header.MaxLatE7 = int32(bound.Top() * 10000000)
-	header.CenterLonE7 = int32(bound.Center().X() * 10000000)
-	header.CenterLatE7 = int32(bound.Center().Y() * 10000000)
 	header.MaxZoom = maxzoom
 
 	header_bytes := serialize_header(header)
