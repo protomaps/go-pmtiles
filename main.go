@@ -50,7 +50,7 @@ var cli struct {
 		Bucket    string  `help:"Remote bucket of input archive."`
 		Region    string  `help:"local GeoJSON Polygon or MultiPolygon file for area of interest." type:"existingfile"`
 		Maxzoom   uint8   `help:"Maximum zoom level, inclusive."`
-		DownloadThreads int `default:1 help:"Number of download threads."`
+		DownloadThreads int `default:4 help:"Number of download threads."`
 		DryRun    bool    `help:"Calculate tiles to extract, but don't download them."`
 		Overfetch float32 `default:0.1 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
 	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region."`

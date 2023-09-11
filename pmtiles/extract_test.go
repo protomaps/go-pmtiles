@@ -141,13 +141,15 @@ func TestMergeRanges(t *testing.T) {
 	ranges = append(ranges, SrcDstRange{0, 0, 50})
 	ranges = append(ranges, SrcDstRange{60, 60, 60})
 
-	result := MergeRanges(ranges, 0.1)
+	result, total_transfer_bytes := MergeRanges(ranges, 0.1)
 
-	assert.Equal(t, 1, len(result))
-	assert.Equal(t, SrcDstRange{0, 0, 120}, result[0].Rng)
-	assert.Equal(t, 2, len(result[0].CopyDiscards))
-	assert.Equal(t, CopyDiscard{50, 10}, result[0].CopyDiscards[0])
-	assert.Equal(t, CopyDiscard{60, 0}, result[0].CopyDiscards[1])
+	assert.Equal(t, 1, result.Len())
+	assert.Equal(t, uint64(120), total_transfer_bytes)
+	front := result.Front().Value.(OverfetchRange)
+	assert.Equal(t, SrcDstRange{0, 0, 120}, front.Rng)
+	assert.Equal(t, 2, len(front.CopyDiscards))
+	assert.Equal(t, CopyDiscard{50, 10}, front.CopyDiscards[0])
+	assert.Equal(t, CopyDiscard{60, 0}, front.CopyDiscards[1])
 }
 
 func TestMergeRangesMultiple(t *testing.T) {
@@ -156,9 +158,11 @@ func TestMergeRangesMultiple(t *testing.T) {
 	ranges = append(ranges, SrcDstRange{60, 60, 10})
 	ranges = append(ranges, SrcDstRange{80, 80, 10})
 
-	result := MergeRanges(ranges, 0.3)
-	assert.Equal(t, 1, len(result))
-	assert.Equal(t, SrcDstRange{0, 0, 90}, result[0].Rng)
-	assert.Equal(t, 3, len(result[0].CopyDiscards))
+	result, total_transfer_bytes := MergeRanges(ranges, 0.3)
+	front := result.Front().Value.(OverfetchRange)
+	assert.Equal(t, uint64(90), total_transfer_bytes)
+	assert.Equal(t, 1, result.Len())
+	assert.Equal(t, SrcDstRange{0, 0, 90}, front.Rng)
+	assert.Equal(t, 3, len(front.CopyDiscards))
 	fmt.Println(result)
 }
