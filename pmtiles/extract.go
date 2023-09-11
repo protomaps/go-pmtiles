@@ -534,7 +534,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, reg
 		}
 	}
 
-	fmt.Printf("Completed in %v with %v download threads.\n", time.Since(start), download_threads)
+	fmt.Printf("Completed in %v with %v download threads (%v tiles/s).\n", time.Since(start), download_threads, float64(len(reencoded))/float64(time.Since(start).Seconds()))
 	total_requests := 2                    // header + root
 	total_requests += num_overfetch_leaves // leaves
 	total_requests += 1                    // metadata
