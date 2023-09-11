@@ -2,15 +2,12 @@ package pmtiles
 
 import (
 	"bytes"
-	"context"
 	"container/list"
+	"context"
 	"fmt"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/dustin/go-humanize"
-	"github.com/paulmach/orb"
-	"github.com/paulmach/orb/geojson"
 	"github.com/schollz/progressbar/v3"
-	"gocloud.dev/blob"
 	"golang.org/x/sync/errgroup"
 	"io"
 	"io/ioutil"
@@ -18,7 +15,6 @@ import (
 	"math"
 	"os"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 )
@@ -252,31 +248,34 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 // 10. write the leaf directories (if any)
 // 11. Get all tiles, and write directly to the output.
 
-func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, region_file string, output string, download_threads int, overfetch float32, dry_run bool) error {
+func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, region_file string, output string, download_threads int, overfetch float32, dry_run bool) error {
 	// 1. fetch the header
-
-	if bucketURL == "" {
-		if strings.HasPrefix(file, "/") {
-			bucketURL = "file:///"
-		} else {
-			bucketURL = "file://"
-		}
-	}
 
 	fmt.Println("WARNING: extract is an experimental feature and results may not be suitable for production use.")
 	start := time.Now()
-
 	ctx := context.Background()
-	bucket, err := blob.OpenBucket(ctx, bucketURL)
+
+	bucketURL, key, err := NormalizeBucketKey(bucketURL, "", key)
+
+	if err != nil {
+		return err
+	}
+
+	bucket, err := OpenBucket(ctx, bucketURL, "")
+
+	if err != nil {
+		return err
+	}
+
 	if err != nil {
 		return fmt.Errorf("Failed to open bucket for %s, %w", bucketURL, err)
 	}
 	defer bucket.Close()
 
-	r, err := bucket.NewRangeReader(ctx, file, 0, HEADERV3_LEN_BYTES, nil)
+	r, err := bucket.NewRangeReader(ctx, key, 0, HEADERV3_LEN_BYTES)
 
 	if err != nil {
-		return fmt.Errorf("Failed to create range reader for %s, %w", file, err)
+		return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
 	}
 	b, err := io.ReadAll(r)
 	if err != nil {
@@ -293,35 +292,46 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 	source_metadata_offset := header.MetadataOffset
 	source_tile_data_offset := header.TileDataOffset
 
-	if header.MaxZoom < maxzoom || maxzoom == 0 {
-		maxzoom = header.MaxZoom
+	fmt.Println(maxzoom)
+
+	if maxzoom == -1 || int8(header.MaxZoom) < maxzoom {
+		maxzoom = int8(header.MaxZoom)
 	}
 
-	// 2. construct a relevance bitmap
-	dat, _ := ioutil.ReadFile(region_file)
-	f, _ := geojson.UnmarshalFeature(dat)
+	var relevant_set *roaring64.Bitmap
+	if region_file != "" {
 
-	var multipolygon orb.MultiPolygon
-	switch v := f.Geometry.(type) {
-	case orb.Polygon:
-		multipolygon = []orb.Polygon{v}
-	case orb.MultiPolygon:
-		multipolygon = v
+		// 2. construct a relevance bitmap
+		dat, _ := ioutil.ReadFile(region_file)
+		multipolygon, err := UnmarshalRegion(dat)
+
+		if err != nil {
+			return err
+		}
+
+		bound := multipolygon.Bound()
+
+		boundary_set, interior_set := bitmapMultiPolygon(uint8(maxzoom), multipolygon)
+		relevant_set = boundary_set
+		relevant_set.Or(interior_set)
+		generalizeOr(relevant_set)
+
+		header.MinLonE7 = int32(bound.Left() * 10000000)
+		header.MinLatE7 = int32(bound.Bottom() * 10000000)
+		header.MaxLonE7 = int32(bound.Right() * 10000000)
+		header.MaxLatE7 = int32(bound.Top() * 10000000)
+		header.CenterLonE7 = int32(bound.Center().X() * 10000000)
+		header.CenterLatE7 = int32(bound.Center().Y() * 10000000)
+	} else {
+		relevant_set = roaring64.New()
+		relevant_set.AddRange(0, ZxyToId(uint8(maxzoom)+1, 0, 0))
 	}
-
-	bound := multipolygon.Bound()
-
-	boundary_set, interior_set := bitmapMultiPolygon(maxzoom, multipolygon)
-
-	relevant_set := boundary_set
-	relevant_set.Or(interior_set)
-	generalizeOr(relevant_set)
 
 	// 3. get relevant entries from root
 	dir_offset := header.RootOffset
 	dir_length := header.RootLength
 
-	root_reader, err := bucket.NewRangeReader(ctx, file, int64(dir_offset), int64(dir_length), nil)
+	root_reader, err := bucket.NewRangeReader(ctx, key, int64(dir_offset), int64(dir_length))
 	if err != nil {
 		return err
 	}
@@ -333,7 +343,7 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 
 	root_dir := deserialize_entries(bytes.NewBuffer(root_bytes))
 
-	tile_entries, leaves := RelevantEntries(relevant_set, maxzoom, root_dir)
+	tile_entries, leaves := RelevantEntries(relevant_set, uint8(maxzoom), root_dir)
 
 	// 4. get all relevant leaf entries
 
@@ -352,7 +362,7 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 		}
 		or := overfetch_leaves.Remove(overfetch_leaves.Front()).(OverfetchRange)
 
-		slab_r, err := bucket.NewRangeReader(ctx, file, int64(or.Rng.SrcOffset), int64(or.Rng.Length), nil)
+		slab_r, err := bucket.NewRangeReader(ctx, key, int64(or.Rng.SrcOffset), int64(or.Rng.Length))
 		if err != nil {
 			return err
 		}
@@ -365,7 +375,7 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 				return err
 			}
 			leafdir := deserialize_entries(bytes.NewBuffer(leaf_bytes))
-			new_entries, new_leaves := RelevantEntries(relevant_set, maxzoom, leafdir)
+			new_entries, new_leaves := RelevantEntries(relevant_set, uint8(maxzoom), leafdir)
 
 			if len(new_leaves) > 0 {
 				panic("This doesn't support leaf level 2+.")
@@ -412,13 +422,7 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 	header.TileEntriesCount = uint64(len(tile_entries))
 	header.TileContentsCount = tile_contents
 
-	header.MinLonE7 = int32(bound.Left() * 10000000)
-	header.MinLatE7 = int32(bound.Bottom() * 10000000)
-	header.MaxLonE7 = int32(bound.Right() * 10000000)
-	header.MaxLatE7 = int32(bound.Top() * 10000000)
-	header.CenterLonE7 = int32(bound.Center().X() * 10000000)
-	header.CenterLatE7 = int32(bound.Center().Y() * 10000000)
-	header.MaxZoom = maxzoom
+	header.MaxZoom = uint8(maxzoom)
 
 	header_bytes := serialize_header(header)
 
@@ -446,7 +450,7 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 		}
 
 		// 9. get and write the metadata
-		metadata_reader, err := bucket.NewRangeReader(ctx, file, int64(source_metadata_offset), int64(header.MetadataLength), nil)
+		metadata_reader, err := bucket.NewRangeReader(ctx, key, int64(source_metadata_offset), int64(header.MetadataLength))
 		if err != nil {
 			return err
 		}
@@ -472,7 +476,7 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 		var mu sync.Mutex
 
 		downloadPart := func(or OverfetchRange) error {
-			tile_r, err := bucket.NewRangeReader(ctx, file, int64(source_tile_data_offset+or.Rng.SrcOffset), int64(or.Rng.Length), nil)
+			tile_r, err := bucket.NewRangeReader(ctx, key, int64(source_tile_data_offset+or.Rng.SrcOffset), int64(or.Rng.Length))
 			if err != nil {
 				return err
 			}
@@ -533,9 +537,9 @@ func Extract(logger *log.Logger, bucketURL string, file string, maxzoom uint8, r
 	}
 
 	fmt.Printf("Completed in %v with %v download threads.\n", time.Since(start), download_threads)
-	total_requests := 2                     // header + root
+	total_requests := 2                    // header + root
 	total_requests += num_overfetch_leaves // leaves
-	total_requests += 1                     // metadata
+	total_requests += 1                    // metadata
 	total_requests += num_overfetch_ranges
 	fmt.Printf("Extract required %d total requests.\n", total_requests)
 	fmt.Printf("Extract transferred %s (overfetch %v) for an archive size of %s\n", humanize.Bytes(total_bytes), overfetch, humanize.Bytes(total_actual_bytes))
