@@ -5,6 +5,15 @@ import (
 	"testing"
 )
 
+func TestBboxRegion(t *testing.T) {
+	result, err := BboxRegion("-1.906033,50.680367,1.097501,52.304934")
+	assert.Nil(t, err)
+	assert.Equal(t, -1.906033, result[0][0][0][0])
+	assert.Equal(t, 52.304934, result[0][0][0][1])
+	assert.Equal(t, 1.097501, result[0][0][2][0])
+	assert.Equal(t, 50.680367, result[0][0][2][1])
+}
+
 func TestRawPolygonRegion(t *testing.T) {
 	result, err := UnmarshalRegion([]byte(`{
 		"type": "Polygon",

@@ -45,21 +45,16 @@ var cli struct {
 	} `cmd:"" help:"Fetch one tile from a local or remote archive and output on stdout."`
 
 	Extract struct {
-		Input     string  `arg:"" help:"Input local or remote archive."`
-		Output    string  `arg:"" help:"Output archive." type:"path"`
-		Bucket    string  `help:"Remote bucket of input archive."`
-		Region    string  `help:"local GeoJSON Polygon or MultiPolygon file for area of interest." type:"existingfile"`
-		Maxzoom   int8   `default:-1 help:"Maximum zoom level, inclusive."`
-		DownloadThreads int `default:4 help:"Number of download threads."`
-		DryRun    bool    `help:"Calculate tiles to extract, but don't download them."`
-		Overfetch float32 `default:0.05 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
+		Input           string  `arg:"" help:"Input local or remote archive."`
+		Output          string  `arg:"" help:"Output archive." type:"path"`
+		Bucket          string  `help:"Remote bucket of input archive."`
+		Region          string  `help:"local GeoJSON Polygon or MultiPolygon file for area of interest." type:"existingfile"`
+		Bbox            string  `help:"bbox area of interest" type:"string"`
+		Maxzoom         int8    `default:-1 help:"Maximum zoom level, inclusive."`
+		DownloadThreads int     `default:4 help:"Number of download threads."`
+		DryRun          bool    `help:"Calculate tiles to extract, but don't download them."`
+		Overfetch       float32 `default:0.05 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
 	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region."`
-
-	Makesync struct {
-		Input        string `arg:"" type:"existingfile"`
-		BlockSize    int    `default:1000 help:"The block size, in # of tiles."`
-		HashFunction string `default:fnv1a help:"The hash function."`
-	} `cmd:"" help:"Generates an **experimental** sync control file (.pmtiles.sync) for a local archive."`
 
 	Stats struct {
 		Input string `arg:"" type:"existingfile"`
@@ -131,7 +126,7 @@ func main() {
 		logger.Printf("Serving %s %s on port %d with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Cors)
 		logger.Fatal(http.ListenAndServe(":"+strconv.Itoa(cli.Serve.Port), nil))
 	case "extract <input> <output>":
-		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
+		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Bbox, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
 		if err != nil {
 			logger.Fatalf("Failed to extract, %v", err)
 		}

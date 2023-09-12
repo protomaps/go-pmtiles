@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/dustin/go-humanize"
+	"github.com/paulmach/orb"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 	"io"
@@ -248,7 +249,7 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 // 10. write the leaf directories (if any)
 // 11. Get all tiles, and write directly to the output.
 
-func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, region_file string, output string, download_threads int, overfetch float32, dry_run bool) error {
+func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, region_file string, bbox string, output string, download_threads int, overfetch float32, dry_run bool) error {
 	// 1. fetch the header
 
 	fmt.Println("WARNING: extract is an experimental feature and results may not be suitable for production use.")
@@ -297,15 +298,28 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, reg
 	}
 
 	var relevant_set *roaring64.Bitmap
-	if region_file != "" {
+	if region_file != "" || bbox != "" {
+		if region_file != "" && bbox != "" {
+			return fmt.Errorf("Only one of region and bbox can be specified.")
+		}
+
+		var multipolygon orb.MultiPolygon
+
+		if region_file != "" {
+			dat, _ := ioutil.ReadFile(region_file)
+			multipolygon, err = UnmarshalRegion(dat)
+
+			if err != nil {
+				return err
+			}
+		} else {
+			multipolygon, err = BboxRegion(bbox)
+			if err != nil {
+				return err
+			}
+		}
 
 		// 2. construct a relevance bitmap
-		dat, _ := ioutil.ReadFile(region_file)
-		multipolygon, err := UnmarshalRegion(dat)
-
-		if err != nil {
-			return err
-		}
 
 		bound := multipolygon.Bound()
 
