@@ -578,6 +578,7 @@ func parse_center(center string) (int32, int32, uint8, error) {
 func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]interface{}, error) {
 	header := HeaderV3{}
 	json_result := make(map[string]interface{})
+	boundsSet := false
 	for i := 0; i < len(mbtiles_metadata); i += 2 {
 		value := mbtiles_metadata[i+1]
 		switch key := mbtiles_metadata[i]; key {
@@ -604,10 +605,15 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 			if err != nil {
 				return header, json_result, err
 			}
+
+			if min_lon >= max_lon || min_lat >= max_lat {
+				return header, json_result, fmt.Errorf("Error: zero-area bounds in mbtiles metadata.")
+			}
 			header.MinLonE7 = min_lon
 			header.MinLatE7 = min_lat
 			header.MaxLonE7 = max_lon
 			header.MaxLatE7 = max_lat
+			boundsSet = true
 		case "center":
 			center_lon, center_lat, center_zoom, err := parse_center(value)
 			if err != nil {
@@ -637,5 +643,14 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 			json_result[key] = value
 		}
 	}
+
+	E7 := 10000000.0
+	if !boundsSet {
+		header.MinLonE7 = int32(-180 * E7)
+		header.MinLatE7 = int32(-85 * E7)
+		header.MaxLonE7 = int32(180 * E7)
+		header.MaxLatE7 = int32(85 * E7)
+	}
+
 	return header, json_result, nil
 }
