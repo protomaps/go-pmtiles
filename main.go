@@ -180,9 +180,10 @@ func main() {
 			logger.Fatalf("Failed to upload file, %v", err)
 		}
 	case "verify <input>":
-		// check clustered
-		// check counts (addressed tiles, tile entries, # tile contents)
-		logger.Fatalf("This command is not yet implemented.")
+		err := pmtiles.Verify(logger, cli.Verify.Input)
+		if err != nil {
+			logger.Fatalf("Failed to verify archive, %v", err)
+		}
 	case "version":
 		fmt.Printf("pmtiles %s, commit %s, built at %s\n", version, commit, date)
 	default:
