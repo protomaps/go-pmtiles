@@ -6,15 +6,22 @@ The single-file utility for creating and working with [PMTiles](https://github.c
 
 See [Releases](https://github.com/protomaps/go-pmtiles/releases) for your OS and architecture.
 
-## Creating PMTiles archives
+## Creating a PMTiles archive from MBTiles
 
 Convert an [MBTiles](https://github.com/mapbox/mbtiles-spec/tree/master/1.3) archive:
 
     pmtiles convert INPUT.mbtiles OUTPUT.pmtiles
     
-Upgrade a PMTiles version 2 to the latest version:
+## Create a PMTiles archive from a larger one (experimental)
 
-    pmtiles convert INPUT.pmtiles OUTPUT.pmtiles
+    pmtiles extract INPUT.pmtiles OUTPUT.pmtiles --region=REGION.geojson
+    pmtiles extract https://example.com/INPUT.pmtiles OUTPUT.pmtiles --region=REGION.geojson
+    pmtiles extract INPUT.pmtiles OUTPUT.pmtiles --maxzoom=MAXZOOM --bucket=s3://BUCKET_NAME
+    
+* `--region` a GeoJSON Polygon, Multipolygon, Feature, or FeatureCollection
+* `--maxzoom=13` extract only a subset of zoom levels
+* `--download-threads` parallel requests to speed up downloads
+* `--overfetch` extra data to download to batch small requests: 0.05 is 5%
 
 ## Uploading
     
