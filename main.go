@@ -55,6 +55,16 @@ var cli struct {
 		Overfetch float32 `default:0.05 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
 	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region."`
 
+	Makesync struct {
+		Input        string `arg:"" type:"existingfile"`
+		BlockSize    int    `default:1000 help:"The block size, in # of tiles."`
+		HashFunction string `default:fnv1a help:"The hash function."`
+	} `cmd:"" help:"Generates an **experimental** sync control file (.pmtiles.sync) for a local archive."`
+
+	Stats struct {
+		Input string `arg:"" type:"existingfile"`
+	} `cmd:"" help:"Add a vector tile statistics file (.tilestats.tsv.gz) used for further analysis with DuckDB."`
+
 	Verify struct {
 		Input string `arg:"" help:"Input archive." type:"existingfile"`
 	} `cmd:"" help:"Verifies that a local archive is valid."`
@@ -91,12 +101,12 @@ func main() {
 	case "show <path>":
 		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, false, 0, 0, 0)
 		if err != nil {
-			logger.Fatalf("Failed to show database, %v", err)
+			logger.Fatalf("Failed to show archive, %v", err)
 		}
 	case "tile <path> <z> <x> <y>":
 		err := pmtiles.Show(logger, cli.Tile.Bucket, cli.Tile.Path, true, cli.Tile.Z, cli.Tile.X, cli.Tile.Y)
 		if err != nil {
-			logger.Fatalf("Failed to show database, %v", err)
+			logger.Fatalf("Failed to show tile, %v", err)
 		}
 	case "serve <path>":
 		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors, cli.Serve.PublicHostname)
@@ -124,6 +134,11 @@ func main() {
 		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
 		if err != nil {
 			logger.Fatalf("Failed to extract, %v", err)
+		}
+	case "stats <input>":
+		err := pmtiles.Stats(logger, cli.Stats.Input)
+		if err != nil {
+			logger.Fatalf("Failed to stats archive, %v", err)
 		}
 	case "convert <input> <output>":
 		path := cli.Convert.Input
