@@ -305,6 +305,10 @@ func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate
 		}
 	}
 
+	if tileset.GetCardinality() == 0 {
+		return fmt.Errorf("No tiles in MBTiles archive.")
+	}
+
 	logger.Println("Pass 2: writing tiles")
 	resolver := NewResolver(deduplicate, header.TileType == Mvt)
 	{
