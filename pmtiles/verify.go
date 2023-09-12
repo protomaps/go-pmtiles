@@ -100,15 +100,15 @@ func Verify(logger *log.Logger, file string) error {
 	})
 
 	if uint64(addressed_tiles) != header.AddressedTilesCount {
-		fmt.Printf("Invalid: header AddressedTilesCount=%v but %v tiles addressed.")
+		fmt.Printf("Invalid: header AddressedTilesCount=%v but %v tiles addressed.", header.AddressedTilesCount, addressed_tiles)
 	}
 
 	if uint64(tile_entries) != header.TileEntriesCount {
-		fmt.Printf("Invalid: header TileEntriesCount=%v but %v tile entries.")
+		fmt.Printf("Invalid: header TileEntriesCount=%v but %v tile entries.", header.TileEntriesCount, tile_entries)
 	}
 
 	if offsets.GetCardinality() != header.TileContentsCount {
-		fmt.Printf("Invalid: header TileContentsCount=%v but %v tile contents.")
+		fmt.Printf("Invalid: header TileContentsCount=%v but %v tile contents.", header.TileContentsCount, offsets.GetCardinality())
 	}
 
 	if z, _, _ := IdToZxy(min_tile_id); z != header.MinZoom {
