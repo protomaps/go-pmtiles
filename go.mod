@@ -7,6 +7,7 @@ require (
 	github.com/alecthomas/kong v0.7.1
 	github.com/dustin/go-humanize v1.0.0
 	github.com/paulmach/orb v0.7.1
+	github.com/paulmach/protoscan v0.2.1
 	github.com/schollz/progressbar/v3 v3.11.0
 	github.com/stretchr/testify v1.8.1
 	gocloud.dev v0.34.0
