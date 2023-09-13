@@ -61,6 +61,12 @@ var cli struct {
 		Input string `arg:"" help:"Input archive." type:"existingfile"`
 	} `cmd:"" help:"Verify the correctness of an archive structure, without verifying individual tile contents."`
 
+	Makesync struct {
+		Input              string `arg:"" type:"existingfile"`
+		BlockSizeMegabytes int    `default:4 help:"The block size, in megabytes. Default 4."`
+		HashFunction       string `default:fnv1a help:"The hash function."`
+	} `cmd:"" help:"Create an **experimental** sync control file (.pmtiles.sync) for a local archive."`
+
 	Serve struct {
 		Path           string `arg:"" help:"Local path or bucket prefix"`
 		Interface      string `default:"0.0.0.0"`
@@ -171,6 +177,11 @@ func main() {
 		err := pmtiles.Verify(logger, cli.Verify.Input)
 		if err != nil {
 			logger.Fatalf("Failed to verify archive, %v", err)
+		}
+	case "makesync <input>":
+		err := pmtiles.Makesync(logger, cli.Makesync.Input, cli.Makesync.BlockSizeMegabytes)
+		if err != nil {
+			logger.Fatalf("Failed to makesync archive, %v", err)
 		}
 	case "version":
 		fmt.Printf("pmtiles %s, commit %s, built at %s\n", version, commit, date)
