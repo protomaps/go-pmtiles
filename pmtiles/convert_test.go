@@ -175,3 +175,38 @@ func TestMbtiles(t *testing.T) {
 	_, ok = json_metadata["tilestats"]
 	assert.True(t, ok)
 }
+
+func TestMbtilesMissingBoundsCenter(t *testing.T) {
+	header, _, err := mbtiles_to_header_json([]string{
+		"name", "test_name",
+		"format", "pbf",
+		"attribution", "<div>abc</div>",
+		"description", "a description",
+		"type", "overlay",
+		"version", "1",
+		"json", "{\"vector_layers\":[{\"abc\":123}],\"tilestats\":{\"def\":456}}",
+		"compression", "gzip",
+	})
+	assert.Nil(t,err)
+	assert.Equal(t,int32(-180*10000000), header.MinLonE7)
+	assert.Equal(t,int32(-85*10000000), header.MinLatE7)
+	assert.Equal(t,int32(180*10000000), header.MaxLonE7)
+	assert.Equal(t,int32(85*10000000), header.MaxLatE7)
+	assert.Equal(t,int32(0), header.CenterLonE7)
+	assert.Equal(t,int32(0), header.CenterLatE7)
+}
+
+func TestMbtilesDegenerateBounds(t *testing.T) {
+	_, _, err := mbtiles_to_header_json([]string{
+		"name", "test_name",
+		"format", "pbf",
+		"bounds", "0,0,0,0",
+		"attribution", "<div>abc</div>",
+		"description", "a description",
+		"type", "overlay",
+		"version", "1",
+		"json", "{\"vector_layers\":[{\"abc\":123}],\"tilestats\":{\"def\":456}}",
+		"compression", "gzip",
+	})
+	assert.NotNil(t,err)
+}
