@@ -15,9 +15,14 @@ import (
 	"time"
 )
 
-func Layer(msg *protoscan.Message) string {
+// layer name, # features, attr bytes, # attr values
+func Layer(msg *protoscan.Message) (string, int, int, int) {
 	var name string
 	var err error
+	features := 0
+	values := 0
+	attr_bytes := 0
+	var m *protoscan.Message
 	for msg.Next() {
 		switch msg.FieldNumber() {
 		case 1: // name
@@ -25,12 +30,22 @@ func Layer(msg *protoscan.Message) string {
 			if err != nil {
 				panic(err)
 			}
+		case 2: // feature
+			features += 1
+			msg.Skip()
+		case 3: // key
+			m, err = msg.Message(m)
+			attr_bytes += len(m.Data)
+		case 4: // values
+			values += 1
+			m, err = msg.Message(m)
+			attr_bytes += len(m.Data)
 		default:
 			msg.Skip()
 		}
 	}
 
-	return name
+	return name, features, attr_bytes, values
 }
 
 func Stats(logger *log.Logger, file string) error {
@@ -102,7 +117,7 @@ func Stats(logger *log.Logger, file string) error {
 	csvWriter := csv.NewWriter(gzWriter)
 	csvWriter.Comma = '\t'
 	defer csvWriter.Flush()
-	if err := csvWriter.Write([]string{"z", "x", "y", "gzipped_bytes", "layer", "layer_bytes"}); err != nil {
+	if err := csvWriter.Write([]string{"hilbert", "z", "x", "y", "archive_tile_bytes", "layer", "layer_bytes", "layer_features", "attr_bytes", "attr_values"}); err != nil {
 		return fmt.Errorf("Failed to write header to TSV: %v", err)
 	}
 
@@ -131,14 +146,18 @@ func Stats(logger *log.Logger, file string) error {
 				if err != nil {
 					panic(err)
 				}
-				name := Layer(m)
+				name, features, attr_bytes, attr_values := Layer(m)
 				row := []string{
+					strconv.FormatUint(e.TileId, 10),
 					strconv.FormatUint(uint64(z), 10),
 					strconv.FormatUint(uint64(x), 10),
 					strconv.FormatUint(uint64(y), 10),
 					strconv.FormatUint(uint64(e.Length), 10),
 					name,
 					strconv.Itoa(len(m.Data)),
+					strconv.Itoa(features),
+					strconv.Itoa(attr_bytes),
+					strconv.Itoa(attr_values),
 				}
 				if err := csvWriter.Write(row); err != nil {
 					panic(fmt.Errorf("Failed to write record to TSV: %v", err))
