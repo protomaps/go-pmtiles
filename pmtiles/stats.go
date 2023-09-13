@@ -7,6 +7,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"github.com/paulmach/protoscan"
+	"github.com/schollz/progressbar/v3"
 	"io"
 	"io/ioutil"
 	"log"
@@ -121,7 +122,13 @@ func Stats(logger *log.Logger, file string) error {
 		return fmt.Errorf("Failed to write header to TSV: %v", err)
 	}
 
+	bar := progressbar.Default(
+		int64(header.TileEntriesCount),
+		"writing stats",
+	)
+
 	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
+		bar.Add(1)
 		z, x, y := IdToZxy(e.TileId)
 
 		tilebytes, err := bucket.NewRangeReader(ctx, key, int64(header.TileDataOffset+e.Offset), int64(e.Length))
