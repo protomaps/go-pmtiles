@@ -13,9 +13,22 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
 	"time"
 )
+
+type Task struct {
+	Index  int
+	TileId uint64
+	Data   []byte
+	Result chan TaskResult
+}
+
+type TaskResult struct {
+	Index int
+	Rows  [][]string
+}
 
 // layer name, # features, attr bytes, # attr values
 func Layer(msg *protoscan.Message) (string, int, int, int) {
@@ -48,6 +61,53 @@ func Layer(msg *protoscan.Message) (string, int, int, int) {
 	}
 
 	return name, features, attr_bytes, values
+}
+
+func calcStats(tileid uint64, tilebytes []byte) [][]string {
+	z, x, y := IdToZxy(tileid)
+	gzreader, err := gzip.NewReader(bytes.NewReader(tilebytes))
+	if err != nil {
+		panic(err)
+	}
+	decoded, err := ioutil.ReadAll(gzreader)
+	if err != nil {
+		panic(err)
+	}
+	msg := protoscan.New(decoded)
+	var m *protoscan.Message
+
+	rows := make([][]string, 0)
+	for msg.Next() {
+		switch msg.FieldNumber() {
+		case 3:
+			m, err = msg.Message(m)
+			if err != nil {
+				panic(err)
+			}
+			name, features, attr_bytes, attr_values := Layer(m)
+			rows = append(rows, []string{
+				strconv.FormatUint(tileid, 10),
+				strconv.FormatUint(uint64(z), 10),
+				strconv.FormatUint(uint64(x), 10),
+				strconv.FormatUint(uint64(y), 10),
+				strconv.FormatUint(uint64(len(tilebytes)), 10),
+				name,
+				strconv.Itoa(len(m.Data)),
+				strconv.Itoa(features),
+				strconv.Itoa(attr_bytes),
+				strconv.Itoa(attr_values),
+			})
+
+		default:
+			msg.Skip()
+		}
+	}
+
+	if msg.Err() != nil {
+		panic(msg.Err())
+	}
+
+	return rows
 }
 
 func Stats(logger *log.Logger, file string) error {
@@ -113,16 +173,6 @@ func Stats(logger *log.Logger, file string) error {
 	}
 	defer output.Close()
 
-	gzWriter := gzip.NewWriter(output)
-	defer gzWriter.Close()
-
-	csvWriter := csv.NewWriter(gzWriter)
-	csvWriter.Comma = '\t'
-	defer csvWriter.Flush()
-	if err := csvWriter.Write([]string{"hilbert", "z", "x", "y", "archive_tile_bytes", "layer", "layer_bytes", "layer_features", "attr_bytes", "attr_values"}); err != nil {
-		return fmt.Errorf("Failed to write header to TSV: %v", err)
-	}
-
 	bar := progressbar.Default(
 		int64(header.TileEntriesCount),
 		"writing stats",
@@ -133,58 +183,73 @@ func Stats(logger *log.Logger, file string) error {
 	f.Seek(int64(header.TileDataOffset), io.SeekStart)
 	buffered := bufio.NewReaderSize(f, 10000000)
 
+	tasks := make(chan Task, 100000)
+	intermediate := make(chan TaskResult, 100000)
+
+	// workers
+	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
+		go func() {
+			for task := range tasks {
+				rows := calcStats(task.TileId, task.Data)
+				task.Result <- TaskResult{task.Index, rows}
+			}
+		}()
+	}
+
+	// collector
+	// buffers the results, outputting them in exact sorted order
+	// once it has received all results, it terminates
+	lastTask := int(header.TileContentsCount) - 1
+	go func() {
+		gzWriter := gzip.NewWriter(output)
+		defer gzWriter.Close()
+
+		csvWriter := csv.NewWriter(gzWriter)
+		csvWriter.Comma = '\t'
+		defer csvWriter.Flush()
+		if err := csvWriter.Write([]string{"hilbert", "z", "x", "y", "archive_tile_bytes", "layer", "layer_bytes", "layer_features", "attr_bytes", "attr_values"}); err != nil {
+			panic(fmt.Errorf("Failed to write header to TSV: %v", err))
+		}
+
+		buffer := make(map[int]TaskResult)
+		nextIndex := 0
+
+		for i := range intermediate {
+			buffer[i.Index] = i
+
+			for {
+				if next, ok := buffer[nextIndex]; ok {
+					for _, row := range next.Rows {
+						if err := csvWriter.Write(row); err != nil {
+							panic(fmt.Errorf("Failed to write record to TSV: %v", err))
+						}
+					}
+
+					delete(buffer, nextIndex)
+					nextIndex++
+
+					if nextIndex == lastTask {
+						close(intermediate)
+					}
+				} else {
+					break
+				}
+			}
+		}
+	}()
+
+	idx := 0
 	current_offset := uint64(0)
 	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
 		bar.Add(1)
-		z, x, y := IdToZxy(e.TileId)
 		if e.Offset == current_offset {
-			tilebytes := io.LimitReader(buffered, int64(e.Length))
+			tilebytes := make([]byte, int64(e.Length))
+			_, err := io.ReadFull(buffered, tilebytes)
 			if err != nil {
 				panic(err)
 			}
-			gzreader, err := gzip.NewReader(tilebytes)
-			if err != nil {
-				panic(err)
-			}
-			decoded, err := ioutil.ReadAll(gzreader)
-			if err != nil {
-				panic(err)
-			}
-			msg := protoscan.New(decoded)
-			var m *protoscan.Message
-			for msg.Next() {
-				switch msg.FieldNumber() {
-				case 3:
-					m, err = msg.Message(m)
-					if err != nil {
-						panic(err)
-					}
-					name, features, attr_bytes, attr_values := Layer(m)
-					row := []string{
-						strconv.FormatUint(e.TileId, 10),
-						strconv.FormatUint(uint64(z), 10),
-						strconv.FormatUint(uint64(x), 10),
-						strconv.FormatUint(uint64(y), 10),
-						strconv.FormatUint(uint64(e.Length), 10),
-						name,
-						strconv.Itoa(len(m.Data)),
-						strconv.Itoa(features),
-						strconv.Itoa(attr_bytes),
-						strconv.Itoa(attr_values),
-					}
-					if err := csvWriter.Write(row); err != nil {
-						panic(fmt.Errorf("Failed to write record to TSV: %v", err))
-					}
-
-				default:
-					msg.Skip()
-				}
-			}
-
-			if msg.Err() != nil {
-				panic(msg.Err())
-			}
-
+			tasks <- Task{Index: idx, TileId: e.TileId, Data: tilebytes, Result: intermediate}
+			idx += 1
 			current_offset += uint64(e.Length)
 		}
 	})
