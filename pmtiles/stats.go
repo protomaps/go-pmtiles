@@ -1,6 +1,7 @@
 package pmtiles
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -127,58 +128,65 @@ func Stats(logger *log.Logger, file string) error {
 		"writing stats",
 	)
 
+	f, err := os.Open(file)
+	defer f.Close()
+	f.Seek(int64(header.TileDataOffset), io.SeekStart)
+	buffered := bufio.NewReaderSize(f, 10000000)
+
+	current_offset := uint64(0)
 	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
 		bar.Add(1)
 		z, x, y := IdToZxy(e.TileId)
-
-		tilebytes, err := bucket.NewRangeReader(ctx, key, int64(header.TileDataOffset+e.Offset), int64(e.Length))
-		if err != nil {
-			panic(err)
-		}
-		gzreader, err := gzip.NewReader(tilebytes)
-		if err != nil {
-			panic(err)
-		}
-		decoded, err := ioutil.ReadAll(gzreader)
-		if err != nil {
-			panic(err)
-		}
-		tilebytes.Close()
-		msg := protoscan.New(decoded)
-		var m *protoscan.Message
-		for msg.Next() {
-			switch msg.FieldNumber() {
-			case 3:
-				m, err = msg.Message(m)
-				if err != nil {
-					panic(err)
-				}
-				name, features, attr_bytes, attr_values := Layer(m)
-				row := []string{
-					strconv.FormatUint(e.TileId, 10),
-					strconv.FormatUint(uint64(z), 10),
-					strconv.FormatUint(uint64(x), 10),
-					strconv.FormatUint(uint64(y), 10),
-					strconv.FormatUint(uint64(e.Length), 10),
-					name,
-					strconv.Itoa(len(m.Data)),
-					strconv.Itoa(features),
-					strconv.Itoa(attr_bytes),
-					strconv.Itoa(attr_values),
-				}
-				if err := csvWriter.Write(row); err != nil {
-					panic(fmt.Errorf("Failed to write record to TSV: %v", err))
-				}
-
-			default:
-				msg.Skip()
+		if e.Offset == current_offset {
+			tilebytes := io.LimitReader(buffered, int64(e.Length))
+			if err != nil {
+				panic(err)
 			}
-		}
+			gzreader, err := gzip.NewReader(tilebytes)
+			if err != nil {
+				panic(err)
+			}
+			decoded, err := ioutil.ReadAll(gzreader)
+			if err != nil {
+				panic(err)
+			}
+			msg := protoscan.New(decoded)
+			var m *protoscan.Message
+			for msg.Next() {
+				switch msg.FieldNumber() {
+				case 3:
+					m, err = msg.Message(m)
+					if err != nil {
+						panic(err)
+					}
+					name, features, attr_bytes, attr_values := Layer(m)
+					row := []string{
+						strconv.FormatUint(e.TileId, 10),
+						strconv.FormatUint(uint64(z), 10),
+						strconv.FormatUint(uint64(x), 10),
+						strconv.FormatUint(uint64(y), 10),
+						strconv.FormatUint(uint64(e.Length), 10),
+						name,
+						strconv.Itoa(len(m.Data)),
+						strconv.Itoa(features),
+						strconv.Itoa(attr_bytes),
+						strconv.Itoa(attr_values),
+					}
+					if err := csvWriter.Write(row); err != nil {
+						panic(fmt.Errorf("Failed to write record to TSV: %v", err))
+					}
 
-		if msg.Err() != nil {
-			panic(msg.Err())
-		}
+				default:
+					msg.Skip()
+				}
+			}
 
+			if msg.Err() != nil {
+				panic(msg.Err())
+			}
+
+			current_offset += uint64(e.Length)
+		}
 	})
 
 	fmt.Printf("Completed stats in %v.\n", time.Since(start))
