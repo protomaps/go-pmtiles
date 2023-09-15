@@ -201,7 +201,7 @@ func Stats(logger *log.Logger, file string) error {
 	// once it has received all results, it terminates
 	lastTask := int(header.TileContentsCount) - 1
 	go func() {
-		gzWriter := gzip.NewWriter(output)
+		gzWriter, _ := gzip.NewWriterLevel(output,gzip.BestSpeed)
 		defer gzWriter.Close()
 
 		csvWriter := csv.NewWriter(gzWriter)
