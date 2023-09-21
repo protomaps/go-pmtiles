@@ -56,10 +56,6 @@ var cli struct {
 		Overfetch       float32 `default:0.05 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
 	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region."`
 
-	Stats struct {
-		Input string `arg:"" type:"existingfile"`
-	} `cmd:"" help:"Add a vector tile statistics file (.tilestats.tsv.gz) used for further analysis with DuckDB."`
-
 	Verify struct {
 		Input string `arg:"" help:"Input archive." type:"existingfile"`
 	} `cmd:"" help:"Verifies that a local archive is valid."`
@@ -129,11 +125,6 @@ func main() {
 		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Bbox, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
 		if err != nil {
 			logger.Fatalf("Failed to extract, %v", err)
-		}
-	case "stats <input>":
-		err := pmtiles.Stats(logger, cli.Stats.Input)
-		if err != nil {
-			logger.Fatalf("Failed to stats archive, %v", err)
 		}
 	case "convert <input> <output>":
 		path := cli.Convert.Input
