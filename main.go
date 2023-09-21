@@ -49,16 +49,12 @@ var cli struct {
 		Output          string  `arg:"" help:"Output archive." type:"path"`
 		Bucket          string  `help:"Remote bucket of input archive."`
 		Region          string  `help:"local GeoJSON Polygon or MultiPolygon file for area of interest." type:"existingfile"`
-		Bbox            string  `help:"bbox area of interest" type:"string"`
+		Bbox            string  `help:"bbox area of interest: min_lon,min_lat,max_lon,max_lat" type:"string"`
 		Maxzoom         int8    `default:-1 help:"Maximum zoom level, inclusive."`
 		DownloadThreads int     `default:4 help:"Number of download threads."`
 		DryRun          bool    `help:"Calculate tiles to extract, but don't download them."`
 		Overfetch       float32 `default:0.05 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
 	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region."`
-
-	Stats struct {
-		Input string `arg:"" type:"existingfile"`
-	} `cmd:"" help:"Add a vector tile statistics file (.tilestats.tsv.gz) used for further analysis with DuckDB."`
 
 	Verify struct {
 		Input string `arg:"" help:"Input archive." type:"existingfile"`
@@ -129,11 +125,6 @@ func main() {
 		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Bbox, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
 		if err != nil {
 			logger.Fatalf("Failed to extract, %v", err)
-		}
-	case "stats <input>":
-		err := pmtiles.Stats(logger, cli.Stats.Input)
-		if err != nil {
-			logger.Fatalf("Failed to stats archive, %v", err)
 		}
 	case "convert <input> <output>":
 		path := cli.Convert.Input
