@@ -49,7 +49,7 @@ var cli struct {
 		Output          string  `arg:"" help:"Output archive." type:"path"`
 		Bucket          string  `help:"Remote bucket of input archive."`
 		Region          string  `help:"local GeoJSON Polygon or MultiPolygon file for area of interest." type:"existingfile"`
-		Bbox            string  `help:"bbox area of interest" type:"string"`
+		Bbox            string  `help:"bbox area of interest: min_lon,min_lat,max_lon,max_lat" type:"string"`
 		Maxzoom         int8    `default:-1 help:"Maximum zoom level, inclusive."`
 		DownloadThreads int     `default:4 help:"Number of download threads."`
 		DryRun          bool    `help:"Calculate tiles to extract, but don't download them."`
