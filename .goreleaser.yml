@@ -7,6 +7,8 @@ builds:
     id: go-pmtiles
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
     goos:
       - linux
       - windows
@@ -17,6 +19,8 @@ builds:
     id: pmtiles-macos-amd64
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
     goos:
       - darwin
     goarch:
@@ -29,6 +33,8 @@ builds:
     id: pmtiles-macos-arm64
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
     goos:
       - darwin
     goarch:

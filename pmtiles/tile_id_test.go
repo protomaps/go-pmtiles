@@ -71,25 +71,25 @@ func TestExtremes(t *testing.T) {
 }
 
 func TestParent(t *testing.T) {
-	assert.Equal(t, ZxyToId(0,0,0), ParentId(ZxyToId(1,0,0)))
+	assert.Equal(t, ZxyToId(0, 0, 0), ParentId(ZxyToId(1, 0, 0)))
 
-	assert.Equal(t, ZxyToId(1,0,0), ParentId(ZxyToId(2,0,0)))
-	assert.Equal(t, ZxyToId(1,0,0), ParentId(ZxyToId(2,0,1)))
-	assert.Equal(t, ZxyToId(1,0,0), ParentId(ZxyToId(2,1,0)))
-	assert.Equal(t, ZxyToId(1,0,0), ParentId(ZxyToId(2,1,1)))
+	assert.Equal(t, ZxyToId(1, 0, 0), ParentId(ZxyToId(2, 0, 0)))
+	assert.Equal(t, ZxyToId(1, 0, 0), ParentId(ZxyToId(2, 0, 1)))
+	assert.Equal(t, ZxyToId(1, 0, 0), ParentId(ZxyToId(2, 1, 0)))
+	assert.Equal(t, ZxyToId(1, 0, 0), ParentId(ZxyToId(2, 1, 1)))
 
-	assert.Equal(t, ZxyToId(1,0,1), ParentId(ZxyToId(2,0,2)))
-	assert.Equal(t, ZxyToId(1,0,1), ParentId(ZxyToId(2,0,3)))
-	assert.Equal(t, ZxyToId(1,0,1), ParentId(ZxyToId(2,1,2)))
-	assert.Equal(t, ZxyToId(1,0,1), ParentId(ZxyToId(2,1,3)))
+	assert.Equal(t, ZxyToId(1, 0, 1), ParentId(ZxyToId(2, 0, 2)))
+	assert.Equal(t, ZxyToId(1, 0, 1), ParentId(ZxyToId(2, 0, 3)))
+	assert.Equal(t, ZxyToId(1, 0, 1), ParentId(ZxyToId(2, 1, 2)))
+	assert.Equal(t, ZxyToId(1, 0, 1), ParentId(ZxyToId(2, 1, 3)))
 
-	assert.Equal(t, ZxyToId(1,1,0), ParentId(ZxyToId(2,2,0)))
-	assert.Equal(t, ZxyToId(1,1,0), ParentId(ZxyToId(2,2,1)))
-	assert.Equal(t, ZxyToId(1,1,0), ParentId(ZxyToId(2,3,0)))
-	assert.Equal(t, ZxyToId(1,1,0), ParentId(ZxyToId(2,3,1)))
+	assert.Equal(t, ZxyToId(1, 1, 0), ParentId(ZxyToId(2, 2, 0)))
+	assert.Equal(t, ZxyToId(1, 1, 0), ParentId(ZxyToId(2, 2, 1)))
+	assert.Equal(t, ZxyToId(1, 1, 0), ParentId(ZxyToId(2, 3, 0)))
+	assert.Equal(t, ZxyToId(1, 1, 0), ParentId(ZxyToId(2, 3, 1)))
 
-	assert.Equal(t, ZxyToId(1,1,1), ParentId(ZxyToId(2,2,2)))
-	assert.Equal(t, ZxyToId(1,1,1), ParentId(ZxyToId(2,2,3)))
-	assert.Equal(t, ZxyToId(1,1,1), ParentId(ZxyToId(2,3,2)))
-	assert.Equal(t, ZxyToId(1,1,1), ParentId(ZxyToId(2,3,3)))
+	assert.Equal(t, ZxyToId(1, 1, 1), ParentId(ZxyToId(2, 2, 2)))
+	assert.Equal(t, ZxyToId(1, 1, 1), ParentId(ZxyToId(2, 2, 3)))
+	assert.Equal(t, ZxyToId(1, 1, 1), ParentId(ZxyToId(2, 3, 2)))
+	assert.Equal(t, ZxyToId(1, 1, 1), ParentId(ZxyToId(2, 3, 3)))
 }
