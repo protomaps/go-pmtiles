@@ -1,12 +1,11 @@
 package pmtiles
 
 import (
-	"github.com/stretchr/testify/assert"
-	"testing"
-	"strings"
 	"fmt"
+	"github.com/stretchr/testify/assert"
+	"strings"
+	"testing"
 )
-
 
 func TestNormalizeLocalFile(t *testing.T) {
 	bucket, key, _ := NormalizeBucketKey("", "", "../foo/bar.pmtiles")
