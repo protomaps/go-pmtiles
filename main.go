@@ -137,7 +137,7 @@ func main() {
 			tmpfile, err = os.CreateTemp("", "pmtiles")
 
 			if err != nil {
-				logger.Fatalf("Failed to create temp file, %w", err)
+				logger.Fatalf("Failed to create temp file, %v", err)
 			}
 		} else {
 			abs_tmproot, err := filepath.Abs(cli.Convert.Tmpdir)
@@ -149,7 +149,7 @@ func main() {
 			tmpfile, err = os.CreateTemp(abs_tmproot, "pmtiles")
 
 			if err != nil {
-				logger.Fatalf("Failed to create temp file, %w", err)
+				logger.Fatalf("Failed to create temp file, %v", err)
 			}
 		}
 

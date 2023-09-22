@@ -3,15 +3,15 @@ module github.com/protomaps/go-pmtiles
 go 1.18
 
 require (
-	github.com/RoaringBitmap/roaring v1.2.1
-	github.com/alecthomas/kong v0.7.1
-	github.com/dustin/go-humanize v1.0.0
-	github.com/paulmach/orb v0.7.1
-	github.com/schollz/progressbar/v3 v3.11.0
-	github.com/stretchr/testify v1.8.1
+	github.com/RoaringBitmap/roaring v1.5.0
+	github.com/alecthomas/kong v0.8.0
+	github.com/dustin/go-humanize v1.0.1
+	github.com/paulmach/orb v0.10.0
+	github.com/schollz/progressbar/v3 v3.13.1
+	github.com/stretchr/testify v1.8.4
 	gocloud.dev v0.34.0
 	golang.org/x/sync v0.3.0
-	zombiezen.com/go/sqlite v0.10.1
+	zombiezen.com/go/sqlite v0.13.1
 )
 
 require (
@@ -60,14 +60,15 @@ require (
 	github.com/googleapis/gax-go/v2 v2.12.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/mattn/go-isatty v0.0.16 // indirect
-	github.com/mattn/go-runewidth v0.0.13 // indirect
+	github.com/mattn/go-isatty v0.0.17 // indirect
+	github.com/mattn/go-runewidth v0.0.14 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
+	go.mongodb.org/mongo-driver v1.11.4 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/crypto v0.11.0 // indirect
 	golang.org/x/net v0.13.0 // indirect
@@ -84,8 +85,8 @@ require (
 	google.golang.org/grpc v1.57.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.16.7 // indirect
-	modernc.org/mathutil v1.4.1 // indirect
-	modernc.org/memory v1.1.1 // indirect
-	modernc.org/sqlite v1.17.3 // indirect
+	modernc.org/libc v1.22.3 // indirect
+	modernc.org/mathutil v1.5.0 // indirect
+	modernc.org/memory v1.5.0 // indirect
+	modernc.org/sqlite v1.21.1 // indirect
 )
