@@ -22,10 +22,11 @@ func init() {
 }
 
 type Middleware struct {
-	Bucket    string `json:"bucket"`
-	CacheSize int    `json:"cache_size"`
-	logger    *zap.Logger
-	server    *pmtiles.Server
+	Bucket         string `json:"bucket"`
+	CacheSize      int    `json:"cache_size"`
+	PublicHostname string `json:"public_hostname"`
+	logger         *zap.Logger
+	server         *pmtiles.Server
 }
 
 func (Middleware) CaddyModule() caddy.ModuleInfo {
@@ -39,7 +40,7 @@ func (m *Middleware) Provision(ctx caddy.Context) error {
 	m.logger = ctx.Logger()
 	logger := log.New(io.Discard, "", log.Ldate)
 	prefix := "." // serve only the root of the bucket for now, at the root route of Caddyfile
-	server, err := pmtiles.NewServer(m.Bucket, prefix, logger, 64, "", "https://example.com")
+	server, err := pmtiles.NewServer(m.Bucket, prefix, logger, m.CacheSize, "", m.PublicHostname)
 	if err != nil {
 		return err
 	}
@@ -89,6 +90,10 @@ func (m *Middleware) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 					return d.ArgErr()
 				}
 				m.CacheSize = num
+			case "public_hostname":
+				if !d.Args(&m.PublicHostname) {
+					return d.ArgErr()
+				}
 			}
 		}
 	}
