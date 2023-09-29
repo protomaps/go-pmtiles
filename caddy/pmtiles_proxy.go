@@ -2,17 +2,20 @@ package caddy
 
 import (
 	"fmt"
-	"io"
-	"log"
-	"net/http"
-	"strconv"
-
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	"go.uber.org/zap"
+	_ "gocloud.dev/blob/azureblob"
+	_ "gocloud.dev/blob/fileblob"
+	_ "gocloud.dev/blob/gcsblob"
+	_ "gocloud.dev/blob/s3blob"
+	"io"
+	"log"
+	"net/http"
+	"strconv"
 	"time"
 )
 
