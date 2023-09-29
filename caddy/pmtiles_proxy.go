@@ -1,4 +1,4 @@
-package pmtiles_proxy
+package caddy
 
 import (
 	"fmt"
