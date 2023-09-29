@@ -2,17 +2,20 @@ package caddy
 
 import (
 	"fmt"
-	"io"
-	"log"
-	"net/http"
-	"strconv"
-
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	"go.uber.org/zap"
+	_ "gocloud.dev/blob/azureblob"
+	_ "gocloud.dev/blob/fileblob"
+	_ "gocloud.dev/blob/gcsblob"
+	_ "gocloud.dev/blob/s3blob"
+	"io"
+	"log"
+	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -21,6 +24,7 @@ func init() {
 	httpcaddyfile.RegisterHandlerDirective("pmtiles_proxy", parseCaddyfile)
 }
 
+// Middleware creates a Z/X/Y tileserver backed by a local or remote bucket of PMTiles archives.
 type Middleware struct {
 	Bucket         string `json:"bucket"`
 	CacheSize      int    `json:"cache_size"`
@@ -29,6 +33,7 @@ type Middleware struct {
 	server         *pmtiles.Server
 }
 
+// CaddyModule returns the Caddy module information.
 func (Middleware) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
 		ID:  "http.handlers.pmtiles_proxy",
