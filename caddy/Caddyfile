@@ -1,0 +1,20 @@
+{
+  # to use handle_path for prefixes, pmtiles_proxy must have a defined
+  # position in the ordering of handlers.
+  order pmtiles_proxy before reverse_proxy
+}
+
+localhost:2019 {
+  handle_path /tiles/* {
+    pmtiles_proxy {
+
+      # replace with your bucket URL or http path
+      bucket https://example.com
+
+      cache_size 256
+
+      # used to embed a tiles URL in TileJSON.
+      public_hostname https://localhost:2019/tiles
+    }
+  }
+}
