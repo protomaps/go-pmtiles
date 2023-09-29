@@ -24,6 +24,7 @@ func init() {
 	httpcaddyfile.RegisterHandlerDirective("pmtiles_proxy", parseCaddyfile)
 }
 
+// Middleware creates a Z/X/Y tileserver backed by a local or remote bucket of PMTiles archives.
 type Middleware struct {
 	Bucket         string `json:"bucket"`
 	CacheSize      int    `json:"cache_size"`
@@ -32,6 +33,7 @@ type Middleware struct {
 	server         *pmtiles.Server
 }
 
+// CaddyModule returns the Caddy module information.
 func (Middleware) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
 		ID:  "http.handlers.pmtiles_proxy",
