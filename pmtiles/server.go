@@ -7,14 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"io/fs"
 	"log"
 	"regexp"
 	"strconv"
-
-	"gocloud.dev/blob"
 )
 
 type CacheKey struct {
@@ -59,89 +55,6 @@ func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize in
 
 	if err != nil {
 		return nil, err
-	}
-
-	bucket, err := OpenBucket(ctx, bucketURL, prefix)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicHostname)
-}
-
-func NewServerWithFS(bucket_fs fs.FS, bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicHostname string) (*Server, error) {
-
-	ctx := context.Background()
-
-	bucketURL, _, err := NormalizeBucketKey(bucketURL, prefix, "")
-
-	if err != nil {
-		return nil, err
-	}
-
-	gc_bucket, err := blob.OpenBucket(ctx, bucketURL)
-
-	if err != nil {
-		return nil, fmt.Errorf("Failed to open bucket, %v", err)
-	}
-
-	defer gc_bucket.Close()
-
-	if prefix != "" {
-		gc_bucket = blob.PrefixedBucket(gc_bucket, prefix)
-	}
-
-	var walk_func func(path string, d fs.DirEntry, err error) error
-
-	walk_func = func(path string, d fs.DirEntry, err error) error {
-
-		if err != nil {
-			return fmt.Errorf("Failed to walk %s, %w", path, err)
-		}
-
-		if d.IsDir() {
-
-			if path == "." {
-				return nil
-			}
-
-			return fs.WalkDir(bucket_fs, path, walk_func)
-		}
-
-		r, err := bucket_fs.Open(path)
-
-		if err != nil {
-			return fmt.Errorf("Failed to open %s for reading, %w", path, err)
-		}
-
-		defer r.Close()
-
-		wr, err := gc_bucket.NewWriter(ctx, path, nil)
-
-		if err != nil {
-			return fmt.Errorf("Failed to create %s for writing, %w", path, err)
-		}
-
-		_, err = io.Copy(wr, r)
-
-		if err != nil {
-			return fmt.Errorf("Failed to copy %s, %w", path, err)
-		}
-
-		err = wr.Close()
-
-		if err != nil {
-			return fmt.Errorf("Failed to close %s, %w", path, err)
-		}
-
-		return nil
-	}
-
-	err = fs.WalkDir(bucket_fs, ".", walk_func)
-
-	if err != nil {
-		return nil, fmt.Errorf("Failed to walk filesystem, %w", err)
 	}
 
 	bucket, err := OpenBucket(ctx, bucketURL, prefix)
