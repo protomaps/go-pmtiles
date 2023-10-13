@@ -11,8 +11,6 @@ import (
 	"io"
 	"io/fs"
 	"log"
-	"os"
-	"path"
 	"regexp"
 	"strconv"
 
@@ -45,9 +43,8 @@ type Response struct {
 }
 
 type Server struct {
-	reqs chan Request
-	// bucket         Bucket
-	bucket         *blob.Bucket
+	reqs           chan Request
+	bucket         Bucket
 	logger         *log.Logger
 	cacheSize      int
 	cors           string
@@ -64,31 +61,35 @@ func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize in
 		return nil, err
 	}
 
-	// No longer necessary because https://pkg.go.dev/gocloud.dev/blob?#Bucket.NewRangeReader ?
-	// bucket, err := OpenBucket(ctx, bucketURL, prefix)
-
-	bucket, err := blob.OpenBucket(ctx, bucketURL)
+	bucket, err := OpenBucket(ctx, bucketURL, prefix)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if prefix != "" {
-		bucket = blob.PrefixedBucket(bucket, prefix)
-	}
-
-	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors)
+	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicHostname)
 }
 
-func NewServerWithFS(bucket_fs fs.FS, prefix string, logger *log.Logger, cacheSize int, cors string) (*Server, error) {
+func NewServerWithFS(bucket_fs fs.FS, bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicHostname string) (*Server, error) {
 
 	ctx := context.Background()
 
-	bucket_uri := "fixme://"
-	bucket, err := blob.OpenBucket(ctx, bucket_uri)
+	bucketURL, _, err := NormalizeBucketKey(bucketURL, prefix, "")
+
+	if err != nil {
+		return nil, err
+	}
+
+	gc_bucket, err := blob.OpenBucket(ctx, bucketURL)
 
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open bucket, %v", err)
+	}
+
+	defer gc_bucket.Close()
+
+	if prefix != "" {
+		gc_bucket = blob.PrefixedBucket(gc_bucket, prefix)
 	}
 
 	var walk_func func(path string, d fs.DirEntry, err error) error
@@ -116,7 +117,7 @@ func NewServerWithFS(bucket_fs fs.FS, prefix string, logger *log.Logger, cacheSi
 
 		defer r.Close()
 
-		wr, err := bucket.NewWriter(ctx, path, nil)
+		wr, err := gc_bucket.NewWriter(ctx, path, nil)
 
 		if err != nil {
 			return fmt.Errorf("Failed to create %s for writing, %w", path, err)
@@ -143,25 +144,26 @@ func NewServerWithFS(bucket_fs fs.FS, prefix string, logger *log.Logger, cacheSi
 		return nil, fmt.Errorf("Failed to walk filesystem, %w", err)
 	}
 
-	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors)
+	bucket, err := OpenBucket(ctx, bucketURL, prefix)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicHostname)
 }
 
-func NewServerWithBucket(bucket *blob.Bucket, prefix string, logger *log.Logger, cacheSize int, cors string) (*Server, error) {
-
-	if prefix != "" && prefix != "/" && prefix != "." {
-		bucket = blob.PrefixedBucket(bucket, path.Clean(prefix)+string(os.PathSeparator))
-	}
+func NewServerWithBucket(bucket Bucket, prefix string, logger *log.Logger, cacheSize int, cors string, publicHostname string) (*Server, error) {
 
 	reqs := make(chan Request, 8)
 
 	l := &Server{
-		reqs:      reqs,
-		bucket:    bucket,
-		logger:    logger,
-		cacheSize: cacheSize,
-		cors:      cors,
-		// what?
-		// publicHostname: publicHostname,
+		reqs:           reqs,
+		bucket:         bucket,
+		logger:         logger,
+		cacheSize:      cacheSize,
+		cors:           cors,
+		publicHostname: publicHostname,
 	}
 
 	return l, nil
@@ -200,7 +202,7 @@ func (server *Server) Start() {
 						}
 
 						server.logger.Printf("fetching %s %d-%d", key.name, offset, length)
-						r, err := server.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length, nil)
+						r, err := server.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length)
 
 						// TODO: store away ETag
 						if err != nil {
@@ -285,7 +287,7 @@ func (server *Server) get_header_metadata(ctx context.Context, name string) (err
 		return nil, false, HeaderV3{}, nil
 	}
 
-	r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), nil)
+	r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength))
 	if err != nil {
 		return nil, false, HeaderV3{}, nil
 	}
@@ -411,7 +413,7 @@ func (server *Server) get_tile(ctx context.Context, http_headers map[string]stri
 		entry, ok := find_tile(directory, tile_id)
 		if ok {
 			if entry.RunLength > 0 {
-				r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), nil)
+				r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length))
 				if err != nil {
 					return 500, http_headers, []byte("Network error")
 				}
