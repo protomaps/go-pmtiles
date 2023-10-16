@@ -48,7 +48,6 @@ type Server struct {
 }
 
 func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicHostname string) (*Server, error) {
-	reqs := make(chan Request, 8)
 
 	ctx := context.Background()
 
@@ -59,9 +58,17 @@ func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize in
 	}
 
 	bucket, err := OpenBucket(ctx, bucketURL, prefix)
+
 	if err != nil {
 		return nil, err
 	}
+
+	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicHostname)
+}
+
+func NewServerWithBucket(bucket Bucket, prefix string, logger *log.Logger, cacheSize int, cors string, publicHostname string) (*Server, error) {
+
+	reqs := make(chan Request, 8)
 
 	l := &Server{
 		reqs:           reqs,
