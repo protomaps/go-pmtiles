@@ -2,17 +2,15 @@ package pmtiles
 
 import (
 	"bytes"
+	"compress/gzip"
 	"container/list"
 	"context"
-	"fmt"
-	"gocloud.dev/blob"
+	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"regexp"
 	"strconv"
-	"strings"
-	"path"
-	"os"
 )
 
 type CacheKey struct {
@@ -40,65 +38,45 @@ type Response struct {
 	ok    bool
 }
 
-// type HTTPFetcher struct {
-// 	bucket string
-// 	client *http.Client
-// }
-
-// func (fetcher HTTPFetcher) Do(key Key, readFunc func(io.Reader)) bool {
-// 	archive := fetcher.bucket + "/" + key.name + ".pmtiles"
-// 	fetch, _ := http.NewRequest("GET", archive, nil)
-// 	end := key.rng.Offset + uint64(key.rng.Length) - 1
-// 	range_header := fmt.Sprintf("bytes=%d-%d", key.rng.Offset, end)
-// 	fetch.Header.Add("Range", range_header)
-// 	fetch_resp, err := fetcher.client.Do(fetch)
-// 	if err != nil || fetch_resp.StatusCode >= 300 || fetch_resp.ContentLength != int64(key.rng.Length) {
-// 		return false
-// 	}
-// 	defer fetch_resp.Body.Close()
-// 	readFunc(fetch_resp.Body)
-// 	return true
-// }
-
 type Server struct {
-	reqs      chan Request
-	bucket    *blob.Bucket
-	logger    *log.Logger
-	cacheSize int
-	cors      string
+	reqs           chan Request
+	bucket         Bucket
+	logger         *log.Logger
+	cacheSize      int
+	cors           string
+	publicHostname string
 }
 
-func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string) (*Server, error) {
-	if bucketURL == "" {
-		if strings.HasPrefix(prefix,"/") {
-			bucketURL = "file:///"
-		} else {
-			bucketURL = "file://"
-		}
-	}
-
-	reqs := make(chan Request, 8)
+func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicHostname string) (*Server, error) {
 
 	ctx := context.Background()
 
-	bucket, err := blob.OpenBucket(ctx, bucketURL)
-
-
-	if prefix != "/" && prefix != "." {
-		bucket = blob.PrefixedBucket(bucket, path.Clean(prefix) + string(os.PathSeparator))
-	}
-
+	bucketURL, _, err := NormalizeBucketKey(bucketURL, prefix, "")
 
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open bucket for %s, %w", prefix, err)
+		return nil, err
 	}
 
+	bucket, err := OpenBucket(ctx, bucketURL, prefix)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicHostname)
+}
+
+func NewServerWithBucket(bucket Bucket, prefix string, logger *log.Logger, cacheSize int, cors string, publicHostname string) (*Server, error) {
+
+	reqs := make(chan Request, 8)
+
 	l := &Server{
-		reqs:      reqs,
-		bucket:    bucket,
-		logger:    logger,
-		cacheSize: cacheSize,
-		cors:      cors,
+		reqs:           reqs,
+		bucket:         bucket,
+		logger:         logger,
+		cacheSize:      cacheSize,
+		cors:           cors,
+		publicHostname: publicHostname,
 	}
 
 	return l, nil
@@ -137,7 +115,7 @@ func (server *Server) Start() {
 						}
 
 						server.logger.Printf("fetching %s %d-%d", key.name, offset, length)
-						r, err := server.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length, nil)
+						r, err := server.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length)
 
 						// TODO: store away ETag
 						if err != nil {
@@ -212,32 +190,90 @@ func (server *Server) Start() {
 	}()
 }
 
-func (server *Server) get_metadata(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
+func (server *Server) get_header_metadata(ctx context.Context, name string) (error, bool, HeaderV3, []byte) {
 	root_req := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
 	server.reqs <- root_req
 	root_value := <-root_req.value
 	header := root_value.header
 
 	if !root_value.ok {
-		return 404, http_headers, []byte("Archive not found")
+		return nil, false, HeaderV3{}, nil
 	}
 
-	r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), nil)
+	r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength))
 	if err != nil {
-		return 404, http_headers, []byte("Archive not found")
+		return nil, false, HeaderV3{}, nil
 	}
 	defer r.Close()
-	b, err := io.ReadAll(r)
+
+	var metadata_bytes []byte
+	if header.InternalCompression == Gzip {
+		metadata_reader, _ := gzip.NewReader(r)
+		defer metadata_reader.Close()
+		metadata_bytes, err = io.ReadAll(metadata_reader)
+	} else if header.InternalCompression == NoCompression {
+		metadata_bytes, err = io.ReadAll(r)
+	} else {
+		return errors.New("Unknown compression"), true, HeaderV3{}, nil
+	}
+
+	return nil, true, header, metadata_bytes
+}
+
+func (server *Server) get_tilejson(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
+	err, found, header, metadata_bytes := server.get_header_metadata(ctx, name)
+
 	if err != nil {
 		return 500, http_headers, []byte("I/O Error")
 	}
 
-	if header_val, ok := headerContentEncoding(header.InternalCompression); ok {
-		http_headers["Content-Encoding"] = header_val
+	if !found {
+		return 404, http_headers, []byte("Archive not found")
 	}
-	http_headers["Content-Type"] = "application/json"
 
-	return 200, http_headers, b
+	var metadata_map map[string]interface{}
+	json.Unmarshal(metadata_bytes, &metadata_map)
+
+	tilejson := make(map[string]interface{})
+
+	if server.publicHostname == "" {
+		return 501, http_headers, []byte("PUBLIC_HOSTNAME must be set for TileJSON")
+	}
+
+	http_headers["Content-Type"] = "application/json"
+	tilejson["tilejson"] = "3.0.0"
+	tilejson["scheme"] = "xyz"
+	tilejson["tiles"] = []string{server.publicHostname + "/" + name + "/{z}/{x}/{y}" + headerExt(header)}
+	tilejson["vector_layers"] = metadata_map["vector_layers"]
+	tilejson["attribution"] = metadata_map["attribution"]
+	tilejson["description"] = metadata_map["description"]
+	tilejson["name"] = metadata_map["name"]
+	tilejson["version"] = metadata_map["version"]
+
+	E7 := 10000000.0
+	tilejson["bounds"] = []float64{float64(header.MinLonE7) / E7, float64(header.MinLatE7) / E7, float64(header.MaxLonE7) / E7, float64(header.MaxLatE7) / E7}
+	tilejson["center"] = []interface{}{float64(header.CenterLonE7) / E7, float64(header.CenterLatE7) / E7, header.CenterZoom}
+	tilejson["minzoom"] = header.MinZoom
+	tilejson["maxzoom"] = header.MaxZoom
+
+	tilejson_bytes, err := json.Marshal(tilejson)
+
+	return 200, http_headers, tilejson_bytes
+}
+
+func (server *Server) get_metadata(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
+	err, found, _, metadata_bytes := server.get_header_metadata(ctx, name)
+
+	if err != nil {
+		return 500, http_headers, []byte("I/O Error")
+	}
+
+	if !found {
+		return 404, http_headers, []byte("Archive not found")
+	}
+
+	http_headers["Content-Type"] = "application/json"
+	return 200, http_headers, metadata_bytes
 }
 
 func (server *Server) get_tile(ctx context.Context, http_headers map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
@@ -273,6 +309,10 @@ func (server *Server) get_tile(ctx context.Context, http_headers map[string]stri
 		if ext != "webp" {
 			return 400, http_headers, []byte("path mismatch: archive is type WebP (.webp)")
 		}
+	case Avif:
+		if ext != "avif" {
+			return 400, http_headers, []byte("path mismatch: archive is type AVIF (.avif)")
+		}
 	}
 
 	tile_id := ZxyToId(z, x, y)
@@ -286,7 +326,7 @@ func (server *Server) get_tile(ctx context.Context, http_headers map[string]stri
 		entry, ok := find_tile(directory, tile_id)
 		if ok {
 			if entry.RunLength > 0 {
-				r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), nil)
+				r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length))
 				if err != nil {
 					return 500, http_headers, []byte("Network error")
 				}
@@ -316,6 +356,7 @@ func (server *Server) get_tile(ctx context.Context, http_headers map[string]stri
 
 var tilePattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\/(\d+)\/(\d+)\/(\d+)\.([a-z]+)$`)
 var metadataPattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\/metadata$`)
+var tileJSONPattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\.json$`)
 
 func parse_tile_path(path string) (bool, string, uint8, uint32, uint32, string) {
 	if res := tilePattern.FindStringSubmatch(path); res != nil {
@@ -327,6 +368,14 @@ func parse_tile_path(path string) (bool, string, uint8, uint32, uint32, string) 
 		return true, name, uint8(z), uint32(x), uint32(y), ext
 	}
 	return false, "", 0, 0, 0, ""
+}
+
+func parse_tilejson_path(path string) (bool, string) {
+	if res := tileJSONPattern.FindStringSubmatch(path); res != nil {
+		name := res[1]
+		return true, name
+	}
+	return false, ""
 }
 
 func parse_metadata_path(path string) (bool, string) {
@@ -345,6 +394,9 @@ func (server *Server) Get(ctx context.Context, path string) (int, map[string]str
 
 	if ok, key, z, x, y, ext := parse_tile_path(path); ok {
 		return server.get_tile(ctx, http_headers, key, z, x, y, ext)
+	}
+	if ok, key := parse_tilejson_path(path); ok {
+		return server.get_tilejson(ctx, http_headers, key)
 	}
 	if ok, key := parse_metadata_path(path); ok {
 		return server.get_metadata(ctx, http_headers, key)

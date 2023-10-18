@@ -114,14 +114,14 @@ func Convert(logger *log.Logger, input string, output string, deduplicate bool, 
 func add_directoryv2_entries(dir DirectoryV2, entries *[]EntryV3, f *os.File) {
 	for zxy, rng := range dir.Entries {
 		tile_id := ZxyToId(zxy.Z, zxy.X, zxy.Y)
-		*entries = append(*entries, EntryV3{tile_id, rng.Offset, rng.Length, 1})
+		*entries = append(*entries, EntryV3{tile_id, rng.Offset, uint32(rng.Length), 1})
 	}
 
 	var unique = map[uint64]uint32{}
 
 	// uniqify the offset/length pairs
 	for _, rng := range dir.Leaves {
-		unique[rng.Offset] = rng.Length
+		unique[rng.Offset] = uint32(rng.Length)
 	}
 
 	for offset, length := range unique {
@@ -303,6 +303,10 @@ func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate
 			tileset.Add(id)
 			bar.Add(1)
 		}
+	}
+
+	if tileset.GetCardinality() == 0 {
+		return fmt.Errorf("No tiles in MBTiles archive.")
 	}
 
 	logger.Println("Pass 2: writing tiles")
@@ -501,6 +505,9 @@ func v2_to_header_json(v2_json_metadata map[string]interface{}, first4 []byte) (
 		case "webp":
 			header.TileType = Webp
 			header.TileCompression = NoCompression
+		case "avif":
+			header.TileType = Avif
+			header.TileCompression = NoCompression
 		default:
 			return header, v2_json_metadata, errors.New("Unknown tile type")
 		}
@@ -575,6 +582,7 @@ func parse_center(center string) (int32, int32, uint8, error) {
 func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]interface{}, error) {
 	header := HeaderV3{}
 	json_result := make(map[string]interface{})
+	boundsSet := false
 	for i := 0; i < len(mbtiles_metadata); i += 2 {
 		value := mbtiles_metadata[i+1]
 		switch key := mbtiles_metadata[i]; key {
@@ -591,6 +599,9 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 			case "webp":
 				header.TileType = Webp
 				header.TileCompression = NoCompression
+			case "avif":
+				header.TileType = Avif
+				header.TileCompression = NoCompression
 			}
 			json_result["format"] = value
 		case "bounds":
@@ -598,10 +609,15 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 			if err != nil {
 				return header, json_result, err
 			}
+
+			if min_lon >= max_lon || min_lat >= max_lat {
+				return header, json_result, fmt.Errorf("Error: zero-area bounds in mbtiles metadata.")
+			}
 			header.MinLonE7 = min_lon
 			header.MinLatE7 = min_lat
 			header.MaxLonE7 = max_lon
 			header.MaxLatE7 = max_lat
+			boundsSet = true
 		case "center":
 			center_lon, center_lat, center_zoom, err := parse_center(value)
 			if err != nil {
@@ -631,5 +647,14 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 			json_result[key] = value
 		}
 	}
+
+	E7 := 10000000.0
+	if !boundsSet {
+		header.MinLonE7 = int32(-180 * E7)
+		header.MinLatE7 = int32(-85 * E7)
+		header.MaxLonE7 = int32(180 * E7)
+		header.MaxLatE7 = int32(85 * E7)
+	}
+
 	return header, json_result, nil
 }

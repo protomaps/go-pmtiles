@@ -6,38 +6,36 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"gocloud.dev/blob"
+	// "github.com/dustin/go-humanize"
 	"io"
 	"log"
 	"os"
-	"strings"
 )
 
-func Show(logger *log.Logger, bucketURL string, file string, show_tile bool, z int, x int, y int) error {
-	if bucketURL == "" {
-		if strings.HasPrefix(file,"/") {
-			bucketURL = "file:///"
-		} else {
-			bucketURL = "file://"
-		}
+func Show(logger *log.Logger, bucketURL string, key string, show_tile bool, z int, x int, y int) error {
+	ctx := context.Background()
+
+	bucketURL, key, err := NormalizeBucketKey(bucketURL, "", key)
+
+	if err != nil {
+		return err
 	}
 
-	ctx := context.Background()
-	bucket, err := blob.OpenBucket(ctx, bucketURL)
+	bucket, err := OpenBucket(ctx, bucketURL, "")
+
 	if err != nil {
 		return fmt.Errorf("Failed to open bucket for %s, %w", bucketURL, err)
 	}
 	defer bucket.Close()
 
-	r, err := bucket.NewRangeReader(ctx, file, 0, 16384, nil)
+	r, err := bucket.NewRangeReader(ctx, key, 0, 16384)
 
 	if err != nil {
-		return fmt.Errorf("Failed to create range reader for %s, %w", file, err)
+		return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
 	}
 	b, err := io.ReadAll(r)
 	if err != nil {
-		return fmt.Errorf("Failed to read %s, %w", file, err)
+		return fmt.Errorf("Failed to read %s, %w", key, err)
 	}
 	r.Close()
 
@@ -49,7 +47,7 @@ func Show(logger *log.Logger, bucketURL string, file string, show_tile bool, z i
 			return fmt.Errorf("PMTiles version %d detected; please use 'pmtiles convert' to upgrade to version 3.", spec_version)
 		}
 
-		return fmt.Errorf("Failed to read %s, %w", file, err)
+		return fmt.Errorf("Failed to read %s, %w", key, err)
 	}
 
 	if !show_tile {
@@ -63,11 +61,13 @@ func Show(logger *log.Logger, bucketURL string, file string, show_tile bool, z i
 			tile_type = "Raster Jpeg"
 		case Webp:
 			tile_type = "Raster WebP"
+		case Avif:
+			tile_type = "Raster AVIF"
 		default:
 			tile_type = "Unknown"
 		}
 		fmt.Printf("pmtiles spec version: %d\n", header.SpecVersion)
-		fmt.Printf("total size: %s\n", humanize.Bytes(uint64(r.Size())))
+		// fmt.Printf("total size: %s\n", humanize.Bytes(uint64(r.Size())))
 		fmt.Printf("tile type: %s\n", tile_type)
 		fmt.Printf("bounds: %f,%f %f,%f\n", float64(header.MinLonE7)/10000000, float64(header.MinLatE7)/10000000, float64(header.MaxLonE7)/10000000, float64(header.MaxLatE7)/10000000)
 		fmt.Printf("min zoom: %d\n", header.MinZoom)
@@ -81,9 +81,9 @@ func Show(logger *log.Logger, bucketURL string, file string, show_tile bool, z i
 		fmt.Printf("internal compression: %d\n", header.InternalCompression)
 		fmt.Printf("tile compression: %d\n", header.TileCompression)
 
-		metadata_reader, err := bucket.NewRangeReader(ctx, file, int64(header.MetadataOffset), int64(header.MetadataLength), nil)
+		metadata_reader, err := bucket.NewRangeReader(ctx, key, int64(header.MetadataOffset), int64(header.MetadataLength))
 		if err != nil {
-			return fmt.Errorf("Failed to create range reader for %s, %w", file, err)
+			return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
 		}
 
 		var metadata_bytes []byte
@@ -91,12 +91,12 @@ func Show(logger *log.Logger, bucketURL string, file string, show_tile bool, z i
 			r, _ := gzip.NewReader(metadata_reader)
 			metadata_bytes, err = io.ReadAll(r)
 			if err != nil {
-				return fmt.Errorf("Failed to read %s, %w", file, err)
+				return fmt.Errorf("Failed to read %s, %w", key, err)
 			}
 		} else {
 			metadata_bytes, err = io.ReadAll(metadata_reader)
 			if err != nil {
-				return fmt.Errorf("Failed to read %s, %w", file, err)
+				return fmt.Errorf("Failed to read %s, %w", key, err)
 			}
 		}
 		metadata_reader.Close()
@@ -121,7 +121,7 @@ func Show(logger *log.Logger, bucketURL string, file string, show_tile bool, z i
 		dir_length := header.RootLength
 
 		for depth := 0; depth <= 3; depth++ {
-			r, err := bucket.NewRangeReader(ctx, file, int64(dir_offset), int64(dir_length), nil)
+			r, err := bucket.NewRangeReader(ctx, key, int64(dir_offset), int64(dir_length))
 			if err != nil {
 				return fmt.Errorf("Network error")
 			}
@@ -134,7 +134,7 @@ func Show(logger *log.Logger, bucketURL string, file string, show_tile bool, z i
 			entry, ok := find_tile(directory, tile_id)
 			if ok {
 				if entry.RunLength > 0 {
-					tile_r, err := bucket.NewRangeReader(ctx, file, int64(header.TileDataOffset+entry.Offset), int64(entry.Length), nil)
+					tile_r, err := bucket.NewRangeReader(ctx, key, int64(header.TileDataOffset+entry.Offset), int64(entry.Length))
 					if err != nil {
 						return fmt.Errorf("Network error")
 					}

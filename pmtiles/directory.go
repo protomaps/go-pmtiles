@@ -26,6 +26,7 @@ const (
 	Png                      = 2
 	Jpeg                     = 3
 	Webp                     = 4
+	Avif                     = 5
 )
 
 const HEADERV3_LEN_BYTES = 127
@@ -68,8 +69,27 @@ func headerContentType(header HeaderV3) (string, bool) {
 		return "image/jpeg", true
 	case Webp:
 		return "image/webp", true
+	case Avif:
+		return "image/avif", true
 	default:
 		return "", false
+	}
+}
+
+func headerExt(header HeaderV3) string {
+	switch header.TileType {
+	case Mvt:
+		return ".mvt"
+	case Png:
+		return ".png"
+	case Jpeg:
+		return ".jpg"
+	case Webp:
+		return ".webp"
+	case Avif:
+		return ".avif"
+	default:
+		return ""
 	}
 }
 
@@ -276,7 +296,7 @@ func build_roots_leaves(entries []EntryV3, leaf_size int) ([]byte, []byte, int) 
 	leaves_bytes := make([]byte, 0)
 	num_leaves := 0
 
-	for idx := 0; idx <= len(entries); idx += leaf_size {
+	for idx := 0; idx < len(entries); idx += leaf_size {
 		num_leaves++
 		end := idx + leaf_size
 		if idx+leaf_size > len(entries) {
@@ -290,28 +310,34 @@ func build_roots_leaves(entries []EntryV3, leaf_size int) ([]byte, []byte, int) 
 
 	root_bytes := serialize_entries(root_entries)
 	return root_bytes, leaves_bytes, num_leaves
-
 }
 
 func optimize_directories(entries []EntryV3, target_root_len int) ([]byte, []byte, int) {
-	test_root_bytes := serialize_entries(entries)
-
-	// Case1: the entire directory fits into the target len
-	if len(test_root_bytes) <= target_root_len {
-		return test_root_bytes, make([]byte, 0), 0
-	} else {
-
-		// TODO: case 2: mixed tile entries/directory entries in root
-
-		// case 3: root directory is leaf pointers only
-		// use an iterative method, increasing the size of the leaf directory until the root fits
-		leaf_size := 4096
-		for {
-			root_bytes, leaves_bytes, num_leaves := build_roots_leaves(entries, leaf_size)
-			if len(root_bytes) <= target_root_len {
-				return root_bytes, leaves_bytes, num_leaves
-			}
-			leaf_size *= 2
+	if len(entries) < 16384 {
+		test_root_bytes := serialize_entries(entries)
+		// Case1: the entire directory fits into the target len
+		if len(test_root_bytes) <= target_root_len {
+			return test_root_bytes, make([]byte, 0), 0
 		}
+	}
+
+	// TODO: case 2: mixed tile entries/directory entries in root
+
+	// case 3: root directory is leaf pointers only
+	// use an iterative method, increasing the size of the leaf directory until the root fits
+
+	var leaf_size float32
+	leaf_size = float32(len(entries)) / 3500
+
+	if leaf_size < 4096 {
+		leaf_size = 4096
+	}
+
+	for {
+		root_bytes, leaves_bytes, num_leaves := build_roots_leaves(entries, int(leaf_size))
+		if len(root_bytes) <= target_root_len {
+			return root_bytes, leaves_bytes, num_leaves
+		}
+		leaf_size *= 1.2
 	}
 }

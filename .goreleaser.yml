@@ -7,6 +7,8 @@ builds:
     id: go-pmtiles
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
     goos:
       - linux
       - windows
@@ -17,27 +19,36 @@ builds:
     id: pmtiles-macos-amd64
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
     goos:
       - darwin
     goarch:
       - amd64
     hooks:
       post:
-        - gon -log-level debug .gon-amd64.hcl
-        - mv dist/pmtiles-darwin-amd64.zip dist/go-pmtiles-{{ .Version }}_Darwin_x86_64.zip
+        - cmd: 'codesign -s "Developer ID Application: Brandon Liu (WNSC27EEHU)" -v {{ .Path }} --options=runtime'
+          output: true
+        - cmd: zip -j "{{ .Path }}_signed.zip" {{ .Path }}
+        - cmd: xcrun notarytool submit "{{ .Path }}_signed.zip" --apple-id {{ .Env.AC_USERNAME }} --password {{ .Env.AC_PASSWORD }} --team-id WNSC27EEHU --wait
+        - mv {{ .Path }}_signed.zip dist/go-pmtiles-{{ .Version }}_Darwin_x86_64.zip
   - binary: pmtiles
     id: pmtiles-macos-arm64
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
     goos:
       - darwin
     goarch:
       - arm64
     hooks:
       post:
-        - gon -log-level debug .gon-arm64.hcl
-        - mv dist/pmtiles-darwin-arm64.zip dist/go-pmtiles-{{ .Version }}_Darwin_arm64.zip
-
+        - cmd: 'codesign -s "Developer ID Application: Brandon Liu (WNSC27EEHU)" -v {{ .Path }} --options=runtime'
+          output: true
+        - cmd: zip -j "{{ .Path }}_signed.zip" {{ .Path }}
+        - cmd: xcrun notarytool submit "{{ .Path }}_signed.zip" --apple-id {{ .Env.AC_USERNAME }} --password {{ .Env.AC_PASSWORD }} --team-id WNSC27EEHU --wait
+        - mv {{ .Path }}_signed.zip dist/go-pmtiles-{{ .Version }}_Darwin_arm64.zip
 archives:
   - id: default
     builds:
