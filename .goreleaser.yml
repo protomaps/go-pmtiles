@@ -29,7 +29,7 @@ builds:
       post:
         - cmd: 'codesign -s "Developer ID Application: Brandon Liu (WNSC27EEHU)" -v {{ .Path }} --options=runtime'
           output: true
-        - cmd: zip "{{ .Path }}_signed.zip" {{ .Path }}
+        - cmd: zip -j "{{ .Path }}_signed.zip" {{ .Path }}
         - cmd: xcrun notarytool submit "{{ .Path }}_signed.zip" --apple-id {{ .Env.AC_USERNAME }} --password {{ .Env.AC_PASSWORD }} --team-id WNSC27EEHU --wait
         - mv {{ .Path }}_signed.zip dist/go-pmtiles-{{ .Version }}_Darwin_x86_64.zip
   - binary: pmtiles
@@ -46,7 +46,7 @@ builds:
       post:
         - cmd: 'codesign -s "Developer ID Application: Brandon Liu (WNSC27EEHU)" -v {{ .Path }} --options=runtime'
           output: true
-        - cmd: zip "{{ .Path }}_signed.zip" {{ .Path }}
+        - cmd: zip -j "{{ .Path }}_signed.zip" {{ .Path }}
         - cmd: xcrun notarytool submit "{{ .Path }}_signed.zip" --apple-id {{ .Env.AC_USERNAME }} --password {{ .Env.AC_PASSWORD }} --team-id WNSC27EEHU --wait
         - mv {{ .Path }}_signed.zip dist/go-pmtiles-{{ .Version }}_Darwin_arm64.zip
 archives:
