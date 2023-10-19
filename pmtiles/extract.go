@@ -251,8 +251,6 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 
 func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, region_file string, bbox string, output string, download_threads int, overfetch float32, dry_run bool) error {
 	// 1. fetch the header
-
-	fmt.Println("WARNING: extract is an experimental feature and results may not be suitable for production use.")
 	start := time.Now()
 	ctx := context.Background()
 
@@ -555,8 +553,6 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, reg
 	total_requests += num_overfetch_ranges
 	fmt.Printf("Extract required %d total requests.\n", total_requests)
 	fmt.Printf("Extract transferred %s (overfetch %v) for an archive size of %s\n", humanize.Bytes(total_bytes), overfetch, humanize.Bytes(total_actual_bytes))
-	fmt.Println("Verify your extract is usable at https://protomaps.github.io/PMTiles/")
-	fmt.Println("Feedback wanted! report your success or failure to https://github.com/protomaps/go-pmtiles/issues")
 
 	return nil
 }
