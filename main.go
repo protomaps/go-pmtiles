@@ -62,6 +62,7 @@ var cli struct {
 
 	Serve struct {
 		Path           string `arg:"" help:"Local path or bucket prefix"`
+		Interface      string `default:"0.0.0.0"`
 		Port           int    `default:8080`
 		Cors           string `help:"Value of HTTP CORS header."`
 		CacheSize      int    `default:64 help:"Size of cache in Megabytes."`
@@ -119,8 +120,8 @@ func main() {
 			logger.Printf("served %s in %s", r.URL.Path, time.Since(start))
 		})
 
-		logger.Printf("Serving %s %s on port %d with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Cors)
-		logger.Fatal(http.ListenAndServe(":"+strconv.Itoa(cli.Serve.Port), nil))
+		logger.Printf("Serving %s %s on port %d and interface %s with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Interface, cli.Serve.Cors)
+		logger.Fatal(http.ListenAndServe(cli.Serve.Interface+":"+strconv.Itoa(cli.Serve.Port), nil))
 	case "extract <input> <output>":
 		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Bbox, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
 		if err != nil {
