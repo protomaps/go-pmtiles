@@ -58,7 +58,7 @@ var cli struct {
 
 	Verify struct {
 		Input string `arg:"" help:"Input archive." type:"existingfile"`
-	} `cmd:"" help:"Verifies that a local archive is valid."`
+	} `cmd:"" help:"Verify the correctness of an archive structure, without verifying individual tile contents."`
 
 	Serve struct {
 		Path           string `arg:"" help:"Local path or bucket prefix"`
