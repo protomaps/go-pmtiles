@@ -324,30 +324,30 @@ func (server *Server) get_tile(ctx context.Context, http_headers map[string]stri
 		dir_value := <-dir_req.value
 		directory := dir_value.directory
 		entry, ok := find_tile(directory, tile_id)
-		if ok {
-			if entry.RunLength > 0 {
-				r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length))
-				if err != nil {
-					return 500, http_headers, []byte("Network error")
-				}
-				defer r.Close()
-				b, err := io.ReadAll(r)
-				if err != nil {
-					return 500, http_headers, []byte("I/O error")
-				}
-				if header_val, ok := headerContentType(header); ok {
-					http_headers["Content-Type"] = header_val
-				}
-				if header_val, ok := headerContentEncoding(header.TileCompression); ok {
-					http_headers["Content-Encoding"] = header_val
-				}
-				return 200, http_headers, b
-			} else {
-				dir_offset = header.LeafDirectoryOffset + entry.Offset
-				dir_len = uint64(entry.Length)
-			}
-		} else {
+		if !ok {
 			break
+		}
+
+		if entry.RunLength > 0 {
+			r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length))
+			if err != nil {
+				return 500, http_headers, []byte("Network error")
+			}
+			defer r.Close()
+			b, err := io.ReadAll(r)
+			if err != nil {
+				return 500, http_headers, []byte("I/O error")
+			}
+			if header_val, ok := headerContentType(header); ok {
+				http_headers["Content-Type"] = header_val
+			}
+			if header_val, ok := headerContentEncoding(header.TileCompression); ok {
+				http_headers["Content-Encoding"] = header_val
+			}
+			return 200, http_headers, b
+		} else {
+			dir_offset = header.LeafDirectoryOffset + entry.Offset
+			dir_len = uint64(entry.Length)
 		}
 	}
 
