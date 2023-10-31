@@ -12,7 +12,7 @@ import (
 	"os"
 )
 
-func Show(logger *log.Logger, bucketURL string, key string, show_tile bool, z int, x int, y int) error {
+func Show(logger *log.Logger, bucketURL string, key string, show_metadata_only bool, show_tile bool, z int, x int, y int) error {
 	ctx := context.Background()
 
 	bucketURL, key, err := NormalizeBucketKey(bucketURL, "", key)
@@ -66,20 +66,6 @@ func Show(logger *log.Logger, bucketURL string, key string, show_tile bool, z in
 		default:
 			tile_type = "Unknown"
 		}
-		fmt.Printf("pmtiles spec version: %d\n", header.SpecVersion)
-		// fmt.Printf("total size: %s\n", humanize.Bytes(uint64(r.Size())))
-		fmt.Printf("tile type: %s\n", tile_type)
-		fmt.Printf("bounds: %f,%f %f,%f\n", float64(header.MinLonE7)/10000000, float64(header.MinLatE7)/10000000, float64(header.MaxLonE7)/10000000, float64(header.MaxLatE7)/10000000)
-		fmt.Printf("min zoom: %d\n", header.MinZoom)
-		fmt.Printf("max zoom: %d\n", header.MaxZoom)
-		fmt.Printf("center: %f,%f\n", float64(header.CenterLonE7)/10000000, float64(header.CenterLatE7)/10000000)
-		fmt.Printf("center zoom: %d\n", header.CenterZoom)
-		fmt.Printf("addressed tiles count: %d\n", header.AddressedTilesCount)
-		fmt.Printf("tile entries count: %d\n", header.TileEntriesCount)
-		fmt.Printf("tile contents count: %d\n", header.TileContentsCount)
-		fmt.Printf("clustered: %t\n", header.Clustered)
-		fmt.Printf("internal compression: %d\n", header.InternalCompression)
-		fmt.Printf("tile compression: %d\n", header.TileCompression)
 
 		metadata_reader, err := bucket.NewRangeReader(ctx, key, int64(header.MetadataOffset), int64(header.MetadataLength))
 		if err != nil {
@@ -101,17 +87,35 @@ func Show(logger *log.Logger, bucketURL string, key string, show_tile bool, z in
 		}
 		metadata_reader.Close()
 
-		var metadata_map map[string]interface{}
-		json.Unmarshal(metadata_bytes, &metadata_map)
-		for k, v := range metadata_map {
-			switch v := v.(type) {
-			case string:
-				fmt.Println(k, v)
-			default:
-				fmt.Println(k, "<object...>")
+		if show_metadata_only {
+			fmt.Print(string(metadata_bytes))
+		} else {
+			fmt.Printf("pmtiles spec version: %d\n", header.SpecVersion)
+			// fmt.Printf("total size: %s\n", humanize.Bytes(uint64(r.Size())))
+			fmt.Printf("tile type: %s\n", tile_type)
+			fmt.Printf("bounds: %f,%f %f,%f\n", float64(header.MinLonE7)/10000000, float64(header.MinLatE7)/10000000, float64(header.MaxLonE7)/10000000, float64(header.MaxLatE7)/10000000)
+			fmt.Printf("min zoom: %d\n", header.MinZoom)
+			fmt.Printf("max zoom: %d\n", header.MaxZoom)
+			fmt.Printf("center: %f,%f\n", float64(header.CenterLonE7)/10000000, float64(header.CenterLatE7)/10000000)
+			fmt.Printf("center zoom: %d\n", header.CenterZoom)
+			fmt.Printf("addressed tiles count: %d\n", header.AddressedTilesCount)
+			fmt.Printf("tile entries count: %d\n", header.TileEntriesCount)
+			fmt.Printf("tile contents count: %d\n", header.TileContentsCount)
+			fmt.Printf("clustered: %t\n", header.Clustered)
+			fmt.Printf("internal compression: %d\n", header.InternalCompression)
+			fmt.Printf("tile compression: %d\n", header.TileCompression)
+
+			var metadata_map map[string]interface{}
+			json.Unmarshal(metadata_bytes, &metadata_map)
+			for k, v := range metadata_map {
+				switch v := v.(type) {
+				case string:
+					fmt.Println(k, v)
+				default:
+					fmt.Println(k, "<object...>")
+				}
 			}
 		}
-
 	} else {
 		// write the tile to stdout
 
