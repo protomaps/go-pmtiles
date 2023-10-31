@@ -32,8 +32,9 @@ var cli struct {
 	} `cmd:"" help:"Convert an MBTiles or older spec version to PMTiles."`
 
 	Show struct {
-		Path   string `arg:""`
-		Bucket string `help:"Remote bucket"`
+		Path     string `arg:""`
+		Bucket   string `help:"Remote bucket"`
+		Metadata bool   `help:"Print only the JSON metadata."`
 	} `cmd:"" help:"Inspect a local or remote archive."`
 
 	Tile struct {
@@ -91,12 +92,12 @@ func main() {
 
 	switch ctx.Command() {
 	case "show <path>":
-		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, false, 0, 0, 0)
+		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, cli.Show.Metadata, false, 0, 0, 0)
 		if err != nil {
 			logger.Fatalf("Failed to show archive, %v", err)
 		}
 	case "tile <path> <z> <x> <y>":
-		err := pmtiles.Show(logger, cli.Tile.Bucket, cli.Tile.Path, true, cli.Tile.Z, cli.Tile.X, cli.Tile.Y)
+		err := pmtiles.Show(logger, cli.Tile.Bucket, cli.Tile.Path, false, true, cli.Tile.Z, cli.Tile.X, cli.Tile.Y)
 		if err != nil {
 			logger.Fatalf("Failed to show tile, %v", err)
 		}
