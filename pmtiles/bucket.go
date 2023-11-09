@@ -113,6 +113,9 @@ func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Buc
 		return bucket, nil
 	} else {
 		bucket, err := blob.OpenBucket(ctx, bucketURL)
+		if err != nil {
+			return bucket, err
+		}
 		if bucketPrefix != "/" && bucketPrefix != "." {
 			bucket = blob.PrefixedBucket(bucket, path.Clean(bucketPrefix)+string(os.PathSeparator))
 		}
