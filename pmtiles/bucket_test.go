@@ -1,7 +1,6 @@
 package pmtiles
 
 import (
-	"fmt"
 	"github.com/stretchr/testify/assert"
 	"strings"
 	"testing"
@@ -28,7 +27,6 @@ func TestNormalizeAwsSdkVersion(t *testing.T) {
 func TestNormalizePathPrefixServer(t *testing.T) {
 	bucket, key, _ := NormalizeBucketKey("", "../foo", "")
 	assert.Equal(t, "", key)
-	fmt.Println(bucket)
 	assert.True(t, strings.HasSuffix(bucket, "/foo"))
 	assert.True(t, strings.HasPrefix(bucket, "file://"))
 }
