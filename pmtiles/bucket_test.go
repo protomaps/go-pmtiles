@@ -10,7 +10,7 @@ import (
 func TestNormalizeLocalFile(t *testing.T) {
 	bucket, key, _ := NormalizeBucketKey("", "", "../foo/bar.pmtiles")
 	assert.Equal(t, "bar.pmtiles", key)
-	assert.True(t, strings.HasSuffix(bucket, "/foo"))
+	assert.True(t, strings.HasSuffix(bucket, "foo"))
 	assert.True(t, strings.HasPrefix(bucket, "file://"))
 }
 
@@ -18,7 +18,7 @@ func TestNormalizeLocalFileWindows(t *testing.T) {
 	if string(os.PathSeparator) != "/" {
 		bucket, key, _ := NormalizeBucketKey("", "", "\\foo\\bar.pmtiles")
 		assert.Equal(t, "bar.pmtiles", key)
-		assert.True(t, strings.HasSuffix(bucket, "/foo"))
+		assert.True(t, strings.HasSuffix(bucket, "\\foo"))
 		assert.True(t, strings.HasPrefix(bucket, "file://"))
 	}
 }
