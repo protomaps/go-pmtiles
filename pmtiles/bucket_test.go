@@ -2,6 +2,7 @@ package pmtiles
 
 import (
 	"github.com/stretchr/testify/assert"
+	"os"
 	"strings"
 	"testing"
 )
@@ -11,6 +12,15 @@ func TestNormalizeLocalFile(t *testing.T) {
 	assert.Equal(t, "bar.pmtiles", key)
 	assert.True(t, strings.HasSuffix(bucket, "/foo"))
 	assert.True(t, strings.HasPrefix(bucket, "file://"))
+}
+
+func TestNormalizeLocalFileWindows(t *testing.T) {
+	if string(os.PathSeparator) != "/" {
+		bucket, key, _ := NormalizeBucketKey("", "", "\\foo\\bar.pmtiles")
+		assert.Equal(t, "bar.pmtiles", key)
+		assert.True(t, strings.HasSuffix(bucket, "/foo"))
+		assert.True(t, strings.HasPrefix(bucket, "file://"))
+	}
 }
 
 func TestNormalizeHttp(t *testing.T) {
@@ -24,6 +34,7 @@ func TestNormalizeAwsSdkVersion(t *testing.T) {
 	assert.Equal(t, "abc", key)
 	assert.Equal(t, "s3://mybucket?awssdk=v2&endpoint=https%3A%2F%2Ffoo.bar", bucket)
 }
+
 func TestNormalizePathPrefixServer(t *testing.T) {
 	bucket, key, _ := NormalizeBucketKey("", "../foo", "")
 	assert.Equal(t, "", key)
