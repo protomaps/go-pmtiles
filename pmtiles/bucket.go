@@ -78,18 +78,22 @@ func NormalizeBucketKey(bucket string, prefix string, key string) (string, strin
 			}
 			return u.Scheme + "://" + u.Host + dir, file, nil
 		} else {
+			fileprotocol := "file://"
+			if string(os.PathSeparator) != "/" {
+				fileprotocol += "/"
+			}
 			if prefix != "" {
 				abs, err := filepath.Abs(prefix)
 				if err != nil {
 					return "", "", err
 				}
-				return "file://" + abs, key, nil
+				return fileprotocol + filepath.ToSlash(abs), key, nil
 			}
 			abs, err := filepath.Abs(key)
 			if err != nil {
 				return "", "", err
 			}
-			return "file://" + filepath.Dir(abs), filepath.Base(abs), nil
+			return fileprotocol + filepath.ToSlash(filepath.Dir(abs)), filepath.Base(abs), nil
 		}
 	}
 
@@ -116,7 +120,7 @@ func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Buc
 		if err != nil {
 			return nil, err
 		}
-		if bucketPrefix != "/" && bucketPrefix != "." {
+		if bucketPrefix != "" && bucketPrefix != "/" && bucketPrefix != "." {
 			bucket = blob.PrefixedBucket(bucket, path.Clean(bucketPrefix)+string(os.PathSeparator))
 		}
 		wrapped_bucket := BucketAdapter{bucket}
