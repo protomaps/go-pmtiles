@@ -120,7 +120,7 @@ func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Buc
 		if err != nil {
 			return nil, err
 		}
-		if bucketPrefix != "/" && bucketPrefix != "." {
+		if bucketPrefix != "" && bucketPrefix != "/" && bucketPrefix != "." {
 			bucket = blob.PrefixedBucket(bucket, path.Clean(bucketPrefix)+string(os.PathSeparator))
 		}
 		wrapped_bucket := BucketAdapter{bucket}
