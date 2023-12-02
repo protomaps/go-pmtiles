@@ -6,6 +6,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
       - name: Checkout
         uses: actions/checkout@v1
       - name: Login to GitHub Packages Docker Registry
@@ -19,10 +21,11 @@ jobs:
         id: buildx
         with:
             version: latest
-      - name: Build dockerfile (with push)
-        run: |
-            docker buildx build \
-            --platform=linux/amd64,linux/arm/v7,linux/arm64 \
-            --output "type=image,push=true" \
-            --file ./Dockerfile . \
-            --tag ghcr.io/protomaps/go-pmtiles/main:1.1.0
+      - name: Build and push Docker image
+        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ matrix.platforms }}
+          push: true
+          outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=My multi-arch image
