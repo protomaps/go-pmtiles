@@ -3,23 +3,6 @@ name: publish
 on: [push]
 
 jobs:
-  main_push_to_registry:
-    name: Push Docker image to GitHub Packages as with Tag 'latest'
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Check out the repo
-        uses: actions/checkout@v2
-      - name: Push to GitHub Packages
-        uses: docker/build-push-action@v1
-        with:
-          context: ./
-          dockerfile: ./Dockerfile
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          registry: ghcr.io
-          repository: protomaps/go-pmtiles
-          tags: main
   release:
     runs-on: ubuntu-latest
     steps:
@@ -42,4 +25,4 @@ jobs:
             --platform=linux/amd64,linux/arm/v7,linux/arm64 \
             --output "type=image,push=true" \
             --file ./Dockerfile . \
-            --tag ghcr.io/gimse/hash-tag-generator-docker/hash-tag-generator-docker:1.1.0
+            --tag ghcr.io/protomaps/go-pmtiles/ hash-tag-generator-docker:1.1.0
