@@ -25,4 +25,5 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.platforms }}
           push: true
+          tags: ghcr.io/gimse/go-pmtiles/main:0.0.1
           outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=My multi-arch image
