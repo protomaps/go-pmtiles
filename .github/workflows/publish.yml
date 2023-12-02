@@ -34,4 +34,4 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: annotation-index.org.opencontainers.image.description=See https://github.com/gimse/go-pmtiles for more info.
+          outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=See https://github.com/gimse/go-pmtiles for more info.
