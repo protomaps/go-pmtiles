@@ -24,7 +24,7 @@ jobs:
         with:
             version: latest
       - name: Build and push Docker image
-        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
