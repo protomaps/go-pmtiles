@@ -20,3 +20,26 @@ jobs:
           registry: ghcr.io
           repository: protomaps/go-pmtiles
           tags: main
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+      - name: Login to GitHub Packages Docker Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: crazy-max/ghaction-docker-buildx@v1
+        with:
+            version: latest
+      - name: Build dockerfile (with push)
+        run: |
+            docker buildx build \
+            --platform=linux/amd64,linux/arm/v7,linux/arm64 \
+            --output "type=image,push=true" \
+            --file ./Dockerfile . \
+            --tag ghcr.io/gimse/hash-tag-generator-docker/hash-tag-generator-docker:1.1.0
