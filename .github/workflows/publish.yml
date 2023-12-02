@@ -26,4 +26,4 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ghcr.io/gimse/go-pmtiles:0.0.1
-          outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=My multi-arch image
+          outputs: type=image,name=target
