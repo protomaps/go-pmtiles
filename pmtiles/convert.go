@@ -602,6 +602,9 @@ func mbtiles_to_header_json(mbtiles_metadata []string) (HeaderV3, map[string]int
 			case "avif":
 				header.TileType = Avif
 				header.TileCompression = NoCompression
+			case "mvt":
+				header.TileType = Mvt
+				header.TileCompression = Gzip
 			}
 			json_result["format"] = value
 		case "bounds":
