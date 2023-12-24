@@ -6,13 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	// "github.com/dustin/go-humanize"
 	"io"
 	"log"
 	"os"
 )
 
-func Show(logger *log.Logger, bucketURL string, key string, show_metadata_only bool, show_tile bool, z int, x int, y int) error {
+func Show(logger *log.Logger, bucketURL string, key string, show_metadata_only bool, show_tilejson bool, show_tile bool, z int, x int, y int) error {
 	ctx := context.Background()
 
 	bucketURL, key, err := NormalizeBucketKey(bucketURL, "", key)
@@ -27,6 +28,18 @@ func Show(logger *log.Logger, bucketURL string, key string, show_metadata_only b
 		return fmt.Errorf("Failed to open bucket for %s, %w", bucketURL, err)
 	}
 	defer bucket.Close()
+
+	// TODO cleaner structure?
+	if show_tilejson {
+		b, err := GetTilejson(ctx, bucket, key, "")
+
+		if err != nil {
+			return fmt.Errorf("Failed to read tilejson for %s, %w", key, err)
+		}
+
+		fmt.Print(string(b))
+		return nil
+	}
 
 	r, err := bucket.NewRangeReader(ctx, key, 0, 16384)
 

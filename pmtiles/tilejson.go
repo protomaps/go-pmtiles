@@ -34,8 +34,12 @@ func GetHeaderMetadata(ctx context.Context, bucket Bucket, key string) (error, H
 		return err, HeaderV3{}, nil
 	}
 
-	// TODO read error handling?
-	// TODO what should we be reading here
+	r, err := bucket.NewRangeReader(ctx, key, int64(header.MetadataOffset), int64(header.MetadataLength))
+	if err != nil {
+		return err, HeaderV3{}, nil
+	}
+	defer r.Close()
+
 	var metadata_bytes []byte
 	if header.InternalCompression == Gzip {
 		metadata_reader, _ := gzip.NewReader(r)
@@ -44,7 +48,11 @@ func GetHeaderMetadata(ctx context.Context, bucket Bucket, key string) (error, H
 	} else if header.InternalCompression == NoCompression {
 		metadata_bytes, err = io.ReadAll(r)
 	} else {
-		return errors.New("Unknown compression"), HeaderV3{}, nil
+		return errors.New("unknown compression"), HeaderV3{}, nil
+	}
+
+	if err != nil {
+		return err, HeaderV3{}, nil
 	}
 
 	return nil, header, metadata_bytes
