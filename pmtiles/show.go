@@ -29,18 +29,6 @@ func Show(logger *log.Logger, bucketURL string, key string, show_metadata_only b
 	}
 	defer bucket.Close()
 
-	// TODO cleaner structure?
-	if show_tilejson {
-		b, err := GetTilejson(ctx, bucket, key, "")
-
-		if err != nil {
-			return fmt.Errorf("Failed to read tilejson for %s, %w", key, err)
-		}
-
-		fmt.Print(string(b))
-		return nil
-	}
-
 	r, err := bucket.NewRangeReader(ctx, key, 0, 16384)
 
 	if err != nil {
@@ -102,6 +90,12 @@ func Show(logger *log.Logger, bucketURL string, key string, show_metadata_only b
 
 		if show_metadata_only {
 			fmt.Print(string(metadata_bytes))
+		} else if show_tilejson {
+			tilejson_bytes, err := CreateTilejson(header, metadata_bytes, "")
+			if err != nil {
+				return fmt.Errorf("Failed to create tilejson for %s, %w", key, err)
+			}
+			fmt.Print(string(tilejson_bytes))
 		} else {
 			fmt.Printf("pmtiles spec version: %d\n", header.SpecVersion)
 			// fmt.Printf("total size: %s\n", humanize.Bytes(uint64(r.Size())))
