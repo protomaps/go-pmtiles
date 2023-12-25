@@ -29,7 +29,6 @@ type Result struct {
 }
 
 func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
-	start := time.Now()
 	ctx := context.Background()
 
 	bucketURL, key, err := NormalizeBucketKey("", "", file)
@@ -93,6 +92,7 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 	defer output.Close()
 
 	// while we're developing this let's store the md5 in the file as well
+	start := time.Now()
 	localfile, err := os.Open(file)
 	if err != nil {
 		panic(err)
@@ -104,7 +104,9 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 		panic(err)
 	}
 	md5checksum := md5hasher.Sum(nil)
+	fmt.Printf("Completed md5 in %v.\n", time.Since(start))
 
+	start = time.Now()
 	output.Write([]byte(fmt.Sprintf("md5=%x\n", md5checksum)))
 	output.Write([]byte("hash=fnv1a\n"))
 	output.Write([]byte(fmt.Sprintf("maxblocksize=%d\n", max_block_bytes)))
