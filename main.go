@@ -65,12 +65,12 @@ var cli struct {
 		Input              string `arg:"" type:"existingfile"`
 		BlockSizeMegabytes int    `default:1 help:"The block size, in megabytes. Must be greater than the max tile size in the archive."`
 		HashFunction       string `default:fnv1a help:"The hash function."`
-	} `cmd:"" help:"Create an **experimental** sync control file (.pmtiles.sync) for a local archive. Do not use this for anything in production."`
+	} `cmd:"" hidden:""`
 
 	Sync struct {
 		Existing string `arg:"" type:"existingfile"`
 		Syncfile string `arg:"" type:"existingfile"`
-	} `cmd:"" help:"This command isn't supported yet."`
+	} `cmd:"" hidden:""`
 
 	Serve struct {
 		Path           string `arg:"" help:"Local path or bucket prefix"`
@@ -83,9 +83,9 @@ var cli struct {
 	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
 
 	Download struct {
-		OldFile 			 string `type:"existingfile" help:"The old archive on disk. Providing this will check the new archive for a .sync file"`
-		NewFile string `arg:"The remote file."`
-		Bucket         string `required:"" help:"Bucket of file to download."`
+		OldFile         string  `type:"existingfile" help:"The old archive on disk. Providing this will check the new archive for a .sync file"`
+		NewFile         string  `arg:"The remote file."`
+		Bucket          string  `required:"" help:"Bucket of file to download."`
 		DownloadThreads int     `default:4 help:"Number of download threads."`
 		DryRun          bool    `help:"Calculate new parts to download, but don't download them."`
 		Overfetch       float32 `default:0.05 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/md5"
 	"fmt"
 	"github.com/dustin/go-humanize"
 	"github.com/schollz/progressbar/v3"
@@ -33,6 +32,7 @@ type Result struct {
 
 func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 	ctx := context.Background()
+	start := time.Now()
 
 	bucketURL, key, err := NormalizeBucketKey("", "", file)
 	max_block_bytes := uint64(1024 * 1024 * block_size_megabytes)
@@ -94,23 +94,6 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 	}
 	defer output.Close()
 
-	// while we're developing this let's store the md5 in the file as well
-	start := time.Now()
-	localfile, err := os.Open(file)
-	if err != nil {
-		panic(err)
-	}
-	defer localfile.Close()
-	reader := bufio.NewReader(localfile)
-	md5hasher := md5.New()
-	if _, err := io.Copy(md5hasher, reader); err != nil {
-		panic(err)
-	}
-	md5checksum := md5hasher.Sum(nil)
-	fmt.Printf("Completed md5 in %v.\n", time.Since(start))
-
-	start = time.Now()
-	output.Write([]byte(fmt.Sprintf("md5=%x\n", md5checksum)))
 	output.Write([]byte("hash=fnv1a\n"))
 	output.Write([]byte(fmt.Sprintf("maxblocksize=%d\n", max_block_bytes)))
 
@@ -288,7 +271,6 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 	if !header.Clustered {
 		return fmt.Errorf("Error: archive must be clustered for makesync.")
 	}
-
 
 	GetHash := func(offset uint64, length uint64) uint64 {
 		hasher := fnv.New64a()
