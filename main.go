@@ -61,6 +61,17 @@ var cli struct {
 		Input string `arg:"" help:"Input archive." type:"existingfile"`
 	} `cmd:"" help:"Verify the correctness of an archive structure, without verifying individual tile contents."`
 
+	Makesync struct {
+		Input              string `arg:"" type:"existingfile"`
+		BlockSizeMegabytes int    `default:1 help:"The block size, in megabytes. Must be greater than the max tile size in the archive."`
+		HashFunction       string `default:fnv1a help:"The hash function."`
+	} `cmd:"" hidden:""`
+
+	Sync struct {
+		Existing string `arg:"" type:"existingfile"`
+		Syncfile string `arg:"" type:"existingfile"`
+	} `cmd:"" hidden:""`
+
 	Serve struct {
 		Path           string `arg:"" help:"Local path or bucket prefix"`
 		Interface      string `default:"0.0.0.0"`
@@ -70,6 +81,15 @@ var cli struct {
 		Bucket         string `help:"Remote bucket"`
 		PublicHostname string `help:"Public hostname of tile endpoint e.g. https://example.com"`
 	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
+
+	Download struct {
+		OldFile         string  `type:"existingfile" help:"The old archive on disk. Providing this will check the new archive for a .sync file"`
+		NewFile         string  `arg:"The remote file."`
+		Bucket          string  `required:"" help:"Bucket of file to download."`
+		DownloadThreads int     `default:4 help:"Number of download threads."`
+		DryRun          bool    `help:"Calculate new parts to download, but don't download them."`
+		Overfetch       float32 `default:0.05 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
+	} `cmd:"" help:"Upload a local archive to remote storage."`
 
 	Upload struct {
 		Input          string `arg:"" type:"existingfile"`
@@ -171,6 +191,16 @@ func main() {
 		err := pmtiles.Verify(logger, cli.Verify.Input)
 		if err != nil {
 			logger.Fatalf("Failed to verify archive, %v", err)
+		}
+	case "makesync <input>":
+		err := pmtiles.Makesync(logger, cli.Makesync.Input, cli.Makesync.BlockSizeMegabytes)
+		if err != nil {
+			logger.Fatalf("Failed to makesync archive, %v", err)
+		}
+	case "sync <existing> <syncfile>":
+		err := pmtiles.Sync(logger, cli.Sync.Existing, cli.Sync.Syncfile)
+		if err != nil {
+			logger.Fatalf("Failed to sync archive, %v", err)
 		}
 	case "version":
 		fmt.Printf("pmtiles %s, commit %s, built at %s\n", version, commit, date)
