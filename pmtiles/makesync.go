@@ -35,7 +35,7 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 	ctx := context.Background()
 
 	bucketURL, key, err := NormalizeBucketKey("", "", file)
-	max_block_bytes := uint64(block_size_megabytes * 1024 * 1024)
+	max_block_bytes := uint64(1024 * 1024 * block_size_megabytes)
 
 	if err != nil {
 		return err
@@ -181,7 +181,11 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 
 	current_index := uint64(0)
 
+	chunks := 0
 	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
+		if uint64(e.Length) > max_block_bytes {
+			panic("The block size must be greater than the largest tile in the archive.")
+		}
 		bar.Add(1)
 		if current.Length == 0 {
 			current.Index = current_index
@@ -195,6 +199,7 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 		} else {
 			if current.Length+uint64(e.Length) > max_block_bytes {
 				tasks <- Block{current.Index, current.Start, current.Offset, current.Length}
+				chunks += 1
 
 				current_index += 1
 				current.Index = current_index
@@ -208,9 +213,11 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 	})
 
 	tasks <- Block{current.Index, current.Start, current.Offset, current.Length}
+	chunks += 1
 	close(tasks)
 
 	<-done
+	fmt.Printf("Created syncfile with %d chunks.\n", chunks)
 	fmt.Printf("Completed makesync in %v.\n", time.Since(start))
 	return nil
 }
@@ -282,10 +289,9 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 		return fmt.Errorf("Error: archive must be clustered for makesync.")
 	}
 
-	hasher := fnv.New64a()
 
 	GetHash := func(offset uint64, length uint64) uint64 {
-		hasher.Reset()
+		hasher := fnv.New64a()
 		r, err := bucket.NewRangeReader(ctx, key, int64(header.TileDataOffset+offset), int64(length))
 		if err != nil {
 			log.Fatal(err)
@@ -347,9 +353,9 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 		to_transfer += v.Length
 	}
 
-	pct := 100 - (to_transfer / total_remote_bytes * 100)
+	pct := float64(to_transfer) / float64(total_remote_bytes) * 100
 
-	fmt.Printf("%d/%d chunks matched, need to transfer %s/%s bytes (%d%% match).\n", hits, total_chunks, humanize.Bytes(to_transfer), humanize.Bytes(total_remote_bytes), pct)
+	fmt.Printf("%d/%d chunks matched, need to transfer %s/%s (%.1f%%).\n", hits, total_chunks, humanize.Bytes(to_transfer), humanize.Bytes(total_remote_bytes), pct)
 
 	fmt.Printf("Completed sync in %v.\n", time.Since(start))
 	return nil

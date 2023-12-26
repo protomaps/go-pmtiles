@@ -63,14 +63,14 @@ var cli struct {
 
 	Makesync struct {
 		Input              string `arg:"" type:"existingfile"`
-		BlockSizeMegabytes int    `default:4 help:"The block size, in megabytes. Default 4."`
+		BlockSizeMegabytes int    `default:1 help:"The block size, in megabytes. Must be greater than the max tile size in the archive."`
 		HashFunction       string `default:fnv1a help:"The hash function."`
-	} `cmd:"" help:"Create an **experimental** sync control file (.pmtiles.sync) for a local archive."`
+	} `cmd:"" help:"Create an **experimental** sync control file (.pmtiles.sync) for a local archive. Do not use this for anything in production."`
 
 	Sync struct {
 		Existing string `arg:"" type:"existingfile"`
 		Syncfile string `arg:"" type:"existingfile"`
-	} `cmd:"" help:"This command is experimental."`
+	} `cmd:"" help:"This command isn't supported yet."`
 
 	Serve struct {
 		Path           string `arg:"" help:"Local path or bucket prefix"`
