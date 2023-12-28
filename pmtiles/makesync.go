@@ -35,7 +35,7 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 	start := time.Now()
 
 	bucketURL, key, err := NormalizeBucketKey("", "", file)
-	max_block_bytes := uint64(1024 * 1024 * block_size_megabytes)
+	block_size_bytes := uint64(1024 * 1024 * block_size_megabytes)
 
 	if err != nil {
 		return err
@@ -95,7 +95,7 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 	defer output.Close()
 
 	output.Write([]byte("hash=fnv1a\n"))
-	output.Write([]byte(fmt.Sprintf("maxblocksize=%d\n", max_block_bytes)))
+	output.Write([]byte(fmt.Sprintf("blocksize=%d\n", block_size_bytes)))
 
 	bar := progressbar.Default(
 		int64(header.TileEntriesCount),
@@ -164,11 +164,8 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 
 	current_index := uint64(0)
 
-	chunks := 0
+	blocks := 0
 	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
-		if uint64(e.Length) > max_block_bytes {
-			panic("The block size must be greater than the largest tile in the archive.")
-		}
 		bar.Add(1)
 		if current.Length == 0 {
 			current.Index = current_index
@@ -180,9 +177,9 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 		} else if e.Offset > current.Offset+uint64(current.Length) {
 			panic("Invalid clustering of archive detected - check with verify")
 		} else {
-			if current.Length+uint64(e.Length) > max_block_bytes {
+			if current.Length+uint64(e.Length) > block_size_bytes {
 				tasks <- Block{current.Index, current.Start, current.Offset, current.Length}
-				chunks += 1
+				blocks += 1
 
 				current_index += 1
 				current.Index = current_index
@@ -196,11 +193,11 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 	})
 
 	tasks <- Block{current.Index, current.Start, current.Offset, current.Length}
-	chunks += 1
+	blocks += 1
 	close(tasks)
 
 	<-done
-	fmt.Printf("Created syncfile with %d chunks.\n", chunks)
+	fmt.Printf("Created syncfile with %d blocks.\n", blocks)
 	fmt.Printf("Completed makesync in %v.\n", time.Since(start))
 	return nil
 }
@@ -314,7 +311,7 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 		"calculating diff",
 	)
 
-	total_chunks := len(by_start_id)
+	total_blocks := len(by_start_id)
 	hits := 0
 
 	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
@@ -337,7 +334,7 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 
 	pct := float64(to_transfer) / float64(total_remote_bytes) * 100
 
-	fmt.Printf("%d/%d chunks matched, need to transfer %s/%s (%.1f%%).\n", hits, total_chunks, humanize.Bytes(to_transfer), humanize.Bytes(total_remote_bytes), pct)
+	fmt.Printf("%d/%d blocks matched, need to transfer %s/%s (%.1f%%).\n", hits, total_blocks, humanize.Bytes(to_transfer), humanize.Bytes(total_remote_bytes), pct)
 
 	fmt.Printf("Completed sync in %v.\n", time.Since(start))
 	return nil
