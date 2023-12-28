@@ -63,7 +63,7 @@ var cli struct {
 
 	Makesync struct {
 		Input              string `arg:"" type:"existingfile"`
-		BlockSizeMegabytes int    `default:1 help:"The block size, in megabytes. Must be greater than the max tile size in the archive."`
+		BlockSizeMegabytes int    `default:1 help:"The approximate block size, in megabytes. 0 means 1 tile = 1 block."`
 		HashFunction       string `default:fnv1a help:"The hash function."`
 	} `cmd:"" hidden:""`
 
