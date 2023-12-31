@@ -10,7 +10,14 @@ import (
 func TestCreateTilejson(t *testing.T) {
 	// Define test inputs
 	header := HeaderV3{
-		// Define header fields
+		MinZoom:     0.0,
+		MaxZoom:     14.0,
+		MinLonE7:    -1144000000,
+		MinLatE7:    479000000,
+		MaxLonE7:    -1139000000,
+		MaxLatE7:    483000000,
+		CenterLonE7: -1141500000,
+		CenterLatE7: 481000000,
 	}
 	metadataBytes := []byte(`
 	{
@@ -20,7 +27,7 @@ func TestCreateTilejson(t *testing.T) {
 		"name": "Name",
 		"version": "1.0"
 	}`)
-	tileURL := "https://example.com/tiles/{z}/{x}/{y}.pbf"
+	tileURL := "https://example.com/tiles.pmtiles"
 
 	// Call the function
 	tilejsonBytes, err := CreateTilejson(header, metadataBytes, tileURL)
@@ -39,12 +46,15 @@ func TestCreateTilejson(t *testing.T) {
 
 	assert.Equal(t, "3.0.0", tilejson["tilejson"])
 	assert.Equal(t, "xyz", tilejson["scheme"])
+	assert.Equal(t, []interface{}{"https://example.com/tiles.pmtiles/{z}/{x}/{y}"}, tilejson["tiles"])
+	assert.Equal(t, []interface{}{map[string]interface{}{"id": "layer1"}}, tilejson["vector_layers"])
+	assert.Equal(t, "Attribution", tilejson["attribution"])
+	assert.Equal(t, "Description", tilejson["description"])
+	assert.Equal(t, "Name", tilejson["name"])
+	assert.Equal(t, "1.0", tilejson["version"])
 
-	// Add assertions to validate the generated TileJSON
-	// For example:
-	// if tilejson.Name != "My Tileset" {
-	// 	t.Errorf("Unexpected tileset name. Expected: %s, Got: %s", "My Tileset", tilejson.Name)
-	// }
-
-	// Add more test cases as needed
+	assert.Equal(t, []interface{}{-114.400000, 47.900000, -113.900000, 48.300000}, tilejson["bounds"])
+	assert.Equal(t, []interface{}{-114.150000, 48.100000, 0.0}, tilejson["center"])
+	assert.Equal(t, 0.0, tilejson["minzoom"])
+	assert.Equal(t, 14.0, tilejson["maxzoom"])
 }

@@ -25,5 +25,5 @@ func CreateTilejson(header HeaderV3, metadata_bytes []byte, tileUrl string) ([]b
 	tilejson["minzoom"] = header.MinZoom
 	tilejson["maxzoom"] = header.MaxZoom
 
-	return json.Marshal(tilejson)
+	return json.MarshalIndent(tilejson, "", "\t")
 }

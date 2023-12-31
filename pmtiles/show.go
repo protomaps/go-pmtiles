@@ -91,6 +91,7 @@ func Show(logger *log.Logger, bucketURL string, key string, show_metadata_only b
 		if show_metadata_only {
 			fmt.Print(string(metadata_bytes))
 		} else if show_tilejson {
+			// TODO check for show_metadata_only and show tilejson
 			tilejson_bytes, err := CreateTilejson(header, metadata_bytes, "")
 			if err != nil {
 				return fmt.Errorf("Failed to create tilejson for %s, %w", key, err)
