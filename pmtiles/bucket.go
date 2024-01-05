@@ -97,17 +97,6 @@ func NormalizeBucketKey(bucket string, prefix string, key string) (string, strin
 		}
 	}
 
-	if strings.HasPrefix(bucket, "s3") {
-		u, err := url.Parse(bucket)
-		if err != nil {
-			fmt.Println("Error parsing URL:", err)
-			return "", "", err
-		}
-		values := u.Query()
-		values.Set("awssdk", "v2")
-		u.RawQuery = values.Encode()
-		return u.String(), key, nil
-	}
 	return bucket, key, nil
 }
 
