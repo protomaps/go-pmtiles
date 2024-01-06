@@ -62,9 +62,10 @@ var cli struct {
 	} `cmd:"" help:"Verify the correctness of an archive structure, without verifying individual tile contents."`
 
 	Makesync struct {
-		Input              string `arg:"" type:"existingfile"`
-		BlockSizeMegabytes int    `default:1 help:"The approximate block size, in megabytes. 0 means 1 tile = 1 block."`
-		HashFunction       string `default:fnv1a help:"The hash function."`
+		Input        string `arg:"" type:"existingfile"`
+		BlockSizeKb  int    `default:1000 help:"The approximate block size, in kilobytes. 0 means 1 tile = 1 block."`
+		HashFunction string `default:fnv1a help:"The hash function."`
+		Checksum     string `help:"Store a checksum in the syncfile."`
 	} `cmd:"" hidden:""`
 
 	Sync struct {
@@ -193,7 +194,7 @@ func main() {
 			logger.Fatalf("Failed to verify archive, %v", err)
 		}
 	case "makesync <input>":
-		err := pmtiles.Makesync(logger, cli.Makesync.Input, cli.Makesync.BlockSizeMegabytes)
+		err := pmtiles.Makesync(logger, version, cli.Makesync.Input, cli.Makesync.BlockSizeKb, cli.Makesync.Checksum)
 		if err != nil {
 			logger.Fatalf("Failed to makesync archive, %v", err)
 		}

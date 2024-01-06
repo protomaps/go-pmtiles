@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/md5"
 	"fmt"
 	"github.com/dustin/go-humanize"
 	"github.com/schollz/progressbar/v3"
@@ -13,8 +14,10 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -30,12 +33,18 @@ type Result struct {
 	Hash  uint64
 }
 
-func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
+type Syncline struct {
+	Offset uint64
+	Length uint64
+	Hash   uint64
+}
+
+func Makesync(logger *log.Logger, cli_version string, file string, block_size_kb int, checksum string) error {
 	ctx := context.Background()
 	start := time.Now()
 
 	bucketURL, key, err := NormalizeBucketKey("", "", file)
-	block_size_bytes := uint64(1024 * 1024 * block_size_megabytes)
+	block_size_bytes := uint64(1000 * block_size_kb)
 
 	if err != nil {
 		return err
@@ -93,6 +102,23 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 		panic(err)
 	}
 	defer output.Close()
+	output.Write([]byte(fmt.Sprintf("version=%s\n", cli_version)))
+
+	if checksum == "md5" {
+		localfile, err := os.Open(file)
+		if err != nil {
+			panic(err)
+		}
+		defer localfile.Close()
+		reader := bufio.NewReaderSize(localfile, 64*1024*1024)
+		md5hasher := md5.New()
+		if _, err := io.Copy(md5hasher, reader); err != nil {
+			panic(err)
+		}
+		md5checksum := md5hasher.Sum(nil)
+		fmt.Printf("Completed md5 in %v.\n", time.Since(start))
+		output.Write([]byte(fmt.Sprintf("md5=%x\n", md5checksum)))
+	}
 
 	output.Write([]byte("hash=fnv1a\n"))
 	output.Write([]byte(fmt.Sprintf("blocksize=%d\n", block_size_bytes)))
@@ -104,63 +130,41 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 
 	var current Block
 
-	GetHash := func(offset uint64, length uint64) uint64 {
-		hasher := fnv.New64a()
-		r, err := bucket.NewRangeReader(ctx, key, int64(header.TileDataOffset+offset), int64(length))
-		if err != nil {
-			log.Fatal(err)
-		}
+	tasks := make(chan Block, 1000)
 
-		if _, err := io.Copy(hasher, r); err != nil {
-			log.Fatal(err)
-		}
-		r.Close()
-		return hasher.Sum64()
-	}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
 
-	tasks := make(chan Block, 10000)
-	intermediate := make(chan Result, 10000)
+	synclines := make(map[uint64]Syncline)
 
 	errs, _ := errgroup.WithContext(ctx)
 	// workers
 	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
 		errs.Go(func() error {
+			wg.Add(1)
+			hasher := fnv.New64a()
 			for block := range tasks {
-				intermediate <- Result{block, GetHash(block.Offset, block.Length)}
+				r, err := bucket.NewRangeReader(ctx, key, int64(header.TileDataOffset+block.Offset), int64(block.Length))
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				if _, err := io.Copy(hasher, r); err != nil {
+					log.Fatal(err)
+				}
+				r.Close()
+
+				sum64 := hasher.Sum64()
+				mu.Lock()
+				synclines[block.Start] = Syncline{block.Offset, block.Length, sum64}
+				mu.Unlock()
+
+				hasher.Reset()
 			}
+			wg.Done()
 			return nil
 		})
 	}
-
-	done := make(chan struct{})
-
-	go func() {
-		buffer := make(map[uint64]Result)
-		nextIndex := uint64(0)
-
-		for i := range intermediate {
-			buffer[i.Block.Index] = i
-
-			for {
-				if next, ok := buffer[nextIndex]; ok {
-
-					output.Write([]byte(fmt.Sprintf("%d\t%d\t%d\t%x\n", next.Block.Start, next.Block.Offset, next.Block.Length, next.Hash)))
-
-					delete(buffer, nextIndex)
-					nextIndex++
-
-					if next.Block.Offset+next.Block.Length == header.TileDataLength {
-						close(intermediate)
-					}
-
-				} else {
-					break
-				}
-			}
-		}
-
-		done <- struct{}{}
-	}()
 
 	current_index := uint64(0)
 
@@ -196,16 +200,22 @@ func Makesync(logger *log.Logger, file string, block_size_megabytes int) error {
 	blocks += 1
 	close(tasks)
 
-	<-done
+	wg.Wait()
+
+	var keys []uint64
+	for k := range synclines {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+
+	for _, k := range keys {
+		syncline := synclines[k]
+		output.Write([]byte(fmt.Sprintf("%d\t%d\t%d\t%x\n", k, syncline.Offset, syncline.Length, syncline.Hash)))
+	}
+
 	fmt.Printf("Created syncfile with %d blocks.\n", blocks)
 	fmt.Printf("Completed makesync in %v.\n", time.Since(start))
 	return nil
-}
-
-type Syncline struct {
-	Offset uint64
-	Length uint64
-	Hash   uint64
 }
 
 func Sync(logger *log.Logger, file string, syncfile string) error {
