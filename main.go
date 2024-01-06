@@ -2,19 +2,18 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strconv"
-	"time"
-
 	"github.com/alecthomas/kong"
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	_ "gocloud.dev/blob/azureblob"
 	_ "gocloud.dev/blob/fileblob"
 	_ "gocloud.dev/blob/gcsblob"
 	_ "gocloud.dev/blob/s3blob"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
 )
 
 var (
