@@ -2,18 +2,19 @@ package main
 
 import (
 	"fmt"
-	"github.com/alecthomas/kong"
-	"github.com/protomaps/go-pmtiles/pmtiles"
-	_ "gocloud.dev/blob/azureblob"
-	_ "gocloud.dev/blob/fileblob"
-	_ "gocloud.dev/blob/gcsblob"
-	_ "gocloud.dev/blob/s3blob"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/alecthomas/kong"
+	"github.com/protomaps/go-pmtiles/pmtiles"
+	_ "gocloud.dev/blob/azureblob"
+	_ "gocloud.dev/blob/fileblob"
+	_ "gocloud.dev/blob/gcsblob"
+	_ "gocloud.dev/blob/s3blob"
 )
 
 var (
@@ -32,10 +33,11 @@ var cli struct {
 	} `cmd:"" help:"Convert an MBTiles or older spec version to PMTiles."`
 
 	Show struct {
-		Path     string `arg:""`
-		Bucket   string `help:"Remote bucket"`
-		Metadata bool   `help:"Print only the JSON metadata."`
-		Tilejson bool   `help:"Print the TileJSON."`
+		Path      string `arg:""`
+		Bucket    string `help:"Remote bucket"`
+		Metadata  bool   `help:"Print only the JSON metadata."`
+		Tilejson  bool   `help:"Print the TileJSON."`
+		PublicUrl string `help:"Public URL of tile endpoint to use in the Tilejson output e.g. https://example.com/tiles/pmtiles/{z}/{x}/{y}"`
 	} `cmd:"" help:"Inspect a local or remote archive."`
 
 	Tile struct {
@@ -114,12 +116,12 @@ func main() {
 
 	switch ctx.Command() {
 	case "show <path>":
-		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, cli.Show.Metadata, cli.Show.Tilejson, false, 0, 0, 0)
+		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, cli.Show.Metadata, cli.Show.Tilejson, cli.Show.PublicUrl, false, 0, 0, 0)
 		if err != nil {
 			logger.Fatalf("Failed to show archive, %v", err)
 		}
 	case "tile <path> <z> <x> <y>":
-		err := pmtiles.Show(logger, cli.Tile.Bucket, cli.Tile.Path, false, false, true, cli.Tile.Z, cli.Tile.X, cli.Tile.Y)
+		err := pmtiles.Show(logger, cli.Tile.Bucket, cli.Tile.Path, false, false, "", true, cli.Tile.Z, cli.Tile.X, cli.Tile.Y)
 		if err != nil {
 			logger.Fatalf("Failed to show tile, %v", err)
 		}

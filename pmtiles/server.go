@@ -238,7 +238,7 @@ func (server *Server) get_tilejson(ctx context.Context, http_headers map[string]
 		return 501, http_headers, []byte("PUBLIC_HOSTNAME must be set for TileJSON")
 	}
 
-	tilejson_bytes, err := CreateTilejson(header, metadata_bytes, server.publicHostname+"/"+name)
+	tilejson_bytes, err := CreateTilejson(header, metadata_bytes, server.publicHostname+"/"+name+"/{z}/{x}/{y}"+headerExt(header))
 	if err != nil {
 		return 500, http_headers, []byte("Error generating tilejson")
 	}

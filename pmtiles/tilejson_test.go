@@ -27,7 +27,7 @@ func TestCreateTilejson(t *testing.T) {
 		"name": "Name",
 		"version": "1.0"
 	}`)
-	tileURL := "https://example.com/tiles.pmtiles"
+	tileURL := "https://example.com/tiles.pmtiles/{z}/{x}/{y}"
 
 	// Call the function
 	tilejsonBytes, err := CreateTilejson(header, metadataBytes, tileURL)

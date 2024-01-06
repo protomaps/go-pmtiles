@@ -12,7 +12,7 @@ func CreateTilejson(header HeaderV3, metadata_bytes []byte, tileUrl string) ([]b
 
 	tilejson["tilejson"] = "3.0.0"
 	tilejson["scheme"] = "xyz"
-	tilejson["tiles"] = []string{tileUrl + "/{z}/{x}/{y}" + headerExt(header)}
+	tilejson["tiles"] = []string{tileUrl}
 	tilejson["vector_layers"] = metadata_map["vector_layers"]
 	tilejson["attribution"] = metadata_map["attribution"]
 	tilejson["description"] = metadata_map["description"]
