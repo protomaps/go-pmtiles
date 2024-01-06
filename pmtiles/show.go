@@ -95,7 +95,6 @@ func Show(logger *log.Logger, bucketURL string, key string, show_metadata_only b
 		if show_metadata_only {
 			fmt.Print(string(metadata_bytes))
 		} else if show_tilejson {
-			// TODO check for show_metadata_only and show tilejson
 			if public_url == "" {
 				// Using Fprintf instead of logger here, as this message should be written to Stderr in case
 				// Stdout is being redirected.
