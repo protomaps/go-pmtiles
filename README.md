@@ -12,7 +12,7 @@ Convert an [MBTiles](https://github.com/mapbox/mbtiles-spec/tree/master/1.3) arc
 
     pmtiles convert INPUT.mbtiles OUTPUT.pmtiles
     
-## Create a PMTiles archive from a larger one (experimental)
+## Create a PMTiles archive from a larger one
 
     pmtiles extract INPUT.pmtiles OUTPUT.pmtiles --region=REGION.geojson
     pmtiles extract https://example.com/INPUT.pmtiles OUTPUT.pmtiles --region=REGION.geojson
