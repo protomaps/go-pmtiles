@@ -26,11 +26,11 @@ func init() {
 
 // Middleware creates a Z/X/Y tileserver backed by a local or remote bucket of PMTiles archives.
 type Middleware struct {
-	Bucket         string `json:"bucket"`
-	CacheSize      int    `json:"cache_size"`
-	PublicHostname string `json:"public_hostname"`
-	logger         *zap.Logger
-	server         *pmtiles.Server
+	Bucket    string `json:"bucket"`
+	CacheSize int    `json:"cache_size"`
+	PublicUrl string `json:"public_url"`
+	logger    *zap.Logger
+	server    *pmtiles.Server
 }
 
 // CaddyModule returns the Caddy module information.
@@ -45,7 +45,7 @@ func (m *Middleware) Provision(ctx caddy.Context) error {
 	m.logger = ctx.Logger()
 	logger := log.New(io.Discard, "", log.Ldate)
 	prefix := "." // serve only the root of the bucket for now, at the root route of Caddyfile
-	server, err := pmtiles.NewServer(m.Bucket, prefix, logger, m.CacheSize, "", m.PublicHostname)
+	server, err := pmtiles.NewServer(m.Bucket, prefix, logger, m.CacheSize, "", m.PublicUrl)
 	if err != nil {
 		return err
 	}
@@ -95,8 +95,8 @@ func (m *Middleware) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 					return d.ArgErr()
 				}
 				m.CacheSize = num
-			case "public_hostname":
-				if !d.Args(&m.PublicHostname) {
+			case "public_url":
+				if !d.Args(&m.PublicUrl) {
 					return d.ArgErr()
 				}
 			}
