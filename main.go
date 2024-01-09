@@ -76,12 +76,12 @@ var cli struct {
 	} `cmd:"" hidden:""`
 
 	Serve struct {
-		Path           string `arg:"" help:"Local path or bucket prefix"`
-		Interface      string `default:"0.0.0.0"`
-		Port           int    `default:8080`
-		Cors           string `help:"Value of HTTP CORS header."`
-		CacheSize      int    `default:64 help:"Size of cache in Megabytes."`
-		Bucket         string `help:"Remote bucket"`
+		Path      string `arg:"" help:"Local path or bucket prefix"`
+		Interface string `default:"0.0.0.0"`
+		Port      int    `default:8080`
+		Cors      string `help:"Value of HTTP CORS header."`
+		CacheSize int    `default:64 help:"Size of cache in Megabytes."`
+		Bucket    string `help:"Remote bucket"`
 		PublicUrl string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles/"`
 	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
 
