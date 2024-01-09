@@ -234,29 +234,16 @@ func (server *Server) get_tilejson(ctx context.Context, http_headers map[string]
 	var metadata_map map[string]interface{}
 	json.Unmarshal(metadata_bytes, &metadata_map)
 
-	tilejson := make(map[string]interface{})
-
 	if server.publicHostname == "" {
 		return 501, http_headers, []byte("PUBLIC_HOSTNAME must be set for TileJSON")
 	}
 
+	tilejson_bytes, err := CreateTilejson(header, metadata_bytes, server.publicHostname+"/"+name+"/{z}/{x}/{y}"+headerExt(header))
+	if err != nil {
+		return 500, http_headers, []byte("Error generating tilejson")
+	}
+
 	http_headers["Content-Type"] = "application/json"
-	tilejson["tilejson"] = "3.0.0"
-	tilejson["scheme"] = "xyz"
-	tilejson["tiles"] = []string{server.publicHostname + "/" + name + "/{z}/{x}/{y}" + headerExt(header)}
-	tilejson["vector_layers"] = metadata_map["vector_layers"]
-	tilejson["attribution"] = metadata_map["attribution"]
-	tilejson["description"] = metadata_map["description"]
-	tilejson["name"] = metadata_map["name"]
-	tilejson["version"] = metadata_map["version"]
-
-	E7 := 10000000.0
-	tilejson["bounds"] = []float64{float64(header.MinLonE7) / E7, float64(header.MinLatE7) / E7, float64(header.MaxLonE7) / E7, float64(header.MaxLatE7) / E7}
-	tilejson["center"] = []interface{}{float64(header.CenterLonE7) / E7, float64(header.CenterLatE7) / E7, header.CenterZoom}
-	tilejson["minzoom"] = header.MinZoom
-	tilejson["maxzoom"] = header.MaxZoom
-
-	tilejson_bytes, err := json.Marshal(tilejson)
 
 	return 200, http_headers, tilejson_bytes
 }

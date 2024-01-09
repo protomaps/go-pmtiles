@@ -6,13 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	// "github.com/dustin/go-humanize"
 	"io"
 	"log"
 	"os"
 )
 
-func Show(logger *log.Logger, bucketURL string, key string, show_metadata_only bool, show_tile bool, z int, x int, y int) error {
+func Show(logger *log.Logger, bucketURL string, key string, show_metadata_only bool, show_tilejson bool, public_url string, show_tile bool, z int, x int, y int) error {
 	ctx := context.Background()
 
 	bucketURL, key, err := NormalizeBucketKey(bucketURL, "", key)
@@ -87,8 +88,25 @@ func Show(logger *log.Logger, bucketURL string, key string, show_metadata_only b
 		}
 		metadata_reader.Close()
 
+		if show_metadata_only && show_tilejson {
+			return fmt.Errorf("Cannot use --metadata and --tilejson together.")
+		}
+
 		if show_metadata_only {
 			fmt.Print(string(metadata_bytes))
+		} else if show_tilejson {
+			if public_url == "" {
+				// Using Fprintf instead of logger here, as this message should be written to Stderr in case
+				// Stdout is being redirected.
+				fmt.Fprintln(os.Stderr, "Warning: No --public-url specified; using placeholder tiles URL.")
+				public_url = "https://example.com/{z}/{x}/{y}.mvt"
+
+			}
+			tilejson_bytes, err := CreateTilejson(header, metadata_bytes, public_url)
+			if err != nil {
+				return fmt.Errorf("Failed to create tilejson for %s, %w", key, err)
+			}
+			fmt.Print(string(tilejson_bytes))
 		} else {
 			fmt.Printf("pmtiles spec version: %d\n", header.SpecVersion)
 			// fmt.Printf("total size: %s\n", humanize.Bytes(uint64(r.Size())))
