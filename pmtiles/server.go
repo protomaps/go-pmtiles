@@ -39,15 +39,15 @@ type Response struct {
 }
 
 type Server struct {
-	reqs           chan Request
-	bucket         Bucket
-	logger         *log.Logger
-	cacheSize      int
-	cors           string
-	publicHostname string
+	reqs      chan Request
+	bucket    Bucket
+	logger    *log.Logger
+	cacheSize int
+	cors      string
+	publicUrl string
 }
 
-func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicHostname string) (*Server, error) {
+func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicUrl string) (*Server, error) {
 
 	ctx := context.Background()
 
@@ -63,20 +63,20 @@ func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize in
 		return nil, err
 	}
 
-	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicHostname)
+	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicUrl)
 }
 
-func NewServerWithBucket(bucket Bucket, prefix string, logger *log.Logger, cacheSize int, cors string, publicHostname string) (*Server, error) {
+func NewServerWithBucket(bucket Bucket, prefix string, logger *log.Logger, cacheSize int, cors string, publicUrl string) (*Server, error) {
 
 	reqs := make(chan Request, 8)
 
 	l := &Server{
-		reqs:           reqs,
-		bucket:         bucket,
-		logger:         logger,
-		cacheSize:      cacheSize,
-		cors:           cors,
-		publicHostname: publicHostname,
+		reqs:      reqs,
+		bucket:    bucket,
+		logger:    logger,
+		cacheSize: cacheSize,
+		cors:      cors,
+		publicUrl: publicUrl,
 	}
 
 	return l, nil
@@ -234,11 +234,11 @@ func (server *Server) get_tilejson(ctx context.Context, http_headers map[string]
 	var metadata_map map[string]interface{}
 	json.Unmarshal(metadata_bytes, &metadata_map)
 
-	if server.publicHostname == "" {
-		return 501, http_headers, []byte("PUBLIC_HOSTNAME must be set for TileJSON")
+	if server.publicUrl == "" {
+		return 501, http_headers, []byte("PUBLIC_URL must be set for TileJSON")
 	}
 
-	tilejson_bytes, err := CreateTilejson(header, metadata_bytes, server.publicHostname+"/"+name+"/{z}/{x}/{y}"+headerExt(header))
+	tilejson_bytes, err := CreateTilejson(header, metadata_bytes, server.publicUrl+"/"+name)
 	if err != nil {
 		return 500, http_headers, []byte("Error generating tilejson")
 	}

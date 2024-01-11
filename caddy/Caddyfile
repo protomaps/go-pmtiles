@@ -14,7 +14,7 @@ localhost:2019 {
       cache_size 256
 
       # used to embed a tiles URL in TileJSON.
-      public_hostname https://localhost:2019/tiles
+      public_url https://localhost:2019/tiles
     }
   }
 }

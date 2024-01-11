@@ -99,8 +99,6 @@ func Show(logger *log.Logger, bucketURL string, key string, show_metadata_only b
 				// Using Fprintf instead of logger here, as this message should be written to Stderr in case
 				// Stdout is being redirected.
 				fmt.Fprintln(os.Stderr, "Warning: No --public-url specified; using placeholder tiles URL.")
-				public_url = "https://example.com/{z}/{x}/{y}.mvt"
-
 			}
 			tilejson_bytes, err := CreateTilejson(header, metadata_bytes, public_url)
 			if err != nil {

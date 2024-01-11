@@ -36,7 +36,7 @@ var cli struct {
 		Bucket    string `help:"Remote bucket"`
 		Metadata  bool   `help:"Print only the JSON metadata."`
 		Tilejson  bool   `help:"Print the TileJSON."`
-		PublicUrl string `help:"Public URL of tile endpoint to use in the Tilejson output e.g. https://example.com/tiles/pmtiles/{z}/{x}/{y}"`
+		PublicUrl string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles"`
 	} `cmd:"" help:"Inspect a local or remote archive."`
 
 	Tile struct {
@@ -76,13 +76,13 @@ var cli struct {
 	} `cmd:"" hidden:""`
 
 	Serve struct {
-		Path           string `arg:"" help:"Local path or bucket prefix"`
-		Interface      string `default:"0.0.0.0"`
-		Port           int    `default:8080`
-		Cors           string `help:"Value of HTTP CORS header."`
-		CacheSize      int    `default:64 help:"Size of cache in Megabytes."`
-		Bucket         string `help:"Remote bucket"`
-		PublicHostname string `help:"Public hostname of tile endpoint e.g. https://example.com"`
+		Path      string `arg:"" help:"Local path or bucket prefix"`
+		Interface string `default:"0.0.0.0"`
+		Port      int    `default:8080`
+		Cors      string `help:"Value of HTTP CORS header."`
+		CacheSize int    `default:64 help:"Size of cache in Megabytes."`
+		Bucket    string `help:"Remote bucket"`
+		PublicUrl string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles/"`
 	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
 
 	Download struct {
@@ -125,7 +125,7 @@ func main() {
 			logger.Fatalf("Failed to show tile, %v", err)
 		}
 	case "serve <path>":
-		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors, cli.Serve.PublicHostname)
+		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors, cli.Serve.PublicUrl)
 
 		if err != nil {
 			logger.Fatalf("Failed to create new server, %v", err)
