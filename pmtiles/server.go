@@ -389,5 +389,9 @@ func (server *Server) Get(ctx context.Context, path string) (int, map[string]str
 		return server.get_metadata(ctx, http_headers, key)
 	}
 
-	return 404, http_headers, []byte("Tile not found")
+	if path == "/" {
+		return 204, http_headers, []byte{}
+	}
+
+	return 404, http_headers, []byte("Path not found")
 }
