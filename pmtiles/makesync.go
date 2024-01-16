@@ -342,9 +342,10 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 		to_transfer += v.Length
 	}
 
+	blocks_matched := float64(hits) / float64(total_blocks) * 100
 	pct := float64(to_transfer) / float64(total_remote_bytes) * 100
 
-	fmt.Printf("%d/%d blocks matched, need to transfer %s/%s (%.1f%%).\n", hits, total_blocks, humanize.Bytes(to_transfer), humanize.Bytes(total_remote_bytes), pct)
+	fmt.Printf("%d/%d blocks matched (%.1f%%), need to transfer %s/%s (%.1f%%).\n", hits, total_blocks, blocks_matched, humanize.Bytes(to_transfer), humanize.Bytes(total_remote_bytes), pct)
 
 	fmt.Printf("Completed sync in %v.\n", time.Since(start))
 	return nil
