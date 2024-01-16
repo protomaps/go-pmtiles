@@ -299,6 +299,10 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 		maxzoom = int8(header.MaxZoom)
 	}
 
+	if minzoom > maxzoom {
+		return fmt.Errorf("Error: minzoom cannot be greater than maxzoom.")
+	}
+
 	var relevant_set *roaring64.Bitmap
 	if region_file != "" || bbox != "" {
 		if region_file != "" && bbox != "" {
