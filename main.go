@@ -69,7 +69,7 @@ var cli struct {
 
 	Makesync struct {
 		Input        string `arg:"" type:"existingfile"`
-		BlockSizeKb  int    `default:"1000" help:"The approximate block size, in kilobytes. 0 means 1 tile = 1 block."`
+		BlockSizeKb  int    `default:"20" help:"The approximate block size, in kilobytes. 0 means 1 tile = 1 block."`
 		HashFunction string `default:"fnv1a" help:"The hash function."`
 		Checksum     string `help:"Store a checksum in the syncfile."`
 	} `cmd:"" hidden:""`
@@ -77,6 +77,7 @@ var cli struct {
 	Sync struct {
 		Existing string `arg:"" type:"existingfile"`
 		Syncfile string `arg:"" type:"existingfile"`
+		Overfetch       float32 `default:0.05 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
 	} `cmd:"" hidden:""`
 
 	Serve struct {
@@ -211,7 +212,7 @@ func main() {
 			logger.Fatalf("Failed to makesync archive, %v", err)
 		}
 	case "sync <existing> <syncfile>":
-		err := pmtiles.Sync(logger, cli.Sync.Existing, cli.Sync.Syncfile)
+		err := pmtiles.Sync(logger, cli.Sync.Existing, cli.Sync.Syncfile, cli.Sync.Overfetch)
 		if err != nil {
 			logger.Fatalf("Failed to sync archive, %v", err)
 		}
