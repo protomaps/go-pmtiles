@@ -44,7 +44,7 @@ func bitmapMultiPolygon(zoom uint8, multipolygon orb.MultiPolygon) (*roaring64.B
 	return boundary_set, interior_set
 }
 
-func generalizeOr(r *roaring64.Bitmap) {
+func generalizeOr(r *roaring64.Bitmap, minzoom uint8) {
 	if r.GetCardinality() == 0 {
 		return
 	}
@@ -56,7 +56,7 @@ func generalizeOr(r *roaring64.Bitmap) {
 	temp = roaring64.New()
 	to_iterate = r
 
-	for current_z := int(max_z); current_z > 0; current_z-- {
+	for current_z := int(max_z); current_z > int(minzoom); current_z-- {
 		iter := to_iterate.Iterator()
 		for iter.HasNext() {
 			parent_id := ParentId(iter.Next())

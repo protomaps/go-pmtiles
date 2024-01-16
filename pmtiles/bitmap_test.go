@@ -26,11 +26,11 @@ func TestGeneralizeAnd(t *testing.T) {
 
 func TestGeneralizeOr(t *testing.T) {
 	b := roaring64.New()
-	generalizeOr(b)
+	generalizeOr(b, 0)
 	assert.Equal(t, uint64(0), b.GetCardinality())
 	b = roaring64.New()
 	b.Add(ZxyToId(3, 0, 0))
-	generalizeOr(b)
+	generalizeOr(b, 0)
 	assert.Equal(t, uint64(4), b.GetCardinality())
 	assert.True(t, b.Contains(ZxyToId(2, 0, 0)))
 	assert.True(t, b.Contains(ZxyToId(1, 0, 0)))
