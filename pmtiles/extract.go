@@ -249,7 +249,7 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 // 10. write the leaf directories (if any)
 // 11. Get all tiles, and write directly to the output.
 
-func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, region_file string, bbox string, output string, download_threads int, overfetch float32, dry_run bool) error {
+func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, maxzoom int8, region_file string, bbox string, output string, download_threads int, overfetch float32, dry_run bool) error {
 	// 1. fetch the header
 	start := time.Now()
 	ctx := context.Background()
@@ -291,8 +291,16 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, reg
 	source_metadata_offset := header.MetadataOffset
 	source_tile_data_offset := header.TileDataOffset
 
+	if minzoom == -1 || int8(header.MinZoom) > minzoom {
+		minzoom = int8(header.MinZoom)
+	}
+
 	if maxzoom == -1 || int8(header.MaxZoom) < maxzoom {
 		maxzoom = int8(header.MaxZoom)
+	}
+
+	if minzoom > maxzoom {
+		return fmt.Errorf("Error: minzoom cannot be greater than maxzoom.")
 	}
 
 	var relevant_set *roaring64.Bitmap
@@ -324,7 +332,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, reg
 		boundary_set, interior_set := bitmapMultiPolygon(uint8(maxzoom), multipolygon)
 		relevant_set = boundary_set
 		relevant_set.Or(interior_set)
-		generalizeOr(relevant_set)
+		generalizeOr(relevant_set, uint8(minzoom))
 
 		header.MinLonE7 = int32(bound.Left() * 10000000)
 		header.MinLatE7 = int32(bound.Bottom() * 10000000)
@@ -334,7 +342,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, maxzoom int8, reg
 		header.CenterLatE7 = int32(bound.Center().Y() * 10000000)
 	} else {
 		relevant_set = roaring64.New()
-		relevant_set.AddRange(0, ZxyToId(uint8(maxzoom)+1, 0, 0))
+		relevant_set.AddRange(ZxyToId(uint8(minzoom), 0, 0), ZxyToId(uint8(maxzoom)+1, 0, 0))
 	}
 
 	// 3. get relevant entries from root
