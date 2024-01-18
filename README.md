@@ -19,7 +19,7 @@ Convert an [MBTiles](https://github.com/mapbox/mbtiles-spec/tree/master/1.3) arc
     pmtiles extract INPUT.pmtiles OUTPUT.pmtiles --maxzoom=MAXZOOM --bucket=s3://BUCKET_NAME
     
 * `--region` a GeoJSON Polygon, Multipolygon, Feature, or FeatureCollection
-* `--maxzoom=13` extract only a subset of zoom levels
+* `--maxzoom=13`, `--minzoom=12` extract only a subset of zoom levels, see [docs for details](https://docs.protomaps.com/pmtiles/cli#extract)
 * `--download-threads` parallel requests to speed up downloads
 * `--overfetch` extra data to download to batch small requests: 0.05 is 5%
 
