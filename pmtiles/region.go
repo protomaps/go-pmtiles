@@ -10,23 +10,23 @@ import (
 
 func BboxRegion(bbox string) (orb.MultiPolygon, error) {
 	parts := strings.Split(bbox, ",")
-	min_lon, err := strconv.ParseFloat(parts[0], 64)
+	minLon, err := strconv.ParseFloat(parts[0], 64)
 	if err != nil {
 		return nil, err
 	}
-	min_lat, err := strconv.ParseFloat(parts[1], 64)
+	minLat, err := strconv.ParseFloat(parts[1], 64)
 	if err != nil {
 		return nil, err
 	}
-	max_lon, err := strconv.ParseFloat(parts[2], 64)
+	maxLon, err := strconv.ParseFloat(parts[2], 64)
 	if err != nil {
 		return nil, err
 	}
-	max_lat, err := strconv.ParseFloat(parts[3], 64)
+	maxLat, err := strconv.ParseFloat(parts[3], 64)
 	if err != nil {
 		return nil, err
 	}
-	return orb.MultiPolygon{{{{min_lon, max_lat}, {max_lon, max_lat}, {max_lon, min_lat}, {min_lon, min_lat}, {min_lon, max_lat}}}}, nil
+	return orb.MultiPolygon{{{{minLon, maxLat}, {maxLon, maxLat}, {maxLon, minLat}, {minLon, minLat}, {minLon, maxLat}}}}, nil
 }
 
 func UnmarshalRegion(data []byte) (orb.MultiPolygon, error) {

@@ -29,7 +29,7 @@ const (
 	Avif                     = 5
 )
 
-const HEADERV3_LEN_BYTES = 127
+const HeaderV3LenBytes = 127
 
 type HeaderV3 struct {
 	SpecVersion         uint8
@@ -105,13 +105,13 @@ func headerContentEncoding(compression Compression) (string, bool) {
 }
 
 type EntryV3 struct {
-	TileId    uint64
+	TileID    uint64
 	Offset    uint64
 	Length    uint32
 	RunLength uint32
 }
 
-func serialize_entries(entries []EntryV3) []byte {
+func serializeEntries(entries []EntryV3) []byte {
 	var b bytes.Buffer
 	tmp := make([]byte, binary.MaxVarintLen64)
 	w, _ := gzip.NewWriterLevel(&b, gzip.BestCompression)
@@ -120,12 +120,12 @@ func serialize_entries(entries []EntryV3) []byte {
 	n = binary.PutUvarint(tmp, uint64(len(entries)))
 	w.Write(tmp[:n])
 
-	lastId := uint64(0)
+	lastID := uint64(0)
 	for _, entry := range entries {
-		n = binary.PutUvarint(tmp, uint64(entry.TileId)-lastId)
+		n = binary.PutUvarint(tmp, uint64(entry.TileID)-lastID)
 		w.Write(tmp[:n])
 
-		lastId = uint64(entry.TileId)
+		lastID = uint64(entry.TileID)
 	}
 
 	for _, entry := range entries {
@@ -152,33 +152,33 @@ func serialize_entries(entries []EntryV3) []byte {
 	return b.Bytes()
 }
 
-func deserialize_entries(data *bytes.Buffer) []EntryV3 {
+func deserializeEntries(data *bytes.Buffer) []EntryV3 {
 	entries := make([]EntryV3, 0)
 
 	reader, _ := gzip.NewReader(data)
-	byte_reader := bufio.NewReader(reader)
+	byteReader := bufio.NewReader(reader)
 
-	num_entries, _ := binary.ReadUvarint(byte_reader)
+	numEntries, _ := binary.ReadUvarint(byteReader)
 
-	last_id := uint64(0)
-	for i := uint64(0); i < num_entries; i++ {
-		tmp, _ := binary.ReadUvarint(byte_reader)
-		entries = append(entries, EntryV3{last_id + tmp, 0, 0, 0})
-		last_id = last_id + tmp
+	lastID := uint64(0)
+	for i := uint64(0); i < numEntries; i++ {
+		tmp, _ := binary.ReadUvarint(byteReader)
+		entries = append(entries, EntryV3{lastID + tmp, 0, 0, 0})
+		lastID = lastID + tmp
 	}
 
-	for i := uint64(0); i < num_entries; i++ {
-		run_length, _ := binary.ReadUvarint(byte_reader)
-		entries[i].RunLength = uint32(run_length)
+	for i := uint64(0); i < numEntries; i++ {
+		runLength, _ := binary.ReadUvarint(byteReader)
+		entries[i].RunLength = uint32(runLength)
 	}
 
-	for i := uint64(0); i < num_entries; i++ {
-		length, _ := binary.ReadUvarint(byte_reader)
+	for i := uint64(0); i < numEntries; i++ {
+		length, _ := binary.ReadUvarint(byteReader)
 		entries[i].Length = uint32(length)
 	}
 
-	for i := uint64(0); i < num_entries; i++ {
-		tmp, _ := binary.ReadUvarint(byte_reader)
+	for i := uint64(0); i < numEntries; i++ {
+		tmp, _ := binary.ReadUvarint(byteReader)
 		if i > 0 && tmp == 0 {
 			entries[i].Offset = entries[i-1].Offset + uint64(entries[i-1].Length)
 		} else {
@@ -189,12 +189,12 @@ func deserialize_entries(data *bytes.Buffer) []EntryV3 {
 	return entries
 }
 
-func find_tile(entries []EntryV3, tileId uint64) (EntryV3, bool) {
+func findTile(entries []EntryV3, tileID uint64) (EntryV3, bool) {
 	m := 0
 	n := len(entries) - 1
 	for m <= n {
 		k := (n + m) >> 1
-		cmp := int64(tileId) - int64(entries[k].TileId)
+		cmp := int64(tileID) - int64(entries[k].TileID)
 		if cmp > 0 {
 			m = k + 1
 		} else if cmp < 0 {
@@ -209,15 +209,15 @@ func find_tile(entries []EntryV3, tileId uint64) (EntryV3, bool) {
 		if entries[n].RunLength == 0 {
 			return entries[n], true
 		}
-		if tileId-entries[n].TileId < uint64(entries[n].RunLength) {
+		if tileID-entries[n].TileID < uint64(entries[n].RunLength) {
 			return entries[n], true
 		}
 	}
 	return EntryV3{}, false
 }
 
-func serialize_header(header HeaderV3) []byte {
-	b := make([]byte, HEADERV3_LEN_BYTES)
+func serializeHeader(header HeaderV3) []byte {
+	b := make([]byte, HeaderV3LenBytes)
 	copy(b[0:7], "PMTiles")
 
 	b[7] = 3
@@ -250,19 +250,19 @@ func serialize_header(header HeaderV3) []byte {
 	return b
 }
 
-func deserialize_header(d []byte) (HeaderV3, error) {
+func deserializeHeader(d []byte) (HeaderV3, error) {
 	h := HeaderV3{}
-	magic_number := d[0:7]
-	if string(magic_number) != "PMTiles" {
-		return h, fmt.Errorf("Magic number not detected. Are you sure this is a PMTiles archive?")
+	magicNumber := d[0:7]
+	if string(magicNumber) != "PMTiles" {
+		return h, fmt.Errorf("magic number not detected. confirm this is a PMTiles archive")
 	}
 
-	spec_version := d[7]
-	if spec_version > uint8(3) {
-		return h, fmt.Errorf("Archive is spec version %d, but this program only supports version 3: upgrade your pmtiles program.", spec_version)
+	specVersion := d[7]
+	if specVersion > uint8(3) {
+		return h, fmt.Errorf("archive is spec version %d, but this program only supports version 3: upgrade your pmtiles program", specVersion)
 	}
 
-	h.SpecVersion = spec_version
+	h.SpecVersion = specVersion
 	h.RootOffset = binary.LittleEndian.Uint64(d[8 : 8+8])
 	h.RootLength = binary.LittleEndian.Uint64(d[16 : 16+8])
 	h.MetadataOffset = binary.LittleEndian.Uint64(d[24 : 24+8])
@@ -291,33 +291,33 @@ func deserialize_header(d []byte) (HeaderV3, error) {
 	return h, nil
 }
 
-func build_roots_leaves(entries []EntryV3, leaf_size int) ([]byte, []byte, int) {
-	root_entries := make([]EntryV3, 0)
-	leaves_bytes := make([]byte, 0)
-	num_leaves := 0
+func buildRootsLeaves(entries []EntryV3, leafSize int) ([]byte, []byte, int) {
+	rootEntries := make([]EntryV3, 0)
+	leavesBytes := make([]byte, 0)
+	numLeaves := 0
 
-	for idx := 0; idx < len(entries); idx += leaf_size {
-		num_leaves++
-		end := idx + leaf_size
-		if idx+leaf_size > len(entries) {
+	for idx := 0; idx < len(entries); idx += leafSize {
+		numLeaves++
+		end := idx + leafSize
+		if idx+leafSize > len(entries) {
 			end = len(entries)
 		}
-		serialized := serialize_entries(entries[idx:end])
+		serialized := serializeEntries(entries[idx:end])
 
-		root_entries = append(root_entries, EntryV3{entries[idx].TileId, uint64(len(leaves_bytes)), uint32(len(serialized)), 0})
-		leaves_bytes = append(leaves_bytes, serialized...)
+		rootEntries = append(rootEntries, EntryV3{entries[idx].TileID, uint64(len(leavesBytes)), uint32(len(serialized)), 0})
+		leavesBytes = append(leavesBytes, serialized...)
 	}
 
-	root_bytes := serialize_entries(root_entries)
-	return root_bytes, leaves_bytes, num_leaves
+	rootBytes := serializeEntries(rootEntries)
+	return rootBytes, leavesBytes, numLeaves
 }
 
-func optimize_directories(entries []EntryV3, target_root_len int) ([]byte, []byte, int) {
+func optimizeDirectories(entries []EntryV3, targetRootLen int) ([]byte, []byte, int) {
 	if len(entries) < 16384 {
-		test_root_bytes := serialize_entries(entries)
+		testRootBytes := serializeEntries(entries)
 		// Case1: the entire directory fits into the target len
-		if len(test_root_bytes) <= target_root_len {
-			return test_root_bytes, make([]byte, 0), 0
+		if len(testRootBytes) <= targetRootLen {
+			return testRootBytes, make([]byte, 0), 0
 		}
 	}
 
@@ -326,18 +326,18 @@ func optimize_directories(entries []EntryV3, target_root_len int) ([]byte, []byt
 	// case 3: root directory is leaf pointers only
 	// use an iterative method, increasing the size of the leaf directory until the root fits
 
-	var leaf_size float32
-	leaf_size = float32(len(entries)) / 3500
+	var leafSize float32
+	leafSize = float32(len(entries)) / 3500
 
-	if leaf_size < 4096 {
-		leaf_size = 4096
+	if leafSize < 4096 {
+		leafSize = 4096
 	}
 
 	for {
-		root_bytes, leaves_bytes, num_leaves := build_roots_leaves(entries, int(leaf_size))
-		if len(root_bytes) <= target_root_len {
-			return root_bytes, leaves_bytes, num_leaves
+		rootBytes, leavesBytes, numLeaves := buildRootsLeaves(entries, int(leafSize))
+		if len(rootBytes) <= targetRootLen {
+			return rootBytes, leavesBytes, numLeaves
 		}
-		leaf_size *= 1.2
+		leafSize *= 1.2
 	}
 }

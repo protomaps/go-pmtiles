@@ -44,10 +44,10 @@ type Server struct {
 	logger    *log.Logger
 	cacheSize int
 	cors      string
-	publicUrl string
+	publicURL string
 }
 
-func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicUrl string) (*Server, error) {
+func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
 
 	ctx := context.Background()
 
@@ -63,10 +63,10 @@ func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize in
 		return nil, err
 	}
 
-	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicUrl)
+	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicURL)
 }
 
-func NewServerWithBucket(bucket Bucket, prefix string, logger *log.Logger, cacheSize int, cors string, publicUrl string) (*Server, error) {
+func NewServerWithBucket(bucket Bucket, prefix string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
 
 	reqs := make(chan Request, 8)
 
@@ -76,7 +76,7 @@ func NewServerWithBucket(bucket Bucket, prefix string, logger *log.Logger, cache
 		logger:    logger,
 		cacheSize: cacheSize,
 		cors:      cors,
-		publicUrl: publicUrl,
+		publicURL: publicURL,
 	}
 
 	return l, nil
@@ -104,12 +104,12 @@ func (server *Server) Start() {
 					inflight[key] = []Request{req}
 					go func() {
 						var result CachedValue
-						is_root := (key.offset == 0 && key.length == 0)
+						isRoot := (key.offset == 0 && key.length == 0)
 
 						offset := int64(key.offset)
 						length := int64(key.length)
 
-						if is_root {
+						if isRoot {
 							offset = 0
 							length = 16384
 						}
@@ -133,24 +133,24 @@ func (server *Server) Start() {
 							return
 						}
 
-						if is_root {
-							header, err := deserialize_header(b[0:HEADERV3_LEN_BYTES])
+						if isRoot {
+							header, err := deserializeHeader(b[0:HeaderV3LenBytes])
 							if err != nil {
 								server.logger.Printf("parsing header failed: %v", err)
 								return
 							}
 
 							// populate the root first before header
-							root_entries := deserialize_entries(bytes.NewBuffer(b[header.RootOffset : header.RootOffset+header.RootLength]))
-							result2 := CachedValue{directory: root_entries, ok: true}
+							rootEntries := deserializeEntries(bytes.NewBuffer(b[header.RootOffset : header.RootOffset+header.RootLength]))
+							result2 := CachedValue{directory: rootEntries, ok: true}
 
-							root_key := CacheKey{name: key.name, offset: header.RootOffset, length: header.RootLength}
-							resps <- Response{key: root_key, value: result2, size: 24 * len(root_entries), ok: true}
+							rootKey := CacheKey{name: key.name, offset: header.RootOffset, length: header.RootLength}
+							resps <- Response{key: rootKey, value: result2, size: 24 * len(rootEntries), ok: true}
 
 							result = CachedValue{header: header, ok: true}
 							resps <- Response{key: key, value: result, size: 127, ok: true}
 						} else {
-							directory := deserialize_entries(bytes.NewBuffer(b))
+							directory := deserializeEntries(bytes.NewBuffer(b))
 							result = CachedValue{directory: directory, ok: true}
 							resps <- Response{key: key, value: result, size: 24 * len(directory), ok: true}
 						}
@@ -190,13 +190,13 @@ func (server *Server) Start() {
 	}()
 }
 
-func (server *Server) get_header_metadata(ctx context.Context, name string) (error, bool, HeaderV3, []byte) {
-	root_req := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
-	server.reqs <- root_req
-	root_value := <-root_req.value
-	header := root_value.header
+func (server *Server) getHeaderMetadata(ctx context.Context, name string) (error, bool, HeaderV3, []byte) {
+	rootReq := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
+	server.reqs <- rootReq
+	rootValue := <-rootReq.value
+	header := rootValue.header
 
-	if !root_value.ok {
+	if !rootValue.ok {
 		return nil, false, HeaderV3{}, nil
 	}
 
@@ -206,111 +206,111 @@ func (server *Server) get_header_metadata(ctx context.Context, name string) (err
 	}
 	defer r.Close()
 
-	var metadata_bytes []byte
+	var metadataBytes []byte
 	if header.InternalCompression == Gzip {
-		metadata_reader, _ := gzip.NewReader(r)
-		defer metadata_reader.Close()
-		metadata_bytes, err = io.ReadAll(metadata_reader)
+		metadataReader, _ := gzip.NewReader(r)
+		defer metadataReader.Close()
+		metadataBytes, err = io.ReadAll(metadataReader)
 	} else if header.InternalCompression == NoCompression {
-		metadata_bytes, err = io.ReadAll(r)
+		metadataBytes, err = io.ReadAll(r)
 	} else {
 		return errors.New("Unknown compression"), true, HeaderV3{}, nil
 	}
 
-	return nil, true, header, metadata_bytes
+	return nil, true, header, metadataBytes
 }
 
-func (server *Server) get_tilejson(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
-	err, found, header, metadata_bytes := server.get_header_metadata(ctx, name)
+func (server *Server) getTileJSON(ctx context.Context, httpHeaders map[string]string, name string) (int, map[string]string, []byte) {
+	err, found, header, metadataBytes := server.getHeaderMetadata(ctx, name)
 
 	if err != nil {
-		return 500, http_headers, []byte("I/O Error")
+		return 500, httpHeaders, []byte("I/O Error")
 	}
 
 	if !found {
-		return 404, http_headers, []byte("Archive not found")
+		return 404, httpHeaders, []byte("Archive not found")
 	}
 
-	var metadata_map map[string]interface{}
-	json.Unmarshal(metadata_bytes, &metadata_map)
+	var metadataMap map[string]interface{}
+	json.Unmarshal(metadataBytes, &metadataMap)
 
-	if server.publicUrl == "" {
-		return 501, http_headers, []byte("PUBLIC_URL must be set for TileJSON")
+	if server.publicURL == "" {
+		return 501, httpHeaders, []byte("PUBLIC_URL must be set for TileJSON")
 	}
 
-	tilejson_bytes, err := CreateTilejson(header, metadata_bytes, server.publicUrl+"/"+name)
+	tilejsonBytes, err := CreateTilejson(header, metadataBytes, server.publicURL+"/"+name)
 	if err != nil {
-		return 500, http_headers, []byte("Error generating tilejson")
+		return 500, httpHeaders, []byte("Error generating tilejson")
 	}
 
-	http_headers["Content-Type"] = "application/json"
+	httpHeaders["Content-Type"] = "application/json"
 
-	return 200, http_headers, tilejson_bytes
+	return 200, httpHeaders, tilejsonBytes
 }
 
-func (server *Server) get_metadata(ctx context.Context, http_headers map[string]string, name string) (int, map[string]string, []byte) {
-	err, found, _, metadata_bytes := server.get_header_metadata(ctx, name)
+func (server *Server) getMetadata(ctx context.Context, httpHeaders map[string]string, name string) (int, map[string]string, []byte) {
+	err, found, _, metadataBytes := server.getHeaderMetadata(ctx, name)
 
 	if err != nil {
-		return 500, http_headers, []byte("I/O Error")
+		return 500, httpHeaders, []byte("I/O Error")
 	}
 
 	if !found {
-		return 404, http_headers, []byte("Archive not found")
+		return 404, httpHeaders, []byte("Archive not found")
 	}
 
-	http_headers["Content-Type"] = "application/json"
-	return 200, http_headers, metadata_bytes
+	httpHeaders["Content-Type"] = "application/json"
+	return 200, httpHeaders, metadataBytes
 }
 
-func (server *Server) get_tile(ctx context.Context, http_headers map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
-	root_req := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
-	server.reqs <- root_req
+func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
+	rootReq := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
+	server.reqs <- rootReq
 
 	// https://golang.org/doc/faq#atomic_maps
-	root_value := <-root_req.value
-	header := root_value.header
+	rootValue := <-rootReq.value
+	header := rootValue.header
 
-	if !root_value.ok {
-		return 404, http_headers, []byte("Archive not found")
+	if !rootValue.ok {
+		return 404, httpHeaders, []byte("Archive not found")
 	}
 
 	if z < header.MinZoom || z > header.MaxZoom {
-		return 404, http_headers, []byte("Tile not found")
+		return 404, httpHeaders, []byte("Tile not found")
 	}
 
 	switch header.TileType {
 	case Mvt:
 		if ext != "mvt" {
-			return 400, http_headers, []byte("path mismatch: archive is type MVT (.mvt)")
+			return 400, httpHeaders, []byte("path mismatch: archive is type MVT (.mvt)")
 		}
 	case Png:
 		if ext != "png" {
-			return 400, http_headers, []byte("path mismatch: archive is type PNG (.png)")
+			return 400, httpHeaders, []byte("path mismatch: archive is type PNG (.png)")
 		}
 	case Jpeg:
 		if ext != "jpg" {
-			return 400, http_headers, []byte("path mismatch: archive is type JPEG (.jpg)")
+			return 400, httpHeaders, []byte("path mismatch: archive is type JPEG (.jpg)")
 		}
 	case Webp:
 		if ext != "webp" {
-			return 400, http_headers, []byte("path mismatch: archive is type WebP (.webp)")
+			return 400, httpHeaders, []byte("path mismatch: archive is type WebP (.webp)")
 		}
 	case Avif:
 		if ext != "avif" {
-			return 400, http_headers, []byte("path mismatch: archive is type AVIF (.avif)")
+			return 400, httpHeaders, []byte("path mismatch: archive is type AVIF (.avif)")
 		}
 	}
 
-	tile_id := ZxyToId(z, x, y)
-	dir_offset, dir_len := header.RootOffset, header.RootLength
+	tileID := ZxyToID(z, x, y)
+	dirOffset, dirLen := header.RootOffset, header.RootLength
 
 	for depth := 0; depth <= 3; depth++ {
-		dir_req := Request{key: CacheKey{name: name, offset: dir_offset, length: dir_len}, value: make(chan CachedValue, 1)}
-		server.reqs <- dir_req
-		dir_value := <-dir_req.value
-		directory := dir_value.directory
-		entry, ok := find_tile(directory, tile_id)
+		dirReq := Request{key: CacheKey{name: name, offset: dirOffset, length: dirLen}, value: make(chan CachedValue, 1)}
+		server.reqs <- dirReq
+		dirValue := <-dirReq.value
+		directory := dirValue.directory
+		entry, ok := findTile(directory, tileID)
 		if !ok {
 			break
 		}
@@ -318,34 +318,34 @@ func (server *Server) get_tile(ctx context.Context, http_headers map[string]stri
 		if entry.RunLength > 0 {
 			r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length))
 			if err != nil {
-				return 500, http_headers, []byte("Network error")
+				return 500, httpHeaders, []byte("Network error")
 			}
 			defer r.Close()
 			b, err := io.ReadAll(r)
 			if err != nil {
-				return 500, http_headers, []byte("I/O error")
+				return 500, httpHeaders, []byte("I/O error")
 			}
-			if header_val, ok := headerContentType(header); ok {
-				http_headers["Content-Type"] = header_val
+			if headerVal, ok := headerContentType(header); ok {
+				httpHeaders["Content-Type"] = headerVal
 			}
-			if header_val, ok := headerContentEncoding(header.TileCompression); ok {
-				http_headers["Content-Encoding"] = header_val
+			if headerVal, ok := headerContentEncoding(header.TileCompression); ok {
+				httpHeaders["Content-Encoding"] = headerVal
 			}
-			return 200, http_headers, b
+			return 200, httpHeaders, b
 		} else {
-			dir_offset = header.LeafDirectoryOffset + entry.Offset
-			dir_len = uint64(entry.Length)
+			dirOffset = header.LeafDirectoryOffset + entry.Offset
+			dirLen = uint64(entry.Length)
 		}
 	}
 
-	return 204, http_headers, nil
+	return 204, httpHeaders, nil
 }
 
 var tilePattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\/(\d+)\/(\d+)\/(\d+)\.([a-z]+)$`)
 var metadataPattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\/metadata$`)
 var tileJSONPattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\.json$`)
 
-func parse_tile_path(path string) (bool, string, uint8, uint32, uint32, string) {
+func parseTilePath(path string) (bool, string, uint8, uint32, uint32, string) {
 	if res := tilePattern.FindStringSubmatch(path); res != nil {
 		name := res[1]
 		z, _ := strconv.ParseUint(res[2], 10, 8)
@@ -357,7 +357,7 @@ func parse_tile_path(path string) (bool, string, uint8, uint32, uint32, string) 
 	return false, "", 0, 0, 0, ""
 }
 
-func parse_tilejson_path(path string) (bool, string) {
+func parseTilejsonPath(path string) (bool, string) {
 	if res := tileJSONPattern.FindStringSubmatch(path); res != nil {
 		name := res[1]
 		return true, name
@@ -365,7 +365,7 @@ func parse_tilejson_path(path string) (bool, string) {
 	return false, ""
 }
 
-func parse_metadata_path(path string) (bool, string) {
+func parseMetadataPath(path string) (bool, string) {
 	if res := metadataPattern.FindStringSubmatch(path); res != nil {
 		name := res[1]
 		return true, name
@@ -374,24 +374,24 @@ func parse_metadata_path(path string) (bool, string) {
 }
 
 func (server *Server) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
-	http_headers := make(map[string]string)
+	httpHeaders := make(map[string]string)
 	if len(server.cors) > 0 {
-		http_headers["Access-Control-Allow-Origin"] = server.cors
+		httpHeaders["Access-Control-Allow-Origin"] = server.cors
 	}
 
-	if ok, key, z, x, y, ext := parse_tile_path(path); ok {
-		return server.get_tile(ctx, http_headers, key, z, x, y, ext)
+	if ok, key, z, x, y, ext := parseTilePath(path); ok {
+		return server.getTile(ctx, httpHeaders, key, z, x, y, ext)
 	}
-	if ok, key := parse_tilejson_path(path); ok {
-		return server.get_tilejson(ctx, http_headers, key)
+	if ok, key := parseTilejsonPath(path); ok {
+		return server.getTileJSON(ctx, httpHeaders, key)
 	}
-	if ok, key := parse_metadata_path(path); ok {
-		return server.get_metadata(ctx, http_headers, key)
+	if ok, key := parseMetadataPath(path); ok {
+		return server.getMetadata(ctx, httpHeaders, key)
 	}
 
 	if path == "/" {
-		return 204, http_headers, []byte{}
+		return 204, httpHeaders, []byte{}
 	}
 
-	return 404, http_headers, []byte("Path not found")
+	return 404, httpHeaders, []byte("Path not found")
 }

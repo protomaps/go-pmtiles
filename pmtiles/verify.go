@@ -39,7 +39,7 @@ func Verify(logger *log.Logger, file string) error {
 	}
 	r.Close()
 
-	header, err := deserialize_header(b[0:HEADERV3_LEN_BYTES])
+	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
 
 	var CollectEntries func(uint64, uint64, func(EntryV3))
 
@@ -54,7 +54,7 @@ func Verify(logger *log.Logger, file string) error {
 			panic(fmt.Errorf("I/O Error"))
 		}
 
-		directory := deserialize_entries(bytes.NewBuffer(b))
+		directory := deserializeEntries(bytes.NewBuffer(b))
 		for _, entry := range directory {
 			if entry.RunLength > 0 {
 				f(entry)
@@ -64,25 +64,25 @@ func Verify(logger *log.Logger, file string) error {
 		}
 	}
 
-	var min_tile_id uint64
-	var max_tile_id uint64
-	min_tile_id = math.MaxUint64
-	max_tile_id = 0
+	var minTileID uint64
+	var maxTileID uint64
+	minTileID = math.MaxUint64
+	maxTileID = 0
 
-	addressed_tiles := 0
-	tile_entries := 0
+	addressedTiles := 0
+	tileEntries := 0
 	offsets := roaring64.New()
-	var current_offset uint64
+	var currentOffset uint64
 	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
 		offsets.Add(e.Offset)
-		addressed_tiles += int(e.RunLength)
-		tile_entries += 1
+		addressedTiles += int(e.RunLength)
+		tileEntries++
 
-		if e.TileId < min_tile_id {
-			min_tile_id = e.TileId
+		if e.TileID < minTileID {
+			minTileID = e.TileID
 		}
-		if e.TileId > max_tile_id {
-			max_tile_id = e.TileId
+		if e.TileID > maxTileID {
+			maxTileID = e.TileID
 		}
 
 		if e.Offset+uint64(e.Length) > header.TileDataLength {
@@ -91,31 +91,31 @@ func Verify(logger *log.Logger, file string) error {
 
 		if header.Clustered {
 			if !offsets.Contains(e.Offset) {
-				if e.Offset != current_offset {
+				if e.Offset != currentOffset {
 					fmt.Printf("Invalid: out-of-order entry %v in clustered archive.", e)
 				}
-				current_offset += uint64(e.Length)
+				currentOffset += uint64(e.Length)
 			}
 		}
 	})
 
-	if uint64(addressed_tiles) != header.AddressedTilesCount {
-		fmt.Printf("Invalid: header AddressedTilesCount=%v but %v tiles addressed.", header.AddressedTilesCount, addressed_tiles)
+	if uint64(addressedTiles) != header.AddressedTilesCount {
+		fmt.Printf("Invalid: header AddressedTilesCount=%v but %v tiles addressed.", header.AddressedTilesCount, addressedTiles)
 	}
 
-	if uint64(tile_entries) != header.TileEntriesCount {
-		fmt.Printf("Invalid: header TileEntriesCount=%v but %v tile entries.", header.TileEntriesCount, tile_entries)
+	if uint64(tileEntries) != header.TileEntriesCount {
+		fmt.Printf("Invalid: header TileEntriesCount=%v but %v tile entries.", header.TileEntriesCount, tileEntries)
 	}
 
 	if offsets.GetCardinality() != header.TileContentsCount {
 		fmt.Printf("Invalid: header TileContentsCount=%v but %v tile contents.", header.TileContentsCount, offsets.GetCardinality())
 	}
 
-	if z, _, _ := IdToZxy(min_tile_id); z != header.MinZoom {
+	if z, _, _ := IDToZxy(minTileID); z != header.MinZoom {
 		fmt.Printf("Invalid: header MinZoom=%v does not match min tile z %v", header.MinZoom, z)
 	}
 
-	if z, _, _ := IdToZxy(max_tile_id); z != header.MaxZoom {
+	if z, _, _ := IDToZxy(maxTileID); z != header.MaxZoom {
 		fmt.Printf("Invalid: header MaxZoom=%v does not match max tile z %v", header.MaxZoom, z)
 	}
 
