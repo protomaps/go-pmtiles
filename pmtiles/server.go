@@ -11,6 +11,8 @@ import (
 	"log"
 	"regexp"
 	"strconv"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type CacheKey struct {
@@ -39,12 +41,13 @@ type Response struct {
 }
 
 type Server struct {
-	reqs      chan Request
-	bucket    Bucket
-	logger    *log.Logger
-	cacheSize int
-	cors      string
-	publicURL string
+	reqs          chan Request
+	bucket        Bucket
+	logger        *log.Logger
+	cacheSize     int
+	cors          string
+	publicURL     string
+	metricsPrefix string
 }
 
 func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
@@ -90,6 +93,14 @@ func (server *Server) Start() {
 		evictList := list.New()
 		totalSize := 0
 		ctx := context.Background()
+
+		cacheSize := prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: "pmtiles",
+			Subsystem: "cache",
+			Name:      "size",
+			Help:      "Current number or directories in the cache",
+		})
+		prometheus.MustRegister(cacheSize)
 
 		for {
 			select {
@@ -184,6 +195,7 @@ func (server *Server) Start() {
 							totalSize -= kv.size
 						}
 					}
+					cacheSize.Set(float64(len(cache)))
 				}
 			}
 		}
