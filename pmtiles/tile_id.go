@@ -27,6 +27,7 @@ func tOnLevel(z uint8, pos uint64) (uint8, uint32, uint32) {
 	return uint8(z), uint32(tx), uint32(ty)
 }
 
+// ZxyToID converts (Z,X,Y) tile coordinates to a Hilbert TileID.
 func ZxyToID(z uint8, x uint32, y uint32) uint64 {
 	var acc uint64
 	var tz uint8
@@ -56,6 +57,7 @@ func ZxyToID(z uint8, x uint32, y uint32) uint64 {
 	return acc + d
 }
 
+// IDToZxy converts a Hilbert TileID to (Z,X,Y) tile coordinates.
 func IDToZxy(i uint64) (uint8, uint32, uint32) {
 	var acc uint64
 	var z uint8
@@ -70,7 +72,7 @@ func IDToZxy(i uint64) (uint8, uint32, uint32) {
 	}
 }
 
-// fast parent ID calculation without converting to ZXY.
+// ParentID efficiently finds a parent Hilbert TileID without converting to (Z,X,Y).
 func ParentID(i uint64) uint64 {
 	var acc uint64
 	var lastAcc uint64

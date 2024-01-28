@@ -10,6 +10,7 @@ import (
 	"os"
 )
 
+// Upload a pmtiles archive to a bucket.
 func Upload(logger *log.Logger, input string, bucket string, key string, maxConcurrency int) error {
 	ctx := context.Background()
 	b, err := blob.OpenBucket(ctx, bucket)

@@ -21,25 +21,26 @@ import (
 	"time"
 )
 
-type Block struct {
+type block struct {
 	Index  uint64 // starts at 0
 	Start  uint64 // the start tileID
 	Offset uint64 // the offset in the file, in bytes
 	Length uint64 // the length, in bytes
 }
 
-type Result struct {
-	Block Block
+type result struct {
+	Block block
 	Hash  uint64
 }
 
-type Syncline struct {
+type syncline struct {
 	Offset uint64
 	Length uint64
 	Hash   uint64
 }
 
-func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb int, checksum string) error {
+// Makesync generates a syncfile for an archive on disk. (experimental)
+func Makesync(_ *log.Logger, cliVersion string, file string, blockSizeKb int, checksum string) error {
 	ctx := context.Background()
 	start := time.Now()
 
@@ -128,14 +129,14 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 		"writing syncfile",
 	)
 
-	var current Block
+	var current block
 
-	tasks := make(chan Block, 1000)
+	tasks := make(chan block, 1000)
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
-	synclines := make(map[uint64]Syncline)
+	synclines := make(map[uint64]syncline)
 
 	errs, _ := errgroup.WithContext(ctx)
 	// workers
@@ -156,7 +157,7 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 
 				sum64 := hasher.Sum64()
 				mu.Lock()
-				synclines[block.Start] = Syncline{block.Offset, block.Length, sum64}
+				synclines[block.Start] = syncline{block.Offset, block.Length, sum64}
 				mu.Unlock()
 
 				hasher.Reset()
@@ -182,7 +183,7 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 			panic("Invalid clustering of archive detected - check with verify")
 		} else {
 			if current.Length+uint64(e.Length) > blockSizeBytes {
-				tasks <- Block{current.Index, current.Start, current.Offset, current.Length}
+				tasks <- block{current.Index, current.Start, current.Offset, current.Length}
 				blocks++
 
 				currentIndex++
@@ -196,7 +197,7 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 		}
 	})
 
-	tasks <- Block{current.Index, current.Start, current.Offset, current.Length}
+	tasks <- block{current.Index, current.Start, current.Offset, current.Length}
 	blocks++
 	close(tasks)
 
@@ -218,11 +219,12 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 	return nil
 }
 
-func Sync(logger *log.Logger, file string, syncfile string) error {
+// Sync calculates the diff between an archive on disk and a syncfile. (experimental)
+func Sync(_ *log.Logger, file string, syncfile string) error {
 	start := time.Now()
 	totalRemoteBytes := uint64(0)
 
-	byStartID := make(map[uint64]Syncline)
+	byStartID := make(map[uint64]syncline)
 
 	sync, err := os.Open(syncfile)
 	if err != nil {
@@ -242,7 +244,7 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 		length, _ := strconv.ParseUint(parts[2], 10, 64)
 		totalRemoteBytes += length
 		hash, _ := strconv.ParseUint(parts[3], 16, 64)
-		byStartID[startID] = Syncline{offset, length, hash}
+		byStartID[startID] = syncline{offset, length, hash}
 	}
 
 	// open the existing archive

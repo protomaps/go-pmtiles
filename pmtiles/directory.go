@@ -8,6 +8,7 @@ import (
 	"fmt"
 )
 
+// Compression is the compression algorithm applied to individual tiles (or none)
 type Compression uint8
 
 const (
@@ -18,6 +19,7 @@ const (
 	Zstd                           = 4
 )
 
+// TileType is the format of individual tile contents in the archive.
 type TileType uint8
 
 const (
@@ -29,8 +31,10 @@ const (
 	Avif                     = 5
 )
 
+// HeaderV3LenBytes is the fixed-size binary header size.
 const HeaderV3LenBytes = 127
 
+// HeaderV3 is a binary header for PMTiles specification version 3.
 type HeaderV3 struct {
 	SpecVersion         uint8
 	RootOffset          uint64
@@ -104,6 +108,7 @@ func headerContentEncoding(compression Compression) (string, bool) {
 	}
 }
 
+// EntryV3 is an entry in a PMTiles spec version 3 directory.
 type EntryV3 struct {
 	TileID    uint64
 	Offset    uint64

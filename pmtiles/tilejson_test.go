@@ -31,7 +31,7 @@ func TestCreateTilejson(t *testing.T) {
 	tileURL := "https://example.com/foo"
 
 	// Call the function
-	tilejsonBytes, err := CreateTilejson(header, metadataBytes, tileURL)
+	tilejsonBytes, err := CreateTileJSON(header, metadataBytes, tileURL)
 
 	// Check for errors
 	if err != nil {
@@ -76,7 +76,7 @@ func TestCreateTilejsonOptionalFields(t *testing.T) {
 	{
 	}`)
 
-	tilejsonBytes, err := CreateTilejson(header, metadataBytes, "")
+	tilejsonBytes, err := CreateTileJSON(header, metadataBytes, "")
 
 	// Check for errors
 	if err != nil {

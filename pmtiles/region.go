@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// BboxRegion parses a bbox string into an orb.MultiPolygon region.
 func BboxRegion(bbox string) (orb.MultiPolygon, error) {
 	parts := strings.Split(bbox, ",")
 	minLon, err := strconv.ParseFloat(parts[0], 64)
@@ -29,6 +30,7 @@ func BboxRegion(bbox string) (orb.MultiPolygon, error) {
 	return orb.MultiPolygon{{{{minLon, maxLat}, {maxLon, maxLat}, {maxLon, minLat}, {minLon, minLat}, {minLon, maxLat}}}}, nil
 }
 
+// UnmarshalRegion parses JSON bytes into an orb.MultiPolygon region.
 func UnmarshalRegion(data []byte) (orb.MultiPolygon, error) {
 	fc, err := geojson.UnmarshalFeatureCollection(data)
 

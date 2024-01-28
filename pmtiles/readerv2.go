@@ -6,24 +6,25 @@ import (
 	"math"
 )
 
+// Zxy coordinates of a single tile (zoom, column, row)
 type Zxy struct {
 	Z uint8
 	X uint32
 	Y uint32
 }
 
-type Range struct {
+type rangeV2 struct {
 	Offset uint64
 	Length uint64
 }
 
-type DirectoryV2 struct {
-	Entries map[Zxy]Range
+type directoryV2 struct {
+	Entries map[Zxy]rangeV2
 	LeafZ   uint8
-	Leaves  map[Zxy]Range
+	Leaves  map[Zxy]rangeV2
 }
 
-func (d DirectoryV2) SizeBytes() int {
+func (d directoryV2) SizeBytes() int {
 	return 21*(len(d.Entries)+len(d.Leaves)) + 1
 }
 
@@ -35,14 +36,14 @@ func readUint48(b []byte) uint64 {
 	return (uint64(binary.LittleEndian.Uint32(b[2:6])) << 16) + uint64(uint32(binary.LittleEndian.Uint16(b[0:2])))
 }
 
-func GetParentTile(tile Zxy, level uint8) Zxy {
+func getParentTile(tile Zxy, level uint8) Zxy {
 	tileDiff := tile.Z - level
 	x := math.Floor(float64(tile.X / (1 << tileDiff)))
 	y := math.Floor(float64(tile.Y / (1 << tileDiff)))
 	return Zxy{Z: level, X: uint32(x), Y: uint32(y)}
 }
 
-func ParseEntryV2(b []byte) (uint8, Zxy, Range) {
+func parseEntryV2(b []byte) (uint8, Zxy, rangeV2) {
 	zRaw := b[0]
 	xRaw := b[1:4]
 	yRaw := b[4:7]
@@ -53,18 +54,17 @@ func ParseEntryV2(b []byte) (uint8, Zxy, Range) {
 	offset := readUint48(offsetRaw)
 	length := uint64(binary.LittleEndian.Uint32(lengthRaw))
 	if zRaw&0b10000000 == 0 {
-		return 0, Zxy{Z: uint8(zRaw), X: uint32(x), Y: uint32(y)}, Range{Offset: offset, Length: length}
-	} else {
-		leafZ := zRaw & 0b01111111
-		return leafZ, Zxy{Z: leafZ, X: uint32(x), Y: uint32(y)}, Range{Offset: offset, Length: length}
+		return 0, Zxy{Z: uint8(zRaw), X: uint32(x), Y: uint32(y)}, rangeV2{Offset: offset, Length: length}
 	}
+	leafZ := zRaw & 0b01111111
+	return leafZ, Zxy{Z: leafZ, X: uint32(x), Y: uint32(y)}, rangeV2{Offset: offset, Length: length}
 }
 
-func ParseDirectoryV2(dirBytes []byte) DirectoryV2 {
-	theDir := DirectoryV2{Entries: make(map[Zxy]Range), Leaves: make(map[Zxy]Range)}
+func parseDirectoryV2(dirBytes []byte) directoryV2 {
+	theDir := directoryV2{Entries: make(map[Zxy]rangeV2), Leaves: make(map[Zxy]rangeV2)}
 	var maxz uint8
 	for i := 0; i < len(dirBytes)/17; i++ {
-		leafZ, zxy, rng := ParseEntryV2(dirBytes[i*17 : i*17+17])
+		leafZ, zxy, rng := parseEntryV2(dirBytes[i*17 : i*17+17])
 		if leafZ == 0 {
 			theDir.Entries[zxy] = rng
 		} else {
@@ -76,7 +76,7 @@ func ParseDirectoryV2(dirBytes []byte) DirectoryV2 {
 	return theDir
 }
 
-func ParseHeaderV2(reader io.Reader) ([]byte, DirectoryV2) {
+func parseHeaderV2(reader io.Reader) ([]byte, directoryV2) {
 	magicNum := make([]byte, 2)
 	io.ReadFull(reader, magicNum)
 	version := make([]byte, 2)
@@ -91,6 +91,6 @@ func ParseHeaderV2(reader io.Reader) ([]byte, DirectoryV2) {
 	io.ReadFull(reader, metadataBytes)
 	dirBytes := make([]byte, rootDirLen*17)
 	io.ReadFull(reader, dirBytes)
-	theDir := ParseDirectoryV2(dirBytes)
+	theDir := parseDirectoryV2(dirBytes)
 	return metadataBytes, theDir
 }
