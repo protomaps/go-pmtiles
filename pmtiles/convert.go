@@ -156,7 +156,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 	buffer := make([]byte, 512000)
 	io.ReadFull(f, buffer)
 	if string(buffer[0:7]) == "PMTiles" && buffer[7] == 3 {
-		return fmt.Errorf("Archive is already the latest PMTiles version (3).")
+		return fmt.Errorf("archive is already the latest PMTiles version (3)")
 	}
 
 	v2JsonBytes, dir := ParseHeaderV2(bytes.NewReader(buffer))
@@ -306,7 +306,7 @@ func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate
 	}
 
 	if tileset.GetCardinality() == 0 {
-		return fmt.Errorf("No tiles in MBTiles archive.")
+		return fmt.Errorf("no tiles in MBTiles archive")
 	}
 
 	logger.Println("Pass 2: writing tiles")
@@ -465,7 +465,7 @@ func v2ToHeaderJSON(v2JsonMetadata map[string]interface{}, first4 []byte) (Heade
 		header.MaxLatE7 = maxLat
 		delete(v2JsonMetadata, "bounds")
 	} else {
-		return header, v2JsonMetadata, errors.New("Archive is missing bounds.")
+		return header, v2JsonMetadata, errors.New("archive is missing bounds")
 	}
 
 	if val, ok := v2JsonMetadata["center"]; ok {
@@ -611,7 +611,7 @@ func mbtilesToHeaderJSON(mbtilesMetadata []string) (HeaderV3, map[string]interfa
 			}
 
 			if minLon >= maxLon || minLat >= maxLat {
-				return header, jsonResult, fmt.Errorf("Error: zero-area bounds in mbtiles metadata.")
+				return header, jsonResult, fmt.Errorf("zero-area bounds in mbtiles metadata")
 			}
 			header.MinLonE7 = minLon
 			header.MinLatE7 = minLat

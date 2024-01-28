@@ -88,7 +88,7 @@ func generalizeAnd(r *roaring64.Bitmap) {
 			id := iter.Next()
 			parentID := ParentID(id)
 			if parentID == current {
-				filled += 1
+				filled++
 				if filled == 4 {
 					temp.Add(parentID)
 				}

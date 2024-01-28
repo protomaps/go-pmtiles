@@ -71,7 +71,7 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
 
 	if !header.Clustered {
-		return fmt.Errorf("Error: archive must be clustered for makesync.")
+		return fmt.Errorf("archive must be clustered for makesync")
 	}
 
 	var CollectEntries func(uint64, uint64, func(EntryV3))
@@ -183,9 +183,9 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 		} else {
 			if current.Length+uint64(e.Length) > blockSizeBytes {
 				tasks <- Block{current.Index, current.Start, current.Offset, current.Length}
-				blocks += 1
+				blocks++
 
-				currentIndex += 1
+				currentIndex++
 				current.Index = currentIndex
 				current.Start = e.TileID
 				current.Offset = e.Offset
@@ -197,7 +197,7 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 	})
 
 	tasks <- Block{current.Index, current.Start, current.Offset, current.Length}
-	blocks += 1
+	blocks++
 	close(tasks)
 
 	wg.Wait()
@@ -226,7 +226,7 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 
 	sync, err := os.Open(syncfile)
 	if err != nil {
-		return fmt.Errorf("Error opening syncfile: %v\n", err)
+		return fmt.Errorf("error opening syncfile: %v", err)
 	}
 	defer sync.Close()
 	scanner := bufio.NewScanner(sync)
@@ -276,7 +276,7 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
 
 	if !header.Clustered {
-		return fmt.Errorf("Error: archive must be clustered for makesync.")
+		return fmt.Errorf("archive must be clustered for makesync")
 	}
 
 	GetHash := func(offset uint64, length uint64) uint64 {
@@ -331,7 +331,7 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 		if ok {
 			hashResult := GetHash(e.Offset, potentialMatch.Length)
 			if hashResult == potentialMatch.Hash {
-				hits += 1
+				hits++
 				delete(byStartID, e.TileID)
 			}
 		}

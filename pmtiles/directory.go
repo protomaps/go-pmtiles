@@ -254,12 +254,12 @@ func deserializeHeader(d []byte) (HeaderV3, error) {
 	h := HeaderV3{}
 	magicNumber := d[0:7]
 	if string(magicNumber) != "PMTiles" {
-		return h, fmt.Errorf("Magic number not detected. Are you sure this is a PMTiles archive?")
+		return h, fmt.Errorf("magic number not detected. confirm this is a PMTiles archive")
 	}
 
 	specVersion := d[7]
 	if specVersion > uint8(3) {
-		return h, fmt.Errorf("Archive is spec version %d, but this program only supports version 3: upgrade your pmtiles program.", specVersion)
+		return h, fmt.Errorf("archive is spec version %d, but this program only supports version 3: upgrade your pmtiles program", specVersion)
 	}
 
 	h.SpecVersion = specVersion

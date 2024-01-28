@@ -76,7 +76,7 @@ func Verify(logger *log.Logger, file string) error {
 	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
 		offsets.Add(e.Offset)
 		addressedTiles += int(e.RunLength)
-		tileEntries += 1
+		tileEntries++
 
 		if e.TileID < minTileID {
 			minTileID = e.TileID

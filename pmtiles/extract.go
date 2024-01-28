@@ -62,7 +62,7 @@ func RelevantEntries(bitmap *roaring64.Bitmap, maxzoom uint8, dir []EntryV3) ([]
 						currentRunLength = 1
 						currentID = y
 					} else {
-						currentRunLength += 1
+						currentRunLength++
 					}
 				} else {
 					if currentRunLength > 0 {
@@ -285,7 +285,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
 
 	if !header.Clustered {
-		return fmt.Errorf("Error: source archive must be clustered for extracts.")
+		return fmt.Errorf("source archive must be clustered for extracts")
 	}
 
 	sourceMetadataOffset := header.MetadataOffset
@@ -300,13 +300,13 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 	}
 
 	if minzoom > maxzoom {
-		return fmt.Errorf("Error: minzoom cannot be greater than maxzoom.")
+		return fmt.Errorf("minzoom cannot be greater than maxzoom")
 	}
 
 	var relevantSet *roaring64.Bitmap
 	if regionFile != "" || bbox != "" {
 		if regionFile != "" && bbox != "" {
-			return fmt.Errorf("Only one of region and bbox can be specified.")
+			return fmt.Errorf("only one of region and bbox can be specified")
 		}
 
 		var multipolygon orb.MultiPolygon
@@ -557,7 +557,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 	fmt.Printf("Completed in %v with %v download threads (%v tiles/s).\n", time.Since(start), downloadThreads, float64(len(reencoded))/float64(time.Since(start).Seconds()))
 	totalRequests := 2                  // header + root
 	totalRequests += numOverfetchLeaves // leaves
-	totalRequests += 1                  // metadata
+	totalRequests++                     // metadata
 	totalRequests += numOverfetchRanges
 	fmt.Printf("Extract required %d total requests.\n", totalRequests)
 	fmt.Printf("Extract transferred %s (overfetch %v) for an archive size of %s\n", humanize.Bytes(totalBytes), overfetch, humanize.Bytes(totalActualBytes))

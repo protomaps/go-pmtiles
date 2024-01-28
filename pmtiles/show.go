@@ -45,7 +45,7 @@ func Show(logger *log.Logger, bucketURL string, key string, showMetadataOnly boo
 		// check to see if it's a V2 file
 		if string(b[0:2]) == "PM" {
 			specVersion := b[2]
-			return fmt.Errorf("PMTiles version %d detected; please use 'pmtiles convert' to upgrade to version 3.", specVersion)
+			return fmt.Errorf("PMTiles version %d detected; please use 'pmtiles convert' to upgrade to version 3", specVersion)
 		}
 
 		return fmt.Errorf("Failed to read %s, %w", key, err)
@@ -89,7 +89,7 @@ func Show(logger *log.Logger, bucketURL string, key string, showMetadataOnly boo
 		metadataReader.Close()
 
 		if showMetadataOnly && showTilejson {
-			return fmt.Errorf("Cannot use --metadata and --tilejson together.")
+			return fmt.Errorf("cannot use --metadata and --tilejson together")
 		}
 
 		if showMetadataOnly {
@@ -98,7 +98,7 @@ func Show(logger *log.Logger, bucketURL string, key string, showMetadataOnly boo
 			if publicURL == "" {
 				// Using Fprintf instead of logger here, as this message should be written to Stderr in case
 				// Stdout is being redirected.
-				fmt.Fprintln(os.Stderr, "Warning: No --public-url specified; using placeholder tiles URL.")
+				fmt.Fprintln(os.Stderr, "no --public-url specified; using placeholder tiles URL")
 			}
 			tilejsonBytes, err := CreateTilejson(header, metadataBytes, publicURL)
 			if err != nil {
