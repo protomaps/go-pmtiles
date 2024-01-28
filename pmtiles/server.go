@@ -41,13 +41,12 @@ type Response struct {
 }
 
 type Server struct {
-	reqs          chan Request
-	bucket        Bucket
-	logger        *log.Logger
-	cacheSize     int
-	cors          string
-	publicURL     string
-	metricsPrefix string
+	reqs      chan Request
+	bucket    Bucket
+	logger    *log.Logger
+	cacheSize int
+	cors      string
+	publicURL string
 }
 
 func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
