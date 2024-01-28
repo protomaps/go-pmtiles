@@ -84,7 +84,15 @@ func NewServerWithBucket(bucket Bucket, prefix string, logger *log.Logger, cache
 	return l, nil
 }
 
+func register[K prometheus.Collector](server *Server, metric K) K {
+	if err := prometheus.Register(metric); err != nil {
+		server.logger.Println(err)
+	}
+	return metric
+}
+
 func (server *Server) Start() {
+
 	go func() {
 		cache := make(map[CacheKey]*list.Element)
 		inflight := make(map[CacheKey][]Request)
@@ -93,13 +101,12 @@ func (server *Server) Start() {
 		totalSize := 0
 		ctx := context.Background()
 
-		cacheSize := prometheus.NewGauge(prometheus.GaugeOpts{
+		cacheSize := register(server, prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: "pmtiles",
 			Subsystem: "cache",
 			Name:      "size",
 			Help:      "Current number or directories in the cache",
-		})
-		prometheus.MustRegister(cacheSize)
+		}))
 
 		for {
 			select {
