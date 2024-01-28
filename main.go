@@ -83,7 +83,7 @@ var cli struct {
 		Path      string `arg:"" help:"Local path or bucket prefix"`
 		Interface string `default:"0.0.0.0"`
 		Port      int    `default:8080`
-		AdminPort *int   `8081`
+		AdminPort int    `default:-1`
 		Cors      string `help:"Value of HTTP CORS header."`
 		CacheSize int    `default:64 help:"Size of cache in Megabytes."`
 		Bucket    string `help:"Remote bucket"`
@@ -150,9 +150,9 @@ func main() {
 		})
 
 		logger.Printf("Serving %s %s on port %d and interface %s with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Interface, cli.Serve.Cors)
-		if cli.Serve.AdminPort != nil {
+		if cli.Serve.AdminPort > 0 {
 			go func() {
-				adminPort := strconv.Itoa(*cli.Serve.AdminPort)
+				adminPort := strconv.Itoa(cli.Serve.AdminPort)
 				logger.Printf("Serving /metrics on port %s and interface %s\n", adminPort, cli.Serve.Interface)
 				adminMux := http.NewServeMux()
 				adminMux.Handle("/metrics", promhttp.Handler())
