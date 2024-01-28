@@ -18,11 +18,11 @@ type Bucket interface {
 	NewRangeReader(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error)
 }
 
-type HttpBucket struct {
+type HTTPBucket struct {
 	baseURL string
 }
 
-func (b HttpBucket) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+func (b HTTPBucket) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
 	reqURL := b.baseURL + "/" + key
 
 	req, err := http.NewRequest("GET", reqURL, nil)
@@ -45,7 +45,7 @@ func (b HttpBucket) NewRangeReader(ctx context.Context, key string, offset, leng
 	return resp.Body, nil
 }
 
-func (b HttpBucket) Close() error {
+func (b HTTPBucket) Close() error {
 	return nil
 }
 
@@ -102,7 +102,7 @@ func NormalizeBucketKey(bucket string, prefix string, key string) (string, strin
 
 func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Bucket, error) {
 	if strings.HasPrefix(bucketURL, "http") {
-		bucket := HttpBucket{bucketURL}
+		bucket := HTTPBucket{bucketURL}
 		return bucket, nil
 	} else {
 		bucket, err := blob.OpenBucket(ctx, bucketURL)
@@ -112,7 +112,7 @@ func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Buc
 		if bucketPrefix != "" && bucketPrefix != "/" && bucketPrefix != "." {
 			bucket = blob.PrefixedBucket(bucket, path.Clean(bucketPrefix)+string(os.PathSeparator))
 		}
-		wrapped_bucket := BucketAdapter{bucket}
-		return wrapped_bucket, err
+		wrappedBucket := BucketAdapter{bucket}
+		return wrappedBucket, err
 	}
 }

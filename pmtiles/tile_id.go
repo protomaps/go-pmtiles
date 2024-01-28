@@ -10,7 +10,7 @@ func rotate(n uint64, x *uint64, y *uint64, rx uint64, ry uint64) {
 	}
 }
 
-func t_on_level(z uint8, pos uint64) (uint8, uint32, uint32) {
+func tOnLevel(z uint8, pos uint64) (uint8, uint32, uint32) {
 	var n uint64 = 1 << z
 	rx, ry, t := pos, pos, pos
 	var tx uint64
@@ -27,7 +27,7 @@ func t_on_level(z uint8, pos uint64) (uint8, uint32, uint32) {
 	return uint8(z), uint32(tx), uint32(ty)
 }
 
-func ZxyToId(z uint8, x uint32, y uint32) uint64 {
+func ZxyToID(z uint8, x uint32, y uint32) uint64 {
 	var acc uint64
 	var tz uint8
 	for ; tz < z; tz++ {
@@ -56,33 +56,33 @@ func ZxyToId(z uint8, x uint32, y uint32) uint64 {
 	return acc + d
 }
 
-func IdToZxy(i uint64) (uint8, uint32, uint32) {
+func IDToZxy(i uint64) (uint8, uint32, uint32) {
 	var acc uint64
 	var z uint8
 	for {
-		var num_tiles uint64
-		num_tiles = (1 << z) * (1 << z)
-		if acc+num_tiles > i {
-			return t_on_level(z, i-acc)
+		var numTiles uint64
+		numTiles = (1 << z) * (1 << z)
+		if acc+numTiles > i {
+			return tOnLevel(z, i-acc)
 		}
-		acc += num_tiles
+		acc += numTiles
 		z++
 	}
 }
 
 // fast parent ID calculation without converting to ZXY.
-func ParentId(i uint64) uint64 {
+func ParentID(i uint64) uint64 {
 	var acc uint64
-	var last_acc uint64
+	var lastAcc uint64
 	var z uint8
 	for {
-		var num_tiles uint64
-		num_tiles = (1 << z) * (1 << z)
-		if acc+num_tiles > i {
-			return last_acc + (i-acc)/4
+		var numTiles uint64
+		numTiles = (1 << z) * (1 << z)
+		if acc+numTiles > i {
+			return lastAcc + (i-acc)/4
 		}
-		last_acc = acc
-		acc += num_tiles
+		lastAcc = acc
+		acc += numTiles
 		z++
 	}
 

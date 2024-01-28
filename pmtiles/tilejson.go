@@ -4,35 +4,35 @@ import (
 	"encoding/json"
 )
 
-func CreateTilejson(header HeaderV3, metadata_bytes []byte, tileUrl string) ([]byte, error) {
-	var metadata_map map[string]interface{}
-	json.Unmarshal(metadata_bytes, &metadata_map)
+func CreateTilejson(header HeaderV3, metadataBytes []byte, tileURL string) ([]byte, error) {
+	var metadataMap map[string]interface{}
+	json.Unmarshal(metadataBytes, &metadataMap)
 
 	tilejson := make(map[string]interface{})
 
 	tilejson["tilejson"] = "3.0.0"
 	tilejson["scheme"] = "xyz"
 
-	if tileUrl == "" {
-		tileUrl = "https://example.com"
+	if tileURL == "" {
+		tileURL = "https://example.com"
 	}
 
-	tilejson["tiles"] = []string{tileUrl + "/{z}/{x}/{y}" + headerExt(header)}
-	tilejson["vector_layers"] = metadata_map["vector_layers"]
+	tilejson["tiles"] = []string{tileURL + "/{z}/{x}/{y}" + headerExt(header)}
+	tilejson["vector_layers"] = metadataMap["vector_layers"]
 
-	if val, ok := metadata_map["attribution"]; ok {
+	if val, ok := metadataMap["attribution"]; ok {
 		tilejson["attribution"] = val
 	}
 
-	if val, ok := metadata_map["description"]; ok {
+	if val, ok := metadataMap["description"]; ok {
 		tilejson["description"] = val
 	}
 
-	if val, ok := metadata_map["name"]; ok {
+	if val, ok := metadataMap["name"]; ok {
 		tilejson["name"] = val
 	}
 
-	if val, ok := metadata_map["version"]; ok {
+	if val, ok := metadataMap["version"]; ok {
 		tilejson["version"] = val
 	}
 

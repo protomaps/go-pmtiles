@@ -36,7 +36,7 @@ var cli struct {
 		Bucket    string `help:"Remote bucket"`
 		Metadata  bool   `help:"Print only the JSON metadata."`
 		Tilejson  bool   `help:"Print the TileJSON."`
-		PublicUrl string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles"`
+		PublicURL string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles"`
 	} `cmd:"" help:"Inspect a local or remote archive."`
 
 	Tile struct {
@@ -83,7 +83,7 @@ var cli struct {
 		Cors      string `help:"Value of HTTP CORS header."`
 		CacheSize int    `default:64 help:"Size of cache in Megabytes."`
 		Bucket    string `help:"Remote bucket"`
-		PublicUrl string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles/"`
+		PublicURL string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles/"`
 	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
 
 	Download struct {
@@ -116,7 +116,7 @@ func main() {
 
 	switch ctx.Command() {
 	case "show <path>":
-		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, cli.Show.Metadata, cli.Show.Tilejson, cli.Show.PublicUrl, false, 0, 0, 0)
+		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, cli.Show.Metadata, cli.Show.Tilejson, cli.Show.PublicURL, false, 0, 0, 0)
 		if err != nil {
 			logger.Fatalf("Failed to show archive, %v", err)
 		}
@@ -126,7 +126,7 @@ func main() {
 			logger.Fatalf("Failed to show tile, %v", err)
 		}
 	case "serve <path>":
-		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors, cli.Serve.PublicUrl)
+		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors, cli.Serve.PublicURL)
 
 		if err != nil {
 			logger.Fatalf("Failed to create new server, %v", err)
@@ -136,11 +136,11 @@ func main() {
 
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			status_code, headers, body := server.Get(r.Context(), r.URL.Path)
+			statusCode, headers, body := server.Get(r.Context(), r.URL.Path)
 			for k, v := range headers {
 				w.Header().Set(k, v)
 			}
-			w.WriteHeader(status_code)
+			w.WriteHeader(statusCode)
 			w.Write(body)
 			logger.Printf("served %s in %s", r.URL.Path, time.Since(start))
 		})
@@ -166,13 +166,13 @@ func main() {
 				logger.Fatalf("Failed to create temp file, %v", err)
 			}
 		} else {
-			abs_tmproot, err := filepath.Abs(cli.Convert.Tmpdir)
+			absTemproot, err := filepath.Abs(cli.Convert.Tmpdir)
 
 			if err != nil {
 				logger.Fatalf("Failed to derive absolute path for %s, %v", cli.Convert.Tmpdir, err)
 			}
 
-			tmpfile, err = os.CreateTemp(abs_tmproot, "pmtiles")
+			tmpfile, err = os.CreateTemp(absTemproot, "pmtiles")
 
 			if err != nil {
 				logger.Fatalf("Failed to create temp file, %v", err)

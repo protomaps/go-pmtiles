@@ -39,12 +39,12 @@ type Syncline struct {
 	Hash   uint64
 }
 
-func Makesync(logger *log.Logger, cli_version string, file string, block_size_kb int, checksum string) error {
+func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb int, checksum string) error {
 	ctx := context.Background()
 	start := time.Now()
 
 	bucketURL, key, err := NormalizeBucketKey("", "", file)
-	block_size_bytes := uint64(1000 * block_size_kb)
+	blockSizeBytes := uint64(1000 * blockSizeKb)
 
 	if err != nil {
 		return err
@@ -68,7 +68,7 @@ func Makesync(logger *log.Logger, cli_version string, file string, block_size_kb
 	}
 	r.Close()
 
-	header, err := deserialize_header(b[0:HEADERV3_LEN_BYTES])
+	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
 
 	if !header.Clustered {
 		return fmt.Errorf("Error: archive must be clustered for makesync.")
@@ -87,7 +87,7 @@ func Makesync(logger *log.Logger, cli_version string, file string, block_size_kb
 			panic(fmt.Errorf("I/O Error"))
 		}
 
-		directory := deserialize_entries(bytes.NewBuffer(b))
+		directory := deserializeEntries(bytes.NewBuffer(b))
 		for _, entry := range directory {
 			if entry.RunLength > 0 {
 				f(entry)
@@ -102,7 +102,7 @@ func Makesync(logger *log.Logger, cli_version string, file string, block_size_kb
 		panic(err)
 	}
 	defer output.Close()
-	output.Write([]byte(fmt.Sprintf("version=%s\n", cli_version)))
+	output.Write([]byte(fmt.Sprintf("version=%s\n", cliVersion)))
 
 	if checksum == "md5" {
 		localfile, err := os.Open(file)
@@ -121,7 +121,7 @@ func Makesync(logger *log.Logger, cli_version string, file string, block_size_kb
 	}
 
 	output.Write([]byte("hash=fnv1a\n"))
-	output.Write([]byte(fmt.Sprintf("blocksize=%d\n", block_size_bytes)))
+	output.Write([]byte(fmt.Sprintf("blocksize=%d\n", blockSizeBytes)))
 
 	bar := progressbar.Default(
 		int64(header.TileEntriesCount),
@@ -166,14 +166,14 @@ func Makesync(logger *log.Logger, cli_version string, file string, block_size_kb
 		})
 	}
 
-	current_index := uint64(0)
+	currentIndex := uint64(0)
 
 	blocks := 0
 	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
 		bar.Add(1)
 		if current.Length == 0 {
-			current.Index = current_index
-			current.Start = e.TileId
+			current.Index = currentIndex
+			current.Start = e.TileID
 			current.Offset = e.Offset
 			current.Length = uint64(e.Length)
 		} else if e.Offset < current.Offset+uint64(current.Length) { // todo: check max block length
@@ -181,13 +181,13 @@ func Makesync(logger *log.Logger, cli_version string, file string, block_size_kb
 		} else if e.Offset > current.Offset+uint64(current.Length) {
 			panic("Invalid clustering of archive detected - check with verify")
 		} else {
-			if current.Length+uint64(e.Length) > block_size_bytes {
+			if current.Length+uint64(e.Length) > blockSizeBytes {
 				tasks <- Block{current.Index, current.Start, current.Offset, current.Length}
 				blocks += 1
 
-				current_index += 1
-				current.Index = current_index
-				current.Start = e.TileId
+				currentIndex += 1
+				current.Index = currentIndex
+				current.Start = e.TileID
 				current.Offset = e.Offset
 				current.Length = uint64(e.Length)
 			} else {
@@ -220,9 +220,9 @@ func Makesync(logger *log.Logger, cli_version string, file string, block_size_kb
 
 func Sync(logger *log.Logger, file string, syncfile string) error {
 	start := time.Now()
-	total_remote_bytes := uint64(0)
+	totalRemoteBytes := uint64(0)
 
-	by_start_id := make(map[uint64]Syncline)
+	byStartID := make(map[uint64]Syncline)
 
 	sync, err := os.Open(syncfile)
 	if err != nil {
@@ -237,12 +237,12 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 			continue
 		}
 
-		start_id, _ := strconv.ParseUint(parts[0], 10, 64)
+		startID, _ := strconv.ParseUint(parts[0], 10, 64)
 		offset, _ := strconv.ParseUint(parts[1], 10, 64)
 		length, _ := strconv.ParseUint(parts[2], 10, 64)
-		total_remote_bytes += length
+		totalRemoteBytes += length
 		hash, _ := strconv.ParseUint(parts[3], 16, 64)
-		by_start_id[start_id] = Syncline{offset, length, hash}
+		byStartID[startID] = Syncline{offset, length, hash}
 	}
 
 	// open the existing archive
@@ -273,7 +273,7 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 	}
 	r.Close()
 
-	header, err := deserialize_header(b[0:HEADERV3_LEN_BYTES])
+	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
 
 	if !header.Clustered {
 		return fmt.Errorf("Error: archive must be clustered for makesync.")
@@ -306,7 +306,7 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 			panic(fmt.Errorf("I/O Error"))
 		}
 
-		directory := deserialize_entries(bytes.NewBuffer(b))
+		directory := deserializeEntries(bytes.NewBuffer(b))
 		for _, entry := range directory {
 			if entry.RunLength > 0 {
 				f(entry)
@@ -321,31 +321,31 @@ func Sync(logger *log.Logger, file string, syncfile string) error {
 		"calculating diff",
 	)
 
-	total_blocks := len(by_start_id)
+	totalBlocks := len(byStartID)
 	hits := 0
 
 	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
 		bar.Add(1)
 
-		potential_match, ok := by_start_id[e.TileId]
+		potentialMatch, ok := byStartID[e.TileID]
 		if ok {
-			hash_result := GetHash(e.Offset, potential_match.Length)
-			if hash_result == potential_match.Hash {
+			hashResult := GetHash(e.Offset, potentialMatch.Length)
+			if hashResult == potentialMatch.Hash {
 				hits += 1
-				delete(by_start_id, e.TileId)
+				delete(byStartID, e.TileID)
 			}
 		}
 	})
 
-	to_transfer := uint64(0)
-	for _, v := range by_start_id {
-		to_transfer += v.Length
+	toTransfer := uint64(0)
+	for _, v := range byStartID {
+		toTransfer += v.Length
 	}
 
-	blocks_matched := float64(hits) / float64(total_blocks) * 100
-	pct := float64(to_transfer) / float64(total_remote_bytes) * 100
+	blocksMatched := float64(hits) / float64(totalBlocks) * 100
+	pct := float64(toTransfer) / float64(totalRemoteBytes) * 100
 
-	fmt.Printf("%d/%d blocks matched (%.1f%%), need to transfer %s/%s (%.1f%%).\n", hits, total_blocks, blocks_matched, humanize.Bytes(to_transfer), humanize.Bytes(total_remote_bytes), pct)
+	fmt.Printf("%d/%d blocks matched (%.1f%%), need to transfer %s/%s (%.1f%%).\n", hits, totalBlocks, blocksMatched, humanize.Bytes(toTransfer), humanize.Bytes(totalRemoteBytes), pct)
 
 	fmt.Printf("Completed sync in %v.\n", time.Since(start))
 	return nil

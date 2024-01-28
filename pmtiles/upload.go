@@ -10,7 +10,7 @@ import (
 	"os"
 )
 
-func Upload(logger *log.Logger, input string, bucket string, key string, max_concurrency int) error {
+func Upload(logger *log.Logger, input string, bucket string, key string, maxConcurrency int) error {
 	ctx := context.Background()
 	b, err := blob.OpenBucket(ctx, bucket)
 	if err != nil {
@@ -34,7 +34,7 @@ func Upload(logger *log.Logger, input string, bucket string, key string, max_con
 
 	opts := &blob.WriterOptions{
 		BufferSize:     256 * 1024 * 1024,
-		MaxConcurrency: max_concurrency,
+		MaxConcurrency: maxConcurrency,
 	}
 
 	w, err := b.NewWriter(ctx, key, opts)

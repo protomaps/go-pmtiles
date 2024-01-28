@@ -36,61 +36,61 @@ func readUint48(b []byte) uint64 {
 }
 
 func GetParentTile(tile Zxy, level uint8) Zxy {
-	tile_diff := tile.Z - level
-	x := math.Floor(float64(tile.X / (1 << tile_diff)))
-	y := math.Floor(float64(tile.Y / (1 << tile_diff)))
+	tileDiff := tile.Z - level
+	x := math.Floor(float64(tile.X / (1 << tileDiff)))
+	y := math.Floor(float64(tile.Y / (1 << tileDiff)))
 	return Zxy{Z: level, X: uint32(x), Y: uint32(y)}
 }
 
 func ParseEntryV2(b []byte) (uint8, Zxy, Range) {
-	z_raw := b[0]
-	x_raw := b[1:4]
-	y_raw := b[4:7]
-	offset_raw := b[7:13]
-	length_raw := b[13:17]
-	x := readUint24(x_raw)
-	y := readUint24(y_raw)
-	offset := readUint48(offset_raw)
-	length := uint64(binary.LittleEndian.Uint32(length_raw))
-	if z_raw&0b10000000 == 0 {
-		return 0, Zxy{Z: uint8(z_raw), X: uint32(x), Y: uint32(y)}, Range{Offset: offset, Length: length}
+	zRaw := b[0]
+	xRaw := b[1:4]
+	yRaw := b[4:7]
+	offsetRaw := b[7:13]
+	lengthRaw := b[13:17]
+	x := readUint24(xRaw)
+	y := readUint24(yRaw)
+	offset := readUint48(offsetRaw)
+	length := uint64(binary.LittleEndian.Uint32(lengthRaw))
+	if zRaw&0b10000000 == 0 {
+		return 0, Zxy{Z: uint8(zRaw), X: uint32(x), Y: uint32(y)}, Range{Offset: offset, Length: length}
 	} else {
-		leaf_z := z_raw & 0b01111111
-		return leaf_z, Zxy{Z: leaf_z, X: uint32(x), Y: uint32(y)}, Range{Offset: offset, Length: length}
+		leafZ := zRaw & 0b01111111
+		return leafZ, Zxy{Z: leafZ, X: uint32(x), Y: uint32(y)}, Range{Offset: offset, Length: length}
 	}
 }
 
-func ParseDirectoryV2(dir_bytes []byte) DirectoryV2 {
-	the_dir := DirectoryV2{Entries: make(map[Zxy]Range), Leaves: make(map[Zxy]Range)}
+func ParseDirectoryV2(dirBytes []byte) DirectoryV2 {
+	theDir := DirectoryV2{Entries: make(map[Zxy]Range), Leaves: make(map[Zxy]Range)}
 	var maxz uint8
-	for i := 0; i < len(dir_bytes)/17; i++ {
-		leaf_z, zxy, rng := ParseEntryV2(dir_bytes[i*17 : i*17+17])
-		if leaf_z == 0 {
-			the_dir.Entries[zxy] = rng
+	for i := 0; i < len(dirBytes)/17; i++ {
+		leafZ, zxy, rng := ParseEntryV2(dirBytes[i*17 : i*17+17])
+		if leafZ == 0 {
+			theDir.Entries[zxy] = rng
 		} else {
-			maxz = leaf_z // todo check spec
-			the_dir.Leaves[zxy] = rng
+			maxz = leafZ // todo check spec
+			theDir.Leaves[zxy] = rng
 		}
 	}
-	the_dir.LeafZ = maxz
-	return the_dir
+	theDir.LeafZ = maxz
+	return theDir
 }
 
 func ParseHeaderV2(reader io.Reader) ([]byte, DirectoryV2) {
-	magic_num := make([]byte, 2)
-	io.ReadFull(reader, magic_num)
+	magicNum := make([]byte, 2)
+	io.ReadFull(reader, magicNum)
 	version := make([]byte, 2)
 	io.ReadFull(reader, version)
-	metadata_len_bytes := make([]byte, 4)
-	io.ReadFull(reader, metadata_len_bytes)
-	metadata_len := binary.LittleEndian.Uint32(metadata_len_bytes)
-	rootdir_len_bytes := make([]byte, 2)
-	io.ReadFull(reader, rootdir_len_bytes)
-	rootdir_len := int(binary.LittleEndian.Uint16(rootdir_len_bytes))
-	metadata_bytes := make([]byte, metadata_len)
-	io.ReadFull(reader, metadata_bytes)
-	dir_bytes := make([]byte, rootdir_len*17)
-	io.ReadFull(reader, dir_bytes)
-	the_dir := ParseDirectoryV2(dir_bytes)
-	return metadata_bytes, the_dir
+	metadataLenBytes := make([]byte, 4)
+	io.ReadFull(reader, metadataLenBytes)
+	metadataLen := binary.LittleEndian.Uint32(metadataLenBytes)
+	rootDirLenBytes := make([]byte, 2)
+	io.ReadFull(reader, rootDirLenBytes)
+	rootDirLen := int(binary.LittleEndian.Uint16(rootDirLenBytes))
+	metadataBytes := make([]byte, metadataLen)
+	io.ReadFull(reader, metadataBytes)
+	dirBytes := make([]byte, rootDirLen*17)
+	io.ReadFull(reader, dirBytes)
+	theDir := ParseDirectoryV2(dirBytes)
+	return metadataBytes, theDir
 }

@@ -31,7 +31,7 @@ type SrcDstRange struct {
 // return sorted slice of entries, and slice of all leaf entries
 // any runlengths > 1 will be "trimmed" to the relevance bitmap
 func RelevantEntries(bitmap *roaring64.Bitmap, maxzoom uint8, dir []EntryV3) ([]EntryV3, []EntryV3) {
-	last_tile := ZxyToId(maxzoom+1, 0, 0)
+	lastTile := ZxyToID(maxzoom+1, 0, 0)
 	leaves := make([]EntryV3, 0)
 	tiles := make([]EntryV3, 0)
 	for idx, entry := range dir {
@@ -40,39 +40,39 @@ func RelevantEntries(bitmap *roaring64.Bitmap, maxzoom uint8, dir []EntryV3) ([]
 
 			// if this is the last thing in the directory, it needs to be bounded
 			if idx == len(dir)-1 {
-				tmp.AddRange(entry.TileId, last_tile)
+				tmp.AddRange(entry.TileID, lastTile)
 			} else {
-				tmp.AddRange(entry.TileId, dir[idx+1].TileId)
+				tmp.AddRange(entry.TileID, dir[idx+1].TileID)
 			}
 
 			if bitmap.Intersects(tmp) {
 				leaves = append(leaves, entry)
 			}
 		} else if entry.RunLength == 1 {
-			if bitmap.Contains(entry.TileId) {
+			if bitmap.Contains(entry.TileID) {
 				tiles = append(tiles, entry)
 			}
 		} else {
 			// runlength > 1
-			current_id := entry.TileId
-			current_runlength := uint32(0)
-			for y := entry.TileId; y < entry.TileId+uint64(entry.RunLength); y++ {
+			currentID := entry.TileID
+			currentRunLength := uint32(0)
+			for y := entry.TileID; y < entry.TileID+uint64(entry.RunLength); y++ {
 				if bitmap.Contains(y) {
-					if current_runlength == 0 {
-						current_runlength = 1
-						current_id = y
+					if currentRunLength == 0 {
+						currentRunLength = 1
+						currentID = y
 					} else {
-						current_runlength += 1
+						currentRunLength += 1
 					}
 				} else {
-					if current_runlength > 0 {
-						tiles = append(tiles, EntryV3{current_id, entry.Offset, entry.Length, current_runlength})
+					if currentRunLength > 0 {
+						tiles = append(tiles, EntryV3{currentID, entry.Offset, entry.Length, currentRunLength})
 					}
-					current_runlength = 0
+					currentRunLength = 0
 				}
 			}
-			if current_runlength > 0 {
-				tiles = append(tiles, EntryV3{current_id, entry.Offset, entry.Length, current_runlength})
+			if currentRunLength > 0 {
+				tiles = append(tiles, EntryV3{currentID, entry.Offset, entry.Length, currentRunLength})
 			}
 		}
 	}
@@ -93,34 +93,34 @@ func RelevantEntries(bitmap *roaring64.Bitmap, maxzoom uint8, dir []EntryV3) ([]
 //   - this might not be the last SrcDstRange new_offset + length, it's the highest offset (can be in the middle)
 func ReencodeEntries(dir []EntryV3) ([]EntryV3, []SrcDstRange, uint64, uint64, uint64) {
 	reencoded := make([]EntryV3, 0, len(dir))
-	seen_offsets := make(map[uint64]uint64)
+	seenOffsets := make(map[uint64]uint64)
 	ranges := make([]SrcDstRange, 0)
-	addressed_tiles := uint64(0)
+	addressedTiles := uint64(0)
 
-	dst_offset := uint64(0)
+	dstOffset := uint64(0)
 	for _, entry := range dir {
-		if val, ok := seen_offsets[entry.Offset]; ok {
-			reencoded = append(reencoded, EntryV3{entry.TileId, val, entry.Length, entry.RunLength})
+		if val, ok := seenOffsets[entry.Offset]; ok {
+			reencoded = append(reencoded, EntryV3{entry.TileID, val, entry.Length, entry.RunLength})
 		} else {
 			if len(ranges) > 0 {
-				last_range := ranges[len(ranges)-1]
-				if last_range.SrcOffset+last_range.Length == entry.Offset {
+				lastRange := ranges[len(ranges)-1]
+				if lastRange.SrcOffset+lastRange.Length == entry.Offset {
 					ranges[len(ranges)-1].Length += uint64(entry.Length)
 				} else {
-					ranges = append(ranges, SrcDstRange{entry.Offset, dst_offset, uint64(entry.Length)})
+					ranges = append(ranges, SrcDstRange{entry.Offset, dstOffset, uint64(entry.Length)})
 				}
 			} else {
-				ranges = append(ranges, SrcDstRange{entry.Offset, dst_offset, uint64(entry.Length)})
+				ranges = append(ranges, SrcDstRange{entry.Offset, dstOffset, uint64(entry.Length)})
 			}
 
-			reencoded = append(reencoded, EntryV3{entry.TileId, dst_offset, entry.Length, entry.RunLength})
-			seen_offsets[entry.Offset] = dst_offset
-			dst_offset += uint64(entry.Length)
+			reencoded = append(reencoded, EntryV3{entry.TileID, dstOffset, entry.Length, entry.RunLength})
+			seenOffsets[entry.Offset] = dstOffset
+			dstOffset += uint64(entry.Length)
 		}
 
-		addressed_tiles += uint64(entry.RunLength)
+		addressedTiles += uint64(entry.RunLength)
 	}
-	return reencoded, ranges, dst_offset, addressed_tiles, uint64(len(seen_offsets))
+	return reencoded, ranges, dstOffset, addressedTiles, uint64(len(seenOffsets))
 }
 
 // "want the next N bytes, then discard N bytes"
@@ -158,28 +158,28 @@ type OverfetchListItem struct {
 //	until the overfetch budget is consumed.
 //	The slice is sorted by Length
 func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
-	total_size := 0
+	totalSize := 0
 
 	shortest := make([]*OverfetchListItem, len(ranges))
 
 	// create the heap items
 	for i, rng := range ranges {
-		var bytes_to_next uint64
+		var bytesToNext uint64
 		if i == len(ranges)-1 {
-			bytes_to_next = math.MaxUint64
+			bytesToNext = math.MaxUint64
 		} else {
-			bytes_to_next = ranges[i+1].SrcOffset - (rng.SrcOffset + rng.Length)
-			if bytes_to_next < 0 {
-				bytes_to_next = math.MaxUint64
+			bytesToNext = ranges[i+1].SrcOffset - (rng.SrcOffset + rng.Length)
+			if bytesToNext < 0 {
+				bytesToNext = math.MaxUint64
 			}
 		}
 
 		shortest[i] = &OverfetchListItem{
 			Rng:          rng,
-			BytesToNext:  bytes_to_next,
+			BytesToNext:  bytesToNext,
 			CopyDiscards: []CopyDiscard{{uint64(rng.Length), 0}},
 		}
-		total_size += int(rng.Length)
+		totalSize += int(rng.Length)
 	}
 
 	// make the list doubly-linked
@@ -192,7 +192,7 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 		}
 	}
 
-	overfetch_budget := int(float32(total_size) * overfetch)
+	overfetchBudget := int(float32(totalSize) * overfetch)
 
 	// sort by ascending distance to next range
 	sort.Slice(shortest, func(i, j int) bool {
@@ -200,12 +200,12 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 	})
 
 	// while we haven't consumed the budget, merge ranges
-	for (len(shortest) > 1) && (overfetch_budget-int(shortest[0].BytesToNext) >= 0) {
+	for (len(shortest) > 1) && (overfetchBudget-int(shortest[0].BytesToNext) >= 0) {
 		item := shortest[0]
 
 		// merge this item into item.next
-		new_length := item.Rng.Length + item.BytesToNext + item.next.Rng.Length
-		item.next.Rng = SrcDstRange{item.Rng.SrcOffset, item.Rng.DstOffset, new_length}
+		newLength := item.Rng.Length + item.BytesToNext + item.next.Rng.Length
+		item.next.Rng = SrcDstRange{item.Rng.SrcOffset, item.Rng.DstOffset, newLength}
 		item.next.prev = item.prev
 		if item.prev != nil {
 			item.prev.next = item.next
@@ -215,24 +215,24 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 
 		shortest = shortest[1:]
 
-		overfetch_budget -= int(item.BytesToNext)
+		overfetchBudget -= int(item.BytesToNext)
 	}
 
 	sort.Slice(shortest, func(i, j int) bool {
 		return shortest[i].Rng.Length > shortest[j].Rng.Length
 	})
 
-	total_bytes := uint64(0)
+	totalBytes := uint64(0)
 	result := list.New()
 	for _, x := range shortest {
 		result.PushBack(OverfetchRange{
 			Rng:          x.Rng,
 			CopyDiscards: x.CopyDiscards,
 		})
-		total_bytes += x.Rng.Length
+		totalBytes += x.Rng.Length
 	}
 
-	return result, total_bytes
+	return result, totalBytes
 }
 
 // 1. Get the root directory (check that it is clustered)
@@ -249,7 +249,7 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 // 10. write the leaf directories (if any)
 // 11. Get all tiles, and write directly to the output.
 
-func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, maxzoom int8, region_file string, bbox string, output string, download_threads int, overfetch float32, dry_run bool) error {
+func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, maxzoom int8, regionFile string, bbox string, output string, downloadThreads int, overfetch float32, dryRun bool) error {
 	// 1. fetch the header
 	start := time.Now()
 	ctx := context.Background()
@@ -271,7 +271,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 	}
 	defer bucket.Close()
 
-	r, err := bucket.NewRangeReader(ctx, key, 0, HEADERV3_LEN_BYTES)
+	r, err := bucket.NewRangeReader(ctx, key, 0, HeaderV3LenBytes)
 
 	if err != nil {
 		return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
@@ -282,14 +282,14 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 	}
 	r.Close()
 
-	header, err := deserialize_header(b[0:HEADERV3_LEN_BYTES])
+	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
 
 	if !header.Clustered {
 		return fmt.Errorf("Error: source archive must be clustered for extracts.")
 	}
 
-	source_metadata_offset := header.MetadataOffset
-	source_tile_data_offset := header.TileDataOffset
+	sourceMetadataOffset := header.MetadataOffset
+	sourceTileDataOffset := header.TileDataOffset
 
 	if minzoom == -1 || int8(header.MinZoom) > minzoom {
 		minzoom = int8(header.MinZoom)
@@ -303,16 +303,16 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 		return fmt.Errorf("Error: minzoom cannot be greater than maxzoom.")
 	}
 
-	var relevant_set *roaring64.Bitmap
-	if region_file != "" || bbox != "" {
-		if region_file != "" && bbox != "" {
+	var relevantSet *roaring64.Bitmap
+	if regionFile != "" || bbox != "" {
+		if regionFile != "" && bbox != "" {
 			return fmt.Errorf("Only one of region and bbox can be specified.")
 		}
 
 		var multipolygon orb.MultiPolygon
 
-		if region_file != "" {
-			dat, _ := ioutil.ReadFile(region_file)
+		if regionFile != "" {
+			dat, _ := ioutil.ReadFile(regionFile)
 			multipolygon, err = UnmarshalRegion(dat)
 
 			if err != nil {
@@ -329,10 +329,10 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 
 		bound := multipolygon.Bound()
 
-		boundary_set, interior_set := bitmapMultiPolygon(uint8(maxzoom), multipolygon)
-		relevant_set = boundary_set
-		relevant_set.Or(interior_set)
-		generalizeOr(relevant_set, uint8(minzoom))
+		boundarySet, interiorSet := bitmapMultiPolygon(uint8(maxzoom), multipolygon)
+		relevantSet = boundarySet
+		relevantSet.Or(interiorSet)
+		generalizeOr(relevantSet, uint8(minzoom))
 
 		header.MinLonE7 = int32(bound.Left() * 10000000)
 		header.MinLatE7 = int32(bound.Bottom() * 10000000)
@@ -341,197 +341,197 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 		header.CenterLonE7 = int32(bound.Center().X() * 10000000)
 		header.CenterLatE7 = int32(bound.Center().Y() * 10000000)
 	} else {
-		relevant_set = roaring64.New()
-		relevant_set.AddRange(ZxyToId(uint8(minzoom), 0, 0), ZxyToId(uint8(maxzoom)+1, 0, 0))
+		relevantSet = roaring64.New()
+		relevantSet.AddRange(ZxyToID(uint8(minzoom), 0, 0), ZxyToID(uint8(maxzoom)+1, 0, 0))
 	}
 
 	// 3. get relevant entries from root
-	dir_offset := header.RootOffset
-	dir_length := header.RootLength
+	dirOffset := header.RootOffset
+	dirLength := header.RootLength
 
-	root_reader, err := bucket.NewRangeReader(ctx, key, int64(dir_offset), int64(dir_length))
+	rootReader, err := bucket.NewRangeReader(ctx, key, int64(dirOffset), int64(dirLength))
 	if err != nil {
 		return err
 	}
-	defer root_reader.Close()
-	root_bytes, err := io.ReadAll(root_reader)
+	defer rootReader.Close()
+	rootBytes, err := io.ReadAll(rootReader)
 	if err != nil {
 		return err
 	}
 
-	root_dir := deserialize_entries(bytes.NewBuffer(root_bytes))
+	rootDir := deserializeEntries(bytes.NewBuffer(rootBytes))
 
-	tile_entries, leaves := RelevantEntries(relevant_set, uint8(maxzoom), root_dir)
+	tileEntries, leaves := RelevantEntries(relevantSet, uint8(maxzoom), rootDir)
 
 	// 4. get all relevant leaf entries
 
-	leaf_ranges := make([]SrcDstRange, 0)
+	leafRanges := make([]SrcDstRange, 0)
 	for _, leaf := range leaves {
-		leaf_ranges = append(leaf_ranges, SrcDstRange{header.LeafDirectoryOffset + leaf.Offset, 0, uint64(leaf.Length)})
+		leafRanges = append(leafRanges, SrcDstRange{header.LeafDirectoryOffset + leaf.Offset, 0, uint64(leaf.Length)})
 	}
 
-	overfetch_leaves, _ := MergeRanges(leaf_ranges, overfetch)
-	num_overfetch_leaves := overfetch_leaves.Len()
-	fmt.Printf("fetching %d dirs, %d chunks, %d requests\n", len(leaves), len(leaf_ranges), overfetch_leaves.Len())
+	overfetchLeaves, _ := MergeRanges(leafRanges, overfetch)
+	numOverfetchLeaves := overfetchLeaves.Len()
+	fmt.Printf("fetching %d dirs, %d chunks, %d requests\n", len(leaves), len(leafRanges), overfetchLeaves.Len())
 
 	for {
-		if overfetch_leaves.Len() == 0 {
+		if overfetchLeaves.Len() == 0 {
 			break
 		}
-		or := overfetch_leaves.Remove(overfetch_leaves.Front()).(OverfetchRange)
+		or := overfetchLeaves.Remove(overfetchLeaves.Front()).(OverfetchRange)
 
-		slab_r, err := bucket.NewRangeReader(ctx, key, int64(or.Rng.SrcOffset), int64(or.Rng.Length))
+		chunkReader, err := bucket.NewRangeReader(ctx, key, int64(or.Rng.SrcOffset), int64(or.Rng.Length))
 		if err != nil {
 			return err
 		}
 
 		for _, cd := range or.CopyDiscards {
 
-			leaf_bytes := make([]byte, cd.Wanted)
-			_, err := io.ReadFull(slab_r, leaf_bytes)
+			leafBytes := make([]byte, cd.Wanted)
+			_, err := io.ReadFull(chunkReader, leafBytes)
 			if err != nil {
 				return err
 			}
-			leafdir := deserialize_entries(bytes.NewBuffer(leaf_bytes))
-			new_entries, new_leaves := RelevantEntries(relevant_set, uint8(maxzoom), leafdir)
+			leafdir := deserializeEntries(bytes.NewBuffer(leafBytes))
+			newEntries, newLeaves := RelevantEntries(relevantSet, uint8(maxzoom), leafdir)
 
-			if len(new_leaves) > 0 {
+			if len(newLeaves) > 0 {
 				panic("This doesn't support leaf level 2+.")
 			}
-			tile_entries = append(tile_entries, new_entries...)
+			tileEntries = append(tileEntries, newEntries...)
 
-			_, err = io.CopyN(io.Discard, slab_r, int64(cd.Discard))
+			_, err = io.CopyN(io.Discard, chunkReader, int64(cd.Discard))
 			if err != nil {
 				return err
 			}
 		}
-		slab_r.Close()
+		chunkReader.Close()
 	}
 
-	sort.Slice(tile_entries, func(i, j int) bool {
-		return tile_entries[i].TileId < tile_entries[j].TileId
+	sort.Slice(tileEntries, func(i, j int) bool {
+		return tileEntries[i].TileID < tileEntries[j].TileID
 	})
 
-	fmt.Printf("Region tiles %d, result tile entries %d\n", relevant_set.GetCardinality(), len(tile_entries))
+	fmt.Printf("Region tiles %d, result tile entries %d\n", relevantSet.GetCardinality(), len(tileEntries))
 
 	// 6. create the new header and chunk list
 	// we now need to re-encode this entry list using cumulative offsets
-	reencoded, tile_parts, tiledata_length, addressed_tiles, tile_contents := ReencodeEntries(tile_entries)
+	reencoded, tileParts, tiledataLength, addressedTiles, tileContents := ReencodeEntries(tileEntries)
 
-	overfetch_ranges, total_bytes := MergeRanges(tile_parts, overfetch)
+	overfetchRanges, totalBytes := MergeRanges(tileParts, overfetch)
 
-	num_overfetch_ranges := overfetch_ranges.Len()
-	fmt.Printf("fetching %d tiles, %d chunks, %d requests\n", len(reencoded), len(tile_parts), overfetch_ranges.Len())
+	numOverfetchRanges := overfetchRanges.Len()
+	fmt.Printf("fetching %d tiles, %d chunks, %d requests\n", len(reencoded), len(tileParts), overfetchRanges.Len())
 
 	// TODO: takes up too much RAM
 	// construct the directories
-	new_root_bytes, new_leaves_bytes, _ := optimize_directories(reencoded, 16384-HEADERV3_LEN_BYTES)
+	newRootBytes, newLeavesBytes, _ := optimizeDirectories(reencoded, 16384-HeaderV3LenBytes)
 
 	// 7. write the modified header
-	header.RootOffset = HEADERV3_LEN_BYTES
-	header.RootLength = uint64(len(new_root_bytes))
+	header.RootOffset = HeaderV3LenBytes
+	header.RootLength = uint64(len(newRootBytes))
 	header.MetadataOffset = header.RootOffset + header.RootLength
 	header.LeafDirectoryOffset = header.MetadataOffset + header.MetadataLength
-	header.LeafDirectoryLength = uint64(len(new_leaves_bytes))
+	header.LeafDirectoryLength = uint64(len(newLeavesBytes))
 	header.TileDataOffset = header.LeafDirectoryOffset + header.LeafDirectoryLength
 
-	header.TileDataLength = tiledata_length
-	header.AddressedTilesCount = addressed_tiles
-	header.TileEntriesCount = uint64(len(tile_entries))
-	header.TileContentsCount = tile_contents
+	header.TileDataLength = tiledataLength
+	header.AddressedTilesCount = addressedTiles
+	header.TileEntriesCount = uint64(len(tileEntries))
+	header.TileContentsCount = tileContents
 
 	header.MaxZoom = uint8(maxzoom)
 
-	header_bytes := serialize_header(header)
+	headerBytes := serializeHeader(header)
 
-	total_actual_bytes := uint64(0)
-	for _, x := range tile_parts {
-		total_actual_bytes += x.Length
+	totalActualBytes := uint64(0)
+	for _, x := range tileParts {
+		totalActualBytes += x.Length
 	}
 
-	if !dry_run {
+	if !dryRun {
 
 		outfile, err := os.Create(output)
 		defer outfile.Close()
 
-		outfile.Truncate(127 + int64(len(new_root_bytes)) + int64(header.MetadataLength) + int64(len(new_leaves_bytes)) + int64(total_actual_bytes))
+		outfile.Truncate(127 + int64(len(newRootBytes)) + int64(header.MetadataLength) + int64(len(newLeavesBytes)) + int64(totalActualBytes))
 
-		_, err = outfile.Write(header_bytes)
+		_, err = outfile.Write(headerBytes)
 		if err != nil {
 			return err
 		}
 
 		// 8. write the root directory
-		_, err = outfile.Write(new_root_bytes)
+		_, err = outfile.Write(newRootBytes)
 		if err != nil {
 			return err
 		}
 
 		// 9. get and write the metadata
-		metadata_reader, err := bucket.NewRangeReader(ctx, key, int64(source_metadata_offset), int64(header.MetadataLength))
+		metadataReader, err := bucket.NewRangeReader(ctx, key, int64(sourceMetadataOffset), int64(header.MetadataLength))
 		if err != nil {
 			return err
 		}
-		metadata_bytes, err := io.ReadAll(metadata_reader)
-		defer metadata_reader.Close()
+		metadataBytes, err := io.ReadAll(metadataReader)
+		defer metadataReader.Close()
 		if err != nil {
 			return err
 		}
 
-		outfile.Write(metadata_bytes)
+		outfile.Write(metadataBytes)
 
 		// 10. write the leaf directories
-		_, err = outfile.Write(new_leaves_bytes)
+		_, err = outfile.Write(newLeavesBytes)
 		if err != nil {
 			return err
 		}
 
 		bar := progressbar.DefaultBytes(
-			int64(total_bytes),
+			int64(totalBytes),
 			"fetching chunks",
 		)
 
 		var mu sync.Mutex
 
 		downloadPart := func(or OverfetchRange) error {
-			tile_r, err := bucket.NewRangeReader(ctx, key, int64(source_tile_data_offset+or.Rng.SrcOffset), int64(or.Rng.Length))
+			tileReader, err := bucket.NewRangeReader(ctx, key, int64(sourceTileDataOffset+or.Rng.SrcOffset), int64(or.Rng.Length))
 			if err != nil {
 				return err
 			}
-			offset_writer := io.NewOffsetWriter(outfile, int64(header.TileDataOffset)+int64(or.Rng.DstOffset))
+			offsetWriter := io.NewOffsetWriter(outfile, int64(header.TileDataOffset)+int64(or.Rng.DstOffset))
 
 			for _, cd := range or.CopyDiscards {
 
-				_, err := io.CopyN(io.MultiWriter(offset_writer, bar), tile_r, int64(cd.Wanted))
+				_, err := io.CopyN(io.MultiWriter(offsetWriter, bar), tileReader, int64(cd.Wanted))
 				if err != nil {
 					return err
 				}
 
-				_, err = io.CopyN(bar, tile_r, int64(cd.Discard))
+				_, err = io.CopyN(bar, tileReader, int64(cd.Discard))
 				if err != nil {
 					return err
 				}
 			}
-			tile_r.Close()
+			tileReader.Close()
 			return nil
 		}
 
 		errs, _ := errgroup.WithContext(ctx)
 
-		for i := 0; i < download_threads; i++ {
-			work_back := (i == 0 && download_threads > 1)
+		for i := 0; i < downloadThreads; i++ {
+			workBack := (i == 0 && downloadThreads > 1)
 			errs.Go(func() error {
 				done := false
 				var or OverfetchRange
 				for {
 					mu.Lock()
-					if overfetch_ranges.Len() == 0 {
+					if overfetchRanges.Len() == 0 {
 						done = true
 					} else {
-						if work_back {
-							or = overfetch_ranges.Remove(overfetch_ranges.Back()).(OverfetchRange)
+						if workBack {
+							or = overfetchRanges.Remove(overfetchRanges.Back()).(OverfetchRange)
 						} else {
-							or = overfetch_ranges.Remove(overfetch_ranges.Front()).(OverfetchRange)
+							or = overfetchRanges.Remove(overfetchRanges.Front()).(OverfetchRange)
 						}
 					}
 					mu.Unlock()
@@ -554,13 +554,13 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 		}
 	}
 
-	fmt.Printf("Completed in %v with %v download threads (%v tiles/s).\n", time.Since(start), download_threads, float64(len(reencoded))/float64(time.Since(start).Seconds()))
-	total_requests := 2                    // header + root
-	total_requests += num_overfetch_leaves // leaves
-	total_requests += 1                    // metadata
-	total_requests += num_overfetch_ranges
-	fmt.Printf("Extract required %d total requests.\n", total_requests)
-	fmt.Printf("Extract transferred %s (overfetch %v) for an archive size of %s\n", humanize.Bytes(total_bytes), overfetch, humanize.Bytes(total_actual_bytes))
+	fmt.Printf("Completed in %v with %v download threads (%v tiles/s).\n", time.Since(start), downloadThreads, float64(len(reencoded))/float64(time.Since(start).Seconds()))
+	totalRequests := 2                  // header + root
+	totalRequests += numOverfetchLeaves // leaves
+	totalRequests += 1                  // metadata
+	totalRequests += numOverfetchRanges
+	fmt.Printf("Extract required %d total requests.\n", totalRequests)
+	fmt.Printf("Extract transferred %s (overfetch %v) for an archive size of %s\n", humanize.Bytes(totalBytes), overfetch, humanize.Bytes(totalActualBytes))
 
 	return nil
 }

@@ -15,54 +15,54 @@ import (
 )
 
 func bitmapMultiPolygon(zoom uint8, multipolygon orb.MultiPolygon) (*roaring64.Bitmap, *roaring64.Bitmap) {
-	boundary_set := roaring64.New()
+	boundarySet := roaring64.New()
 
 	for _, polygon := range multipolygon {
 		for _, ring := range polygon {
-			boundary_tiles, _ := tilecover.Geometry(orb.LineString(ring), maptile.Zoom(zoom)) // TODO is this buffer-aware?
-			for tile := range boundary_tiles {
-				boundary_set.Add(ZxyToId(uint8(tile.Z), tile.X, tile.Y))
+			boundaryTiles, _ := tilecover.Geometry(orb.LineString(ring), maptile.Zoom(zoom)) // TODO is this buffer-aware?
+			for tile := range boundaryTiles {
+				boundarySet.Add(ZxyToID(uint8(tile.Z), tile.X, tile.Y))
 			}
 		}
 	}
 
-	multipolygon_projected := project.MultiPolygon(multipolygon.Clone(), project.WGS84.ToMercator)
+	multipolygonProjected := project.MultiPolygon(multipolygon.Clone(), project.WGS84.ToMercator)
 
-	interior_set := roaring64.New()
-	i := boundary_set.Iterator()
+	interiorSet := roaring64.New()
+	i := boundarySet.Iterator()
 	for i.HasNext() {
 		id := i.Next()
-		if !boundary_set.Contains(id+1) && i.HasNext() {
-			z, x, y := IdToZxy(id + 1)
+		if !boundarySet.Contains(id+1) && i.HasNext() {
+			z, x, y := IDToZxy(id + 1)
 			tile := maptile.New(x, y, maptile.Zoom(z))
-			if planar.MultiPolygonContains(multipolygon_projected, project.Point(tile.Center(), project.WGS84.ToMercator)) {
-				interior_set.AddRange(id+1, i.PeekNext())
+			if planar.MultiPolygonContains(multipolygonProjected, project.Point(tile.Center(), project.WGS84.ToMercator)) {
+				interiorSet.AddRange(id+1, i.PeekNext())
 			}
 		}
 	}
 
-	return boundary_set, interior_set
+	return boundarySet, interiorSet
 }
 
 func generalizeOr(r *roaring64.Bitmap, minzoom uint8) {
 	if r.GetCardinality() == 0 {
 		return
 	}
-	max_z, _, _ := IdToZxy(r.ReverseIterator().Next())
+	maxZ, _, _ := IDToZxy(r.ReverseIterator().Next())
 
 	var temp *roaring64.Bitmap
-	var to_iterate *roaring64.Bitmap
+	var toIterate *roaring64.Bitmap
 
 	temp = roaring64.New()
-	to_iterate = r
+	toIterate = r
 
-	for current_z := int(max_z); current_z > int(minzoom); current_z-- {
-		iter := to_iterate.Iterator()
+	for currentZ := int(maxZ); currentZ > int(minzoom); currentZ-- {
+		iter := toIterate.Iterator()
 		for iter.HasNext() {
-			parent_id := ParentId(iter.Next())
-			temp.Add(parent_id)
+			parentID := ParentID(iter.Next())
+			temp.Add(parentID)
 		}
-		to_iterate = temp
+		toIterate = temp
 		r.Or(temp)
 		temp = roaring64.New()
 	}
@@ -72,32 +72,32 @@ func generalizeAnd(r *roaring64.Bitmap) {
 	if r.GetCardinality() == 0 {
 		return
 	}
-	max_z, _, _ := IdToZxy(r.ReverseIterator().Next())
+	maxZ, _, _ := IDToZxy(r.ReverseIterator().Next())
 
 	var temp *roaring64.Bitmap
-	var to_iterate *roaring64.Bitmap
+	var toIterate *roaring64.Bitmap
 
 	temp = roaring64.New()
-	to_iterate = r
+	toIterate = r
 
-	for current_z := int(max_z); current_z > 0; current_z-- {
-		iter := to_iterate.Iterator()
+	for currentZ := int(maxZ); currentZ > 0; currentZ-- {
+		iter := toIterate.Iterator()
 		filled := 0
 		current := uint64(0) // check me...
 		for iter.HasNext() {
 			id := iter.Next()
-			parent_id := ParentId(id)
-			if parent_id == current {
+			parentID := ParentID(id)
+			if parentID == current {
 				filled += 1
 				if filled == 4 {
-					temp.Add(parent_id)
+					temp.Add(parentID)
 				}
 			} else {
-				current = parent_id
+				current = parentID
 				filled = 1
 			}
 		}
-		to_iterate = temp
+		toIterate = temp
 		r.Or(temp)
 		temp = roaring64.New()
 	}
@@ -107,8 +107,8 @@ func WriteImage(interior *roaring64.Bitmap, boundary *roaring64.Bitmap, exterior
 	dim := 1 << zoom
 	img := image.NewNRGBA(image.Rect(0, 0, dim, dim))
 
-	min := ZxyToId(zoom, 0, 0)
-	max := ZxyToId(zoom+1, 0, 0)
+	min := ZxyToID(zoom, 0, 0)
+	max := ZxyToID(zoom+1, 0, 0)
 
 	{
 		iter := interior.Iterator()
@@ -116,7 +116,7 @@ func WriteImage(interior *roaring64.Bitmap, boundary *roaring64.Bitmap, exterior
 		for iter.HasNext() {
 			id := iter.Next()
 			if id >= min && id < max {
-				_, x, y := IdToZxy(id)
+				_, x, y := IDToZxy(id)
 				img.Set(int(x), int(y), fill)
 			}
 		}
@@ -127,7 +127,7 @@ func WriteImage(interior *roaring64.Bitmap, boundary *roaring64.Bitmap, exterior
 		for iter.HasNext() {
 			id := iter.Next()
 			if id >= min && id < max {
-				_, x, y := IdToZxy(id)
+				_, x, y := IDToZxy(id)
 				img.Set(int(x), int(y), fill)
 			}
 		}
@@ -138,7 +138,7 @@ func WriteImage(interior *roaring64.Bitmap, boundary *roaring64.Bitmap, exterior
 		for iter.HasNext() {
 			id := iter.Next()
 			if id >= min && id < max {
-				_, x, y := IdToZxy(id)
+				_, x, y := IDToZxy(id)
 				img.Set(int(x), int(y), fill)
 			}
 		}
