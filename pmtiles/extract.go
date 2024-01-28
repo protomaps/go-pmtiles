@@ -543,8 +543,6 @@ func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom 
 						return err
 					}
 				}
-
-				return nil
 			})
 		}
 

@@ -56,11 +56,11 @@ var cli struct {
 		Bucket          string  `help:"Remote bucket of input archive."`
 		Region          string  `help:"local GeoJSON Polygon or MultiPolygon file for area of interest." type:"existingfile"`
 		Bbox            string  `help:"bbox area of interest: min_lon,min_lat,max_lon,max_lat" type:"string"`
-		Minzoom         int8    `default:-1 help:"Minimum zoom level, inclusive."`
-		Maxzoom         int8    `default:-1 help:"Maximum zoom level, inclusive."`
-		DownloadThreads int     `default:4 help:"Number of download threads."`
+		Minzoom         int8    `default:"-1" help:"Minimum zoom level, inclusive."`
+		Maxzoom         int8    `default:"-1" help:"Maximum zoom level, inclusive."`
+		DownloadThreads int     `default:"4" help:"Number of download threads."`
 		DryRun          bool    `help:"Calculate tiles to extract, but don't download them."`
-		Overfetch       float32 `default:0.05 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
+		Overfetch       float32 `default:"0.05" help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
 	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region."`
 
 	Verify struct {
@@ -69,8 +69,8 @@ var cli struct {
 
 	Makesync struct {
 		Input        string `arg:"" type:"existingfile"`
-		BlockSizeKb  int    `default:1000 help:"The approximate block size, in kilobytes. 0 means 1 tile = 1 block."`
-		HashFunction string `default:fnv1a help:"The hash function."`
+		BlockSizeKb  int    `default:"1000" help:"The approximate block size, in kilobytes. 0 means 1 tile = 1 block."`
+		HashFunction string `default:"fnv1a" help:"The hash function."`
 		Checksum     string `help:"Store a checksum in the syncfile."`
 	} `cmd:"" hidden:""`
 
@@ -82,10 +82,10 @@ var cli struct {
 	Serve struct {
 		Path      string `arg:"" help:"Local path or bucket prefix"`
 		Interface string `default:"0.0.0.0"`
-		Port      int    `default:8080`
-		AdminPort int    `default:-1`
+		Port      int    `default:"8080"`
+		AdminPort int    `default:"-1"`
 		Cors      string `help:"Value of HTTP CORS header."`
-		CacheSize int    `default:64 help:"Size of cache in Megabytes."`
+		CacheSize int    `default:"64" help:"Size of cache in Megabytes."`
 		Bucket    string `help:"Remote bucket"`
 		PublicURL string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles/"`
 	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
@@ -94,15 +94,15 @@ var cli struct {
 		OldFile         string  `type:"existingfile" help:"The old archive on disk. Providing this will check the new archive for a .sync file"`
 		NewFile         string  `arg:"The remote file."`
 		Bucket          string  `required:"" help:"Bucket of file to download."`
-		DownloadThreads int     `default:4 help:"Number of download threads."`
+		DownloadThreads int     `default:"4" help:"Number of download threads."`
 		DryRun          bool    `help:"Calculate new parts to download, but don't download them."`
-		Overfetch       float32 `default:0.05 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
+		Overfetch       float32 `default:"0.05" help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
 	} `cmd:"" help:"Upload a local archive to remote storage."`
 
 	Upload struct {
 		Input          string `arg:"" type:"existingfile"`
 		Key            string `arg:""`
-		MaxConcurrency int    `default:2 help:"# of upload threads"`
+		MaxConcurrency int    `default:"2" help:"# of upload threads"`
 		Bucket         string `required:"" help:"Bucket to upload to."`
 	} `cmd:"" help:"Upload a local archive to remote storage."`
 
