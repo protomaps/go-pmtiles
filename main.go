@@ -2,18 +2,21 @@ package main
 
 import (
 	"fmt"
-	"github.com/alecthomas/kong"
-	"github.com/protomaps/go-pmtiles/pmtiles"
-	_ "gocloud.dev/blob/azureblob"
-	_ "gocloud.dev/blob/fileblob"
-	_ "gocloud.dev/blob/gcsblob"
-	_ "gocloud.dev/blob/s3blob"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/alecthomas/kong"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/protomaps/go-pmtiles/pmtiles"
+	_ "gocloud.dev/blob/azureblob"
+	_ "gocloud.dev/blob/fileblob"
+	_ "gocloud.dev/blob/gcsblob"
+	_ "gocloud.dev/blob/s3blob"
 )
 
 var (
@@ -80,6 +83,7 @@ var cli struct {
 		Path      string `arg:"" help:"Local path or bucket prefix"`
 		Interface string `default:"0.0.0.0"`
 		Port      int    `default:8080`
+		AdminPort int    `default:-1`
 		Cors      string `help:"Value of HTTP CORS header."`
 		CacheSize int    `default:64 help:"Size of cache in Megabytes."`
 		Bucket    string `help:"Remote bucket"`
@@ -146,6 +150,15 @@ func main() {
 		})
 
 		logger.Printf("Serving %s %s on port %d and interface %s with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Interface, cli.Serve.Cors)
+		if cli.Serve.AdminPort > 0 {
+			go func() {
+				adminPort := strconv.Itoa(cli.Serve.AdminPort)
+				logger.Printf("Serving /metrics on port %s and interface %s\n", adminPort, cli.Serve.Interface)
+				adminMux := http.NewServeMux()
+				adminMux.Handle("/metrics", promhttp.Handler())
+				logger.Fatal(http.ListenAndServe(cli.Serve.Interface+":"+adminPort, adminMux))
+			}()
+		}
 		logger.Fatal(http.ListenAndServe(cli.Serve.Interface+":"+strconv.Itoa(cli.Serve.Port), nil))
 	case "extract <input> <output>":
 		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Minzoom, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Bbox, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
