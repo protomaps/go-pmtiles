@@ -341,7 +341,7 @@ func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string
 			r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length))
 			// possible we have the header/directory cached but the archive has disappeared
 			if err != nil {
-				server.logger.Printf("failed to fetch tile %s %d-%d", name, entry.offset, entry.length)
+				server.logger.Printf("failed to fetch tile %s %d-%d", name, entry.Offset, entry.Length)
 				return 404, httpHeaders, []byte("archive not found")
 			}
 			defer r.Close()
