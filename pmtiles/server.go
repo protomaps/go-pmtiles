@@ -15,33 +15,34 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type CacheKey struct {
+type cacheKey struct {
 	name   string
 	offset uint64 // is 0 for header
 	length uint64 // is 0 for header
 }
 
-type Request struct {
-	key   CacheKey
-	value chan CachedValue
+type request struct {
+	key   cacheKey
+	value chan cachedValue
 }
 
-type CachedValue struct {
+type cachedValue struct {
 	header    HeaderV3
 	directory []EntryV3
 	etag      string
 	ok        bool
 }
 
-type Response struct {
-	key   CacheKey
-	value CachedValue
+type response struct {
+	key   cacheKey
+	value cachedValue
 	size  int
 	ok    bool
 }
 
+// Server is an HTTP server for tiles and metadata.
 type Server struct {
-	reqs      chan Request
+	reqs      chan request
 	bucket    Bucket
 	logger    *log.Logger
 	cacheSize int
@@ -49,6 +50,7 @@ type Server struct {
 	publicURL string
 }
 
+// NewServer creates a new pmtiles HTTP server.
 func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
 
 	ctx := context.Background()
@@ -68,9 +70,10 @@ func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize in
 	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicURL)
 }
 
-func NewServerWithBucket(bucket Bucket, prefix string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
+// NewServerWithBucket creates a new HTTP server for a gocloud Bucket.
+func NewServerWithBucket(bucket Bucket, _ string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
 
-	reqs := make(chan Request, 8)
+	reqs := make(chan request, 8)
 
 	l := &Server{
 		reqs:      reqs,
@@ -91,12 +94,13 @@ func register[K prometheus.Collector](server *Server, metric K) K {
 	return metric
 }
 
+// Start the server HTTP listener.
 func (server *Server) Start() {
 
 	go func() {
-		cache := make(map[CacheKey]*list.Element)
-		inflight := make(map[CacheKey][]Request)
-		resps := make(chan Response, 8)
+		cache := make(map[cacheKey]*list.Element)
+		inflight := make(map[cacheKey][]request)
+		resps := make(chan response, 8)
 		evictList := list.New()
 		totalSize := 0
 		ctx := context.Background()
@@ -114,13 +118,13 @@ func (server *Server) Start() {
 				key := req.key
 				if val, ok := cache[key]; ok {
 					evictList.MoveToFront(val)
-					req.value <- val.Value.(*Response).value
+					req.value <- val.Value.(*response).value
 				} else if _, ok := inflight[key]; ok {
 					inflight[key] = append(inflight[key], req)
 				} else {
-					inflight[key] = []Request{req}
+					inflight[key] = []request{req}
 					go func() {
-						var result CachedValue
+						var result cachedValue
 						isRoot := (key.offset == 0 && key.length == 0)
 
 						offset := int64(key.offset)
@@ -137,7 +141,7 @@ func (server *Server) Start() {
 						// TODO: store away ETag
 						if err != nil {
 							ok = false
-							resps <- Response{key: key, value: result}
+							resps <- response{key: key, value: result}
 							server.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
 							return
 						}
@@ -145,7 +149,7 @@ func (server *Server) Start() {
 						b, err := io.ReadAll(r)
 						if err != nil {
 							ok = false
-							resps <- Response{key: key, value: result}
+							resps <- response{key: key, value: result}
 							server.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
 							return
 						}
@@ -159,17 +163,17 @@ func (server *Server) Start() {
 
 							// populate the root first before header
 							rootEntries := deserializeEntries(bytes.NewBuffer(b[header.RootOffset : header.RootOffset+header.RootLength]))
-							result2 := CachedValue{directory: rootEntries, ok: true}
+							result2 := cachedValue{directory: rootEntries, ok: true}
 
-							rootKey := CacheKey{name: key.name, offset: header.RootOffset, length: header.RootLength}
-							resps <- Response{key: rootKey, value: result2, size: 24 * len(rootEntries), ok: true}
+							rootKey := cacheKey{name: key.name, offset: header.RootOffset, length: header.RootLength}
+							resps <- response{key: rootKey, value: result2, size: 24 * len(rootEntries), ok: true}
 
-							result = CachedValue{header: header, ok: true}
-							resps <- Response{key: key, value: result, size: 127, ok: true}
+							result = cachedValue{header: header, ok: true}
+							resps <- response{key: key, value: result, size: 127, ok: true}
 						} else {
 							directory := deserializeEntries(bytes.NewBuffer(b))
-							result = CachedValue{directory: directory, ok: true}
-							resps <- Response{key: key, value: result, size: 24 * len(directory), ok: true}
+							result = cachedValue{directory: directory, ok: true}
+							resps <- response{key: key, value: result, size: 24 * len(directory), ok: true}
 						}
 
 						server.logger.Printf("fetched %s %d-%d", key.name, key.offset, key.length)
@@ -196,7 +200,7 @@ func (server *Server) Start() {
 						ent := evictList.Back()
 						if ent != nil {
 							evictList.Remove(ent)
-							kv := ent.Value.(*Response)
+							kv := ent.Value.(*response)
 							delete(cache, kv.key)
 							totalSize -= kv.size
 						}
@@ -208,19 +212,19 @@ func (server *Server) Start() {
 	}()
 }
 
-func (server *Server) getHeaderMetadata(ctx context.Context, name string) (error, bool, HeaderV3, []byte) {
-	rootReq := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
+func (server *Server) getHeaderMetadata(ctx context.Context, name string) (bool, HeaderV3, []byte, error) {
+	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1)}
 	server.reqs <- rootReq
 	rootValue := <-rootReq.value
 	header := rootValue.header
 
 	if !rootValue.ok {
-		return nil, false, HeaderV3{}, nil
+		return false, HeaderV3{}, nil, nil
 	}
 
 	r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength))
 	if err != nil {
-		return nil, false, HeaderV3{}, nil
+		return false, HeaderV3{}, nil, nil
 	}
 	defer r.Close()
 
@@ -232,14 +236,14 @@ func (server *Server) getHeaderMetadata(ctx context.Context, name string) (error
 	} else if header.InternalCompression == NoCompression {
 		metadataBytes, err = io.ReadAll(r)
 	} else {
-		return errors.New("Unknown compression"), true, HeaderV3{}, nil
+		return true, HeaderV3{}, nil, errors.New("unknown compression")
 	}
 
-	return nil, true, header, metadataBytes
+	return true, header, metadataBytes, nil
 }
 
 func (server *Server) getTileJSON(ctx context.Context, httpHeaders map[string]string, name string) (int, map[string]string, []byte) {
-	err, found, header, metadataBytes := server.getHeaderMetadata(ctx, name)
+	found, header, metadataBytes, err := server.getHeaderMetadata(ctx, name)
 
 	if err != nil {
 		return 500, httpHeaders, []byte("I/O Error")
@@ -256,7 +260,7 @@ func (server *Server) getTileJSON(ctx context.Context, httpHeaders map[string]st
 		return 501, httpHeaders, []byte("PUBLIC_URL must be set for TileJSON")
 	}
 
-	tilejsonBytes, err := CreateTilejson(header, metadataBytes, server.publicURL+"/"+name)
+	tilejsonBytes, err := CreateTileJSON(header, metadataBytes, server.publicURL+"/"+name)
 	if err != nil {
 		return 500, httpHeaders, []byte("Error generating tilejson")
 	}
@@ -267,7 +271,7 @@ func (server *Server) getTileJSON(ctx context.Context, httpHeaders map[string]st
 }
 
 func (server *Server) getMetadata(ctx context.Context, httpHeaders map[string]string, name string) (int, map[string]string, []byte) {
-	err, found, _, metadataBytes := server.getHeaderMetadata(ctx, name)
+	found, _, metadataBytes, err := server.getHeaderMetadata(ctx, name)
 
 	if err != nil {
 		return 500, httpHeaders, []byte("I/O Error")
@@ -282,7 +286,7 @@ func (server *Server) getMetadata(ctx context.Context, httpHeaders map[string]st
 }
 
 func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
-	rootReq := Request{key: CacheKey{name: name, offset: 0, length: 0}, value: make(chan CachedValue, 1)}
+	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1)}
 	server.reqs <- rootReq
 
 	// https://golang.org/doc/faq#atomic_maps
@@ -324,7 +328,7 @@ func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string
 	dirOffset, dirLen := header.RootOffset, header.RootLength
 
 	for depth := 0; depth <= 3; depth++ {
-		dirReq := Request{key: CacheKey{name: name, offset: dirOffset, length: dirLen}, value: make(chan CachedValue, 1)}
+		dirReq := request{key: cacheKey{name: name, offset: dirOffset, length: dirLen}, value: make(chan cachedValue, 1)}
 		server.reqs <- dirReq
 		dirValue := <-dirReq.value
 		directory := dirValue.directory
@@ -350,12 +354,10 @@ func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string
 				httpHeaders["Content-Encoding"] = headerVal
 			}
 			return 200, httpHeaders, b
-		} else {
-			dirOffset = header.LeafDirectoryOffset + entry.Offset
-			dirLen = uint64(entry.Length)
 		}
+		dirOffset = header.LeafDirectoryOffset + entry.Offset
+		dirLen = uint64(entry.Length)
 	}
-
 	return 204, httpHeaders, nil
 }
 
@@ -391,6 +393,8 @@ func parseMetadataPath(path string) (bool, string) {
 	return false, ""
 }
 
+// Get a response for the given path.
+// Return status code, HTTP headers, and body.
 func (server *Server) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
 	httpHeaders := make(map[string]string)
 	if len(server.cors) > 0 {

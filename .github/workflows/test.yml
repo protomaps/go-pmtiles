@@ -14,7 +14,7 @@ jobs:
         with:
           go-version: '^1.18.0'
       - run: go test ./pmtiles
-  fmt:
+  fmt_vet_lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -22,3 +22,8 @@ jobs:
         with:
           go-version: '^1.18.0'
       - run: if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then exit 1; fi
+      - run: go vet caddy/pmtiles_proxy.go
+      - run: go vet main.go
+      - run: go vet pmtiles/*
+      - name: Run Revive Action by pulling pre-built image
+        uses: docker://morphy/revive-action:v2

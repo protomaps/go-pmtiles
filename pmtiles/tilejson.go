@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 )
 
-func CreateTilejson(header HeaderV3, metadataBytes []byte, tileURL string) ([]byte, error) {
+// CreateTileJSON returns TileJSON from an archive header+metadata and a given public tileURL.
+func CreateTileJSON(header HeaderV3, metadataBytes []byte, tileURL string) ([]byte, error) {
 	var metadataMap map[string]interface{}
 	json.Unmarshal(metadataBytes, &metadataMap)
 

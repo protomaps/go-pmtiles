@@ -11,7 +11,9 @@ import (
 	"time"
 )
 
-func Verify(logger *log.Logger, file string) error {
+// Verify that an archive's header statistics are correct,
+// and that tiles are propertly ordered if clustered=true.
+func Verify(_ *log.Logger, file string) error {
 	start := time.Now()
 	ctx := context.Background()
 

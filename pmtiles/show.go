@@ -13,7 +13,8 @@ import (
 	"os"
 )
 
-func Show(logger *log.Logger, bucketURL string, key string, showMetadataOnly bool, showTilejson bool, publicURL string, showTile bool, z int, x int, y int) error {
+// Show prints detailed information about an archive.
+func Show(_ *log.Logger, bucketURL string, key string, showMetadataOnly bool, showTilejson bool, publicURL string, showTile bool, z int, x int, y int) error {
 	ctx := context.Background()
 
 	bucketURL, key, err := NormalizeBucketKey(bucketURL, "", key)
@@ -100,7 +101,7 @@ func Show(logger *log.Logger, bucketURL string, key string, showMetadataOnly boo
 				// Stdout is being redirected.
 				fmt.Fprintln(os.Stderr, "no --public-url specified; using placeholder tiles URL")
 			}
-			tilejsonBytes, err := CreateTilejson(header, metadataBytes, publicURL)
+			tilejsonBytes, err := CreateTileJSON(header, metadataBytes, publicURL)
 			if err != nil {
 				return fmt.Errorf("Failed to create tilejson for %s, %w", key, err)
 			}
@@ -165,10 +166,9 @@ func Show(logger *log.Logger, bucketURL string, key string, showMetadataOnly boo
 					}
 					os.Stdout.Write(tileBytes)
 					break
-				} else {
-					dirOffset = header.LeafDirectoryOffset + entry.Offset
-					dirLength = uint64(entry.Length)
 				}
+				dirOffset = header.LeafDirectoryOffset + entry.Offset
+				dirLength = uint64(entry.Length)
 			} else {
 				fmt.Println("Tile not found in archive.")
 				return nil

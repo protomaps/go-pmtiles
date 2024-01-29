@@ -83,7 +83,7 @@ func TestReencodeEntries(t *testing.T) {
 	entries = append(entries, EntryV3{0, 400, 10, 1})
 	entries = append(entries, EntryV3{1, 500, 20, 2})
 
-	reencoded, result, datalen, addressed, contents := ReencodeEntries(entries)
+	reencoded, result, datalen, addressed, contents := reencodeEntries(entries)
 
 	assert.Equal(t, 2, len(result))
 	assert.Equal(t, result[0].SrcOffset, uint64(400))
@@ -106,7 +106,7 @@ func TestReencodeEntriesDuplicate(t *testing.T) {
 	entries = append(entries, EntryV3{1, 500, 20, 1})
 	entries = append(entries, EntryV3{2, 400, 10, 1})
 
-	reencoded, result, datalen, addressed, contents := ReencodeEntries(entries)
+	reencoded, result, datalen, addressed, contents := reencodeEntries(entries)
 
 	assert.Equal(t, 2, len(result))
 	assert.Equal(t, result[0].SrcOffset, uint64(400))
@@ -129,7 +129,7 @@ func TestReencodeContiguous(t *testing.T) {
 	entries = append(entries, EntryV3{0, 400, 10, 0})
 	entries = append(entries, EntryV3{1, 410, 20, 0})
 
-	_, result, _, _, _ := ReencodeEntries(entries)
+	_, result, _, _, _ := reencodeEntries(entries)
 
 	assert.Equal(t, len(result), 1)
 	assert.Equal(t, result[0].SrcOffset, uint64(400))
@@ -137,32 +137,32 @@ func TestReencodeContiguous(t *testing.T) {
 }
 
 func TestMergeRanges(t *testing.T) {
-	ranges := make([]SrcDstRange, 0)
-	ranges = append(ranges, SrcDstRange{0, 0, 50})
-	ranges = append(ranges, SrcDstRange{60, 60, 60})
+	ranges := make([]srcDstRange, 0)
+	ranges = append(ranges, srcDstRange{0, 0, 50})
+	ranges = append(ranges, srcDstRange{60, 60, 60})
 
 	result, totalTransferBytes := MergeRanges(ranges, 0.1)
 
 	assert.Equal(t, 1, result.Len())
 	assert.Equal(t, uint64(120), totalTransferBytes)
-	front := result.Front().Value.(OverfetchRange)
-	assert.Equal(t, SrcDstRange{0, 0, 120}, front.Rng)
+	front := result.Front().Value.(overfetchRange)
+	assert.Equal(t, srcDstRange{0, 0, 120}, front.Rng)
 	assert.Equal(t, 2, len(front.CopyDiscards))
-	assert.Equal(t, CopyDiscard{50, 10}, front.CopyDiscards[0])
-	assert.Equal(t, CopyDiscard{60, 0}, front.CopyDiscards[1])
+	assert.Equal(t, copyDiscard{50, 10}, front.CopyDiscards[0])
+	assert.Equal(t, copyDiscard{60, 0}, front.CopyDiscards[1])
 }
 
 func TestMergeRangesMultiple(t *testing.T) {
-	ranges := make([]SrcDstRange, 0)
-	ranges = append(ranges, SrcDstRange{0, 0, 50})
-	ranges = append(ranges, SrcDstRange{60, 60, 10})
-	ranges = append(ranges, SrcDstRange{80, 80, 10})
+	ranges := make([]srcDstRange, 0)
+	ranges = append(ranges, srcDstRange{0, 0, 50})
+	ranges = append(ranges, srcDstRange{60, 60, 10})
+	ranges = append(ranges, srcDstRange{80, 80, 10})
 
 	result, totalTransferBytes := MergeRanges(ranges, 0.3)
-	front := result.Front().Value.(OverfetchRange)
+	front := result.Front().Value.(overfetchRange)
 	assert.Equal(t, uint64(90), totalTransferBytes)
 	assert.Equal(t, 1, result.Len())
-	assert.Equal(t, SrcDstRange{0, 0, 90}, front.Rng)
+	assert.Equal(t, srcDstRange{0, 0, 90}, front.Rng)
 	assert.Equal(t, 3, len(front.CopyDiscards))
 	fmt.Println(result)
 }

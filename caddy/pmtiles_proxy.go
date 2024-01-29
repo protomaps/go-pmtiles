@@ -28,7 +28,7 @@ func init() {
 type Middleware struct {
 	Bucket    string `json:"bucket"`
 	CacheSize int    `json:"cache_size"`
-	PublicUrl string `json:"public_url"`
+	PublicURL string `json:"public_url"`
 	logger    *zap.Logger
 	server    *pmtiles.Server
 }
@@ -45,7 +45,7 @@ func (m *Middleware) Provision(ctx caddy.Context) error {
 	m.logger = ctx.Logger()
 	logger := log.New(io.Discard, "", log.Ldate)
 	prefix := "." // serve only the root of the bucket for now, at the root route of Caddyfile
-	server, err := pmtiles.NewServer(m.Bucket, prefix, logger, m.CacheSize, "", m.PublicUrl)
+	server, err := pmtiles.NewServer(m.Bucket, prefix, logger, m.CacheSize, "", m.PublicURL)
 	if err != nil {
 		return err
 	}
@@ -66,13 +66,13 @@ func (m *Middleware) Validate() error {
 
 func (m Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	start := time.Now()
-	status_code, headers, body := m.server.Get(r.Context(), r.URL.Path)
+	statusCode, headers, body := m.server.Get(r.Context(), r.URL.Path)
 	for k, v := range headers {
 		w.Header().Set(k, v)
 	}
-	w.WriteHeader(status_code)
+	w.WriteHeader(statusCode)
 	w.Write(body)
-	m.logger.Info("response", zap.Int("status", status_code), zap.String("path", r.URL.Path), zap.Duration("duration", time.Since(start)))
+	m.logger.Info("response", zap.Int("status", statusCode), zap.String("path", r.URL.Path), zap.Duration("duration", time.Since(start)))
 
 	return next.ServeHTTP(w, r)
 }
@@ -96,7 +96,7 @@ func (m *Middleware) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				}
 				m.CacheSize = num
 			case "public_url":
-				if !d.Args(&m.PublicUrl) {
+				if !d.Args(&m.PublicURL) {
 					return d.ArgErr()
 				}
 			}

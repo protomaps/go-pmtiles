@@ -22,35 +22,34 @@ import (
 	"zombiezen.com/go/sqlite"
 )
 
-type OffsetLen struct {
+type offsetLen struct {
 	Offset uint64
 	Length uint32
 }
 
-type Resolver struct {
+type resolver struct {
 	deduplicate    bool
 	compress       bool
 	Entries        []EntryV3
 	Offset         uint64
-	OffsetMap      map[string]OffsetLen
+	OffsetMap      map[string]offsetLen
 	AddressedTiles uint64 // none of them can be empty
 	compressor     *gzip.Writer
 	compressTmp    *bytes.Buffer
 	hashfunc       hash.Hash
 }
 
-func (r *Resolver) NumContents() uint64 {
+func (r *resolver) NumContents() uint64 {
 	if r.deduplicate {
 		return uint64(len(r.OffsetMap))
-	} else {
-		return r.AddressedTiles
 	}
+	return r.AddressedTiles
 }
 
 // must be called in increasing tile_id order, uniquely
-func (r *Resolver) AddTileIsNew(tileID uint64, data []byte) (bool, []byte) {
+func (r *resolver) AddTileIsNew(tileID uint64, data []byte) (bool, []byte) {
 	r.AddressedTiles++
-	var found OffsetLen
+	var found offsetLen
 	var ok bool
 	var sumString string
 	if r.deduplicate {
@@ -74,44 +73,43 @@ func (r *Resolver) AddTileIsNew(tileID uint64, data []byte) (bool, []byte) {
 		}
 
 		return false, nil
-	} else {
-		var newData []byte
-		if !r.compress || (len(data) >= 2 && data[0] == 31 && data[1] == 139) {
-			// the tile is already compressed
-			newData = data
-		} else {
-			r.compressTmp.Reset()
-			r.compressor.Reset(r.compressTmp)
-			r.compressor.Write(data)
-			r.compressor.Close()
-			newData = r.compressTmp.Bytes()
-		}
-
-		if r.deduplicate {
-			r.OffsetMap[sumString] = OffsetLen{r.Offset, uint32(len(newData))}
-		}
-		r.Entries = append(r.Entries, EntryV3{tileID, r.Offset, uint32(len(newData)), 1})
-		r.Offset += uint64(len(newData))
-		return true, newData
 	}
+	var newData []byte
+	if !r.compress || (len(data) >= 2 && data[0] == 31 && data[1] == 139) {
+		// the tile is already compressed
+		newData = data
+	} else {
+		r.compressTmp.Reset()
+		r.compressor.Reset(r.compressTmp)
+		r.compressor.Write(data)
+		r.compressor.Close()
+		newData = r.compressTmp.Bytes()
+	}
+
+	if r.deduplicate {
+		r.OffsetMap[sumString] = offsetLen{r.Offset, uint32(len(newData))}
+	}
+	r.Entries = append(r.Entries, EntryV3{tileID, r.Offset, uint32(len(newData)), 1})
+	r.Offset += uint64(len(newData))
+	return true, newData
 }
 
-func NewResolver(deduplicate bool, compress bool) *Resolver {
+func newResolver(deduplicate bool, compress bool) *resolver {
 	b := new(bytes.Buffer)
 	compressor, _ := gzip.NewWriterLevel(b, gzip.BestCompression)
-	r := Resolver{deduplicate, compress, make([]EntryV3, 0), 0, make(map[string]OffsetLen), 0, compressor, b, fnv.New128a()}
+	r := resolver{deduplicate, compress, make([]EntryV3, 0), 0, make(map[string]offsetLen), 0, compressor, b, fnv.New128a()}
 	return &r
 }
 
+// Convert an existing archive on disk to a new PMTiles specification version 3 archive.
 func Convert(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
 	if strings.HasSuffix(input, ".pmtiles") {
-		return ConvertPmtilesV2(logger, input, output, deduplicate, tmpfile)
-	} else {
-		return ConvertMbtiles(logger, input, output, deduplicate, tmpfile)
+		return convertPmtilesV2(logger, input, output, deduplicate, tmpfile)
 	}
+	return convertMbtiles(logger, input, output, deduplicate, tmpfile)
 }
 
-func addDirectoryV2Entries(dir DirectoryV2, entries *[]EntryV3, f *os.File) {
+func addDirectoryV2Entries(dir directoryV2, entries *[]EntryV3, f *os.File) {
 	for zxy, rng := range dir.Entries {
 		tileID := ZxyToID(zxy.Z, zxy.X, zxy.Y)
 		*entries = append(*entries, EntryV3{tileID, rng.Offset, uint32(rng.Length), 1})
@@ -128,7 +126,7 @@ func addDirectoryV2Entries(dir DirectoryV2, entries *[]EntryV3, f *os.File) {
 		f.Seek(int64(offset), 0)
 		leafBytes := make([]byte, length)
 		f.Read(leafBytes)
-		leafDir := ParseDirectoryV2(leafBytes)
+		leafDir := parseDirectoryV2(leafBytes)
 		addDirectoryV2Entries(leafDir, entries, f)
 	}
 }
@@ -146,7 +144,7 @@ func setZoomCenterDefaults(header *HeaderV3, entries []EntryV3) {
 	}
 }
 
-func ConvertPmtilesV2(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
+func convertPmtilesV2(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
 	start := time.Now()
 	f, err := os.Open(input)
 	if err != nil {
@@ -159,7 +157,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 		return fmt.Errorf("archive is already the latest PMTiles version (3)")
 	}
 
-	v2JsonBytes, dir := ParseHeaderV2(bytes.NewReader(buffer))
+	v2JsonBytes, dir := parseHeaderV2(bytes.NewReader(buffer))
 
 	var v2metadata map[string]interface{}
 	json.Unmarshal(v2JsonBytes, &v2metadata)
@@ -187,8 +185,8 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 		return entries[i].TileID < entries[j].TileID
 	})
 
-	// re-use resolver, because even if archives are de-duplicated we may need to recompress.
-	resolver := NewResolver(deduplicate, header.TileType == Mvt)
+	// re-use resolve, because even if archives are de-duplicated we may need to recompress.
+	resolve := newResolver(deduplicate, header.TileType == Mvt)
 
 	bar := progressbar.Default(int64(len(entries)))
 	for _, entry := range entries {
@@ -207,7 +205,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 			}
 		}
 		// TODO: enforce sorted order
-		if isNew, newData := resolver.AddTileIsNew(entry.TileID, buf); isNew {
+		if isNew, newData := resolve.AddTileIsNew(entry.TileID, buf); isNew {
 			_, err = tmpfile.Write(newData)
 			if err != nil {
 				return fmt.Errorf("Failed to write to tempfile, %w", err)
@@ -216,7 +214,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 		bar.Add(1)
 	}
 
-	err = finalize(logger, resolver, header, tmpfile, output, jsonMetadata)
+	err = finalize(logger, resolve, header, tmpfile, output, jsonMetadata)
 	if err != nil {
 		return err
 	}
@@ -225,7 +223,7 @@ func ConvertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 	return nil
 }
 
-func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
+func convertMbtiles(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
 	start := time.Now()
 	conn, err := sqlite.OpenConn(input, sqlite.OpenReadOnly)
 	if err != nil {
@@ -310,7 +308,7 @@ func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate
 	}
 
 	logger.Println("Pass 2: writing tiles")
-	resolver := NewResolver(deduplicate, header.TileType == Mvt)
+	resolve := newResolver(deduplicate, header.TileType == Mvt)
 	{
 		bar := progressbar.Default(int64(tileset.GetCardinality()))
 		i := tileset.Iterator()
@@ -341,7 +339,7 @@ func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate
 			data := rawTileTmp.Bytes()
 
 			if len(data) > 0 {
-				if isNew, newData := resolver.AddTileIsNew(id, data); isNew {
+				if isNew, newData := resolve.AddTileIsNew(id, data); isNew {
 					_, err := tmpfile.Write(newData)
 					if err != nil {
 						return fmt.Errorf("Failed to write to tempfile: %s", err)
@@ -354,7 +352,7 @@ func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate
 			bar.Add(1)
 		}
 	}
-	err = finalize(logger, resolver, header, tmpfile, output, jsonMetadata)
+	err = finalize(logger, resolve, header, tmpfile, output, jsonMetadata)
 	if err != nil {
 		return err
 	}
@@ -362,14 +360,14 @@ func ConvertMbtiles(logger *log.Logger, input string, output string, deduplicate
 	return nil
 }
 
-func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *os.File, output string, jsonMetadata map[string]interface{}) error {
-	logger.Println("# of addressed tiles: ", resolver.AddressedTiles)
-	logger.Println("# of tile entries (after RLE): ", len(resolver.Entries))
-	logger.Println("# of tile contents: ", resolver.NumContents())
+func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *os.File, output string, jsonMetadata map[string]interface{}) error {
+	logger.Println("# of addressed tiles: ", resolve.AddressedTiles)
+	logger.Println("# of tile entries (after RLE): ", len(resolve.Entries))
+	logger.Println("# of tile contents: ", resolve.NumContents())
 
-	header.AddressedTilesCount = resolver.AddressedTiles
-	header.TileEntriesCount = uint64(len(resolver.Entries))
-	header.TileContentsCount = resolver.NumContents()
+	header.AddressedTilesCount = resolve.AddressedTiles
+	header.TileEntriesCount = uint64(len(resolve.Entries))
+	header.TileContentsCount = resolve.NumContents()
 
 	// assemble the final file
 	outfile, err := os.Create(output)
@@ -377,7 +375,7 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 		return fmt.Errorf("Failed to create %s, %w", output, err)
 	}
 
-	rootBytes, leavesBytes, numLeaves := optimizeDirectories(resolver.Entries, 16384-HeaderV3LenBytes)
+	rootBytes, leavesBytes, numLeaves := optimizeDirectories(resolve.Entries, 16384-HeaderV3LenBytes)
 
 	if numLeaves > 0 {
 		logger.Println("Root dir bytes: ", len(rootBytes))
@@ -385,10 +383,10 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 		logger.Println("Num leaf dirs: ", numLeaves)
 		logger.Println("Total dir bytes: ", len(rootBytes)+len(leavesBytes))
 		logger.Println("Average leaf dir bytes: ", len(leavesBytes)/numLeaves)
-		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(rootBytes)+len(leavesBytes))/float64(resolver.AddressedTiles))
+		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(rootBytes)+len(leavesBytes))/float64(resolve.AddressedTiles))
 	} else {
 		logger.Println("Total dir bytes: ", len(rootBytes))
-		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(rootBytes))/float64(resolver.AddressedTiles))
+		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(rootBytes))/float64(resolve.AddressedTiles))
 	}
 
 	var metadataBytes []byte
@@ -404,7 +402,7 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 		metadataBytes = b.Bytes()
 	}
 
-	setZoomCenterDefaults(&header, resolver.Entries)
+	setZoomCenterDefaults(&header, resolve.Entries)
 
 	header.Clustered = true
 	header.InternalCompression = Gzip
@@ -419,7 +417,7 @@ func finalize(logger *log.Logger, resolver *Resolver, header HeaderV3, tmpfile *
 	header.LeafDirectoryOffset = header.MetadataOffset + header.MetadataLength
 	header.LeafDirectoryLength = uint64(len(leavesBytes))
 	header.TileDataOffset = header.LeafDirectoryOffset + header.LeafDirectoryLength
-	header.TileDataLength = resolver.Offset
+	header.TileDataLength = resolve.Offset
 
 	headerBytes := serializeHeader(header)
 

@@ -20,14 +20,13 @@ import (
 	"time"
 )
 
-type SrcDstRange struct {
+type srcDstRange struct {
 	SrcOffset uint64
 	DstOffset uint64
 	Length    uint64
 }
 
-// given a bitmap and a set of existing entries,
-// create only relevant entries
+// RelevantEntries finds the intersection of a bitmap and a directory
 // return sorted slice of entries, and slice of all leaf entries
 // any runlengths > 1 will be "trimmed" to the relevance bitmap
 func RelevantEntries(bitmap *roaring64.Bitmap, maxzoom uint8, dir []EntryV3) ([]EntryV3, []EntryV3) {
@@ -91,10 +90,10 @@ func RelevantEntries(bitmap *roaring64.Bitmap, maxzoom uint8, dir []EntryV3) ([]
 // * The # of addressed tiles (sum over RunLength)
 // * # the number of unique offsets ("tile contents")
 //   - this might not be the last SrcDstRange new_offset + length, it's the highest offset (can be in the middle)
-func ReencodeEntries(dir []EntryV3) ([]EntryV3, []SrcDstRange, uint64, uint64, uint64) {
+func reencodeEntries(dir []EntryV3) ([]EntryV3, []srcDstRange, uint64, uint64, uint64) {
 	reencoded := make([]EntryV3, 0, len(dir))
 	seenOffsets := make(map[uint64]uint64)
-	ranges := make([]SrcDstRange, 0)
+	ranges := make([]srcDstRange, 0)
 	addressedTiles := uint64(0)
 
 	dstOffset := uint64(0)
@@ -107,10 +106,10 @@ func ReencodeEntries(dir []EntryV3) ([]EntryV3, []SrcDstRange, uint64, uint64, u
 				if lastRange.SrcOffset+lastRange.Length == entry.Offset {
 					ranges[len(ranges)-1].Length += uint64(entry.Length)
 				} else {
-					ranges = append(ranges, SrcDstRange{entry.Offset, dstOffset, uint64(entry.Length)})
+					ranges = append(ranges, srcDstRange{entry.Offset, dstOffset, uint64(entry.Length)})
 				}
 			} else {
-				ranges = append(ranges, SrcDstRange{entry.Offset, dstOffset, uint64(entry.Length)})
+				ranges = append(ranges, srcDstRange{entry.Offset, dstOffset, uint64(entry.Length)})
 			}
 
 			reencoded = append(reencoded, EntryV3{entry.TileID, dstOffset, entry.Length, entry.RunLength})
@@ -124,24 +123,24 @@ func ReencodeEntries(dir []EntryV3) ([]EntryV3, []SrcDstRange, uint64, uint64, u
 }
 
 // "want the next N bytes, then discard N bytes"
-type CopyDiscard struct {
+type copyDiscard struct {
 	Wanted  uint64
 	Discard uint64
 }
 
-type OverfetchRange struct {
-	Rng          SrcDstRange
-	CopyDiscards []CopyDiscard
+type overfetchRange struct {
+	Rng          srcDstRange
+	CopyDiscards []copyDiscard
 }
 
 // A single request, where only some of the bytes
 // in the requested range we want
-type OverfetchListItem struct {
-	Rng          SrcDstRange
-	CopyDiscards []CopyDiscard
+type overfetchListItem struct {
+	Rng          srcDstRange
+	CopyDiscards []copyDiscard
 	BytesToNext  uint64 // the "priority"
-	prev         *OverfetchListItem
-	next         *OverfetchListItem
+	prev         *overfetchListItem
+	next         *overfetchListItem
 	index        int
 }
 
@@ -157,10 +156,10 @@ type OverfetchListItem struct {
 //	input ranges are merged in order of smallest byte distance to next range
 //	until the overfetch budget is consumed.
 //	The slice is sorted by Length
-func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
+func MergeRanges(ranges []srcDstRange, overfetch float32) (*list.List, uint64) {
 	totalSize := 0
 
-	shortest := make([]*OverfetchListItem, len(ranges))
+	shortest := make([]*overfetchListItem, len(ranges))
 
 	// create the heap items
 	for i, rng := range ranges {
@@ -174,10 +173,10 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 			}
 		}
 
-		shortest[i] = &OverfetchListItem{
+		shortest[i] = &overfetchListItem{
 			Rng:          rng,
 			BytesToNext:  bytesToNext,
-			CopyDiscards: []CopyDiscard{{uint64(rng.Length), 0}},
+			CopyDiscards: []copyDiscard{{uint64(rng.Length), 0}},
 		}
 		totalSize += int(rng.Length)
 	}
@@ -205,7 +204,7 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 
 		// merge this item into item.next
 		newLength := item.Rng.Length + item.BytesToNext + item.next.Rng.Length
-		item.next.Rng = SrcDstRange{item.Rng.SrcOffset, item.Rng.DstOffset, newLength}
+		item.next.Rng = srcDstRange{item.Rng.SrcOffset, item.Rng.DstOffset, newLength}
 		item.next.prev = item.prev
 		if item.prev != nil {
 			item.prev.next = item.next
@@ -225,7 +224,7 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 	totalBytes := uint64(0)
 	result := list.New()
 	for _, x := range shortest {
-		result.PushBack(OverfetchRange{
+		result.PushBack(overfetchRange{
 			Rng:          x.Rng,
 			CopyDiscards: x.CopyDiscards,
 		})
@@ -235,21 +234,22 @@ func MergeRanges(ranges []SrcDstRange, overfetch float32) (*list.List, uint64) {
 	return result, totalBytes
 }
 
+// Extract a smaller archive from local or remote archive.
 // 1. Get the root directory (check that it is clustered)
 // 2. Turn the input geometry into a relevance bitmap (using min(maxzoom, headermaxzoom))
 // 3. Get all relevant level 1 directories (if any)
 // 4. Get all relevant level 2 directories (usually none)
 // 5. With the existing directory + relevance bitmap, construct
-//    * a new total directory (root + leaf directories)
-//    * a sorted slice of byte ranges in the old file required
+//   - a new total directory (root + leaf directories)
+//   - a sorted slice of byte ranges in the old file required
+//
 // 6. Merge requested ranges using an overfetch parametter
 // 7. write the modified header
 // 8. write the root directory.
 // 9. get and write the metadata.
 // 10. write the leaf directories (if any)
 // 11. Get all tiles, and write directly to the output.
-
-func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, maxzoom int8, regionFile string, bbox string, output string, downloadThreads int, overfetch float32, dryRun bool) error {
+func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom int8, regionFile string, bbox string, output string, downloadThreads int, overfetch float32, dryRun bool) error {
 	// 1. fetch the header
 	start := time.Now()
 	ctx := context.Background()
@@ -365,9 +365,9 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 
 	// 4. get all relevant leaf entries
 
-	leafRanges := make([]SrcDstRange, 0)
+	leafRanges := make([]srcDstRange, 0)
 	for _, leaf := range leaves {
-		leafRanges = append(leafRanges, SrcDstRange{header.LeafDirectoryOffset + leaf.Offset, 0, uint64(leaf.Length)})
+		leafRanges = append(leafRanges, srcDstRange{header.LeafDirectoryOffset + leaf.Offset, 0, uint64(leaf.Length)})
 	}
 
 	overfetchLeaves, _ := MergeRanges(leafRanges, overfetch)
@@ -378,7 +378,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 		if overfetchLeaves.Len() == 0 {
 			break
 		}
-		or := overfetchLeaves.Remove(overfetchLeaves.Front()).(OverfetchRange)
+		or := overfetchLeaves.Remove(overfetchLeaves.Front()).(overfetchRange)
 
 		chunkReader, err := bucket.NewRangeReader(ctx, key, int64(or.Rng.SrcOffset), int64(or.Rng.Length))
 		if err != nil {
@@ -416,7 +416,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 
 	// 6. create the new header and chunk list
 	// we now need to re-encode this entry list using cumulative offsets
-	reencoded, tileParts, tiledataLength, addressedTiles, tileContents := ReencodeEntries(tileEntries)
+	reencoded, tileParts, tiledataLength, addressedTiles, tileContents := reencodeEntries(tileEntries)
 
 	overfetchRanges, totalBytes := MergeRanges(tileParts, overfetch)
 
@@ -493,7 +493,7 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 
 		var mu sync.Mutex
 
-		downloadPart := func(or OverfetchRange) error {
+		downloadPart := func(or overfetchRange) error {
 			tileReader, err := bucket.NewRangeReader(ctx, key, int64(sourceTileDataOffset+or.Rng.SrcOffset), int64(or.Rng.Length))
 			if err != nil {
 				return err
@@ -522,16 +522,16 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 			workBack := (i == 0 && downloadThreads > 1)
 			errs.Go(func() error {
 				done := false
-				var or OverfetchRange
+				var or overfetchRange
 				for {
 					mu.Lock()
 					if overfetchRanges.Len() == 0 {
 						done = true
 					} else {
 						if workBack {
-							or = overfetchRanges.Remove(overfetchRanges.Back()).(OverfetchRange)
+							or = overfetchRanges.Remove(overfetchRanges.Back()).(overfetchRange)
 						} else {
-							or = overfetchRanges.Remove(overfetchRanges.Front()).(OverfetchRange)
+							or = overfetchRanges.Remove(overfetchRanges.Front()).(overfetchRange)
 						}
 					}
 					mu.Unlock()
@@ -543,8 +543,6 @@ func Extract(logger *log.Logger, bucketURL string, key string, minzoom int8, max
 						return err
 					}
 				}
-
-				return nil
 			})
 		}
 

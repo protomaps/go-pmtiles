@@ -21,5 +21,5 @@ func TestUint48(t *testing.T) {
 
 func TestGetParentTile(t *testing.T) {
 	a := Zxy{Z: 8, X: 125, Y: 69}
-	assert.Equal(t, Zxy{Z: 7, X: 62, Y: 34}, GetParentTile(a, 7))
+	assert.Equal(t, Zxy{Z: 7, X: 62, Y: 34}, getParentTile(a, 7))
 }

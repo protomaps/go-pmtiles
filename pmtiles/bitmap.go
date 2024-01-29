@@ -103,7 +103,7 @@ func generalizeAnd(r *roaring64.Bitmap) {
 	}
 }
 
-func WriteImage(interior *roaring64.Bitmap, boundary *roaring64.Bitmap, exterior *roaring64.Bitmap, filename string, zoom uint8) {
+func writeImage(interior *roaring64.Bitmap, boundary *roaring64.Bitmap, exterior *roaring64.Bitmap, filename string, zoom uint8) {
 	dim := 1 << zoom
 	img := image.NewNRGBA(image.Rect(0, 0, dim, dim))
 
