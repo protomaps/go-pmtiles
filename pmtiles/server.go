@@ -17,13 +17,15 @@ import (
 
 type cacheKey struct {
 	name   string
+	etag   string
 	offset uint64 // is 0 for header
 	length uint64 // is 0 for header
 }
 
 type request struct {
-	key   cacheKey
-	value chan cachedValue
+	key       cacheKey
+	value     chan cachedValue
+	purgeEtag string
 }
 
 type cachedValue struct {
@@ -31,6 +33,7 @@ type cachedValue struct {
 	directory []EntryV3
 	etag      string
 	ok        bool
+	badEtag   bool
 }
 
 type response struct {
@@ -115,6 +118,20 @@ func (server *Server) Start() {
 		for {
 			select {
 			case req := <-server.reqs:
+				if len(req.purgeEtag) > 0 {
+					if _, dup := inflight[req.key]; !dup {
+						server.logger.Printf("re-fetching directories for changed file %s", req.key.name)
+					}
+					for k, v := range cache {
+						resp := v.Value.(*response)
+						if k.name == req.key.name && (k.etag == req.purgeEtag || resp.value.etag == req.purgeEtag) {
+							evictList.Remove(v)
+							delete(cache, k)
+							totalSize -= resp.size
+						}
+					}
+					cacheSize.Set(float64(len(cache)))
+				}
 				key := req.key
 				if val, ok := cache[key]; ok {
 					evictList.MoveToFront(val)
@@ -136,11 +153,11 @@ func (server *Server) Start() {
 						}
 
 						server.logger.Printf("fetching %s %d-%d", key.name, offset, length)
-						r, err := server.bucket.NewRangeReader(ctx, key.name+".pmtiles", offset, length)
+						r, etag, err := server.bucket.NewRangeReaderEtag(ctx, key.name+".pmtiles", offset, length, key.etag)
 
-						// TODO: store away ETag
 						if err != nil {
 							ok = false
+							result.badEtag = isRefreshRequredError(err)
 							resps <- response{key: key, value: result}
 							server.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
 							return
@@ -163,20 +180,20 @@ func (server *Server) Start() {
 
 							// populate the root first before header
 							rootEntries := deserializeEntries(bytes.NewBuffer(b[header.RootOffset : header.RootOffset+header.RootLength]))
-							result2 := cachedValue{directory: rootEntries, ok: true}
+							result2 := cachedValue{directory: rootEntries, ok: true, etag: etag}
 
 							rootKey := cacheKey{name: key.name, offset: header.RootOffset, length: header.RootLength}
 							resps <- response{key: rootKey, value: result2, size: 24 * len(rootEntries), ok: true}
 
-							result = cachedValue{header: header, ok: true}
+							result = cachedValue{header: header, ok: true, etag: etag}
 							resps <- response{key: key, value: result, size: 127, ok: true}
 						} else {
 							directory := deserializeEntries(bytes.NewBuffer(b))
-							result = cachedValue{directory: directory, ok: true}
+							result = cachedValue{directory: directory, ok: true, etag: etag}
 							resps <- response{key: key, value: result, size: 24 * len(directory), ok: true}
 						}
 
-						server.logger.Printf("fetched %s %d-%d", key.name, key.offset, key.length)
+						server.logger.Printf("fetched %s %d-%d", key.name, key.offset, length)
 					}()
 				}
 			case resp := <-resps:
@@ -213,7 +230,9 @@ func (server *Server) Start() {
 }
 
 func (server *Server) getHeaderMetadata(ctx context.Context, name string) (bool, HeaderV3, []byte, error) {
-	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1)}
+	purgeEtag := ""
+start:
+	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag}
 	server.reqs <- rootReq
 	rootValue := <-rootReq.value
 	header := rootValue.header
@@ -222,7 +241,11 @@ func (server *Server) getHeaderMetadata(ctx context.Context, name string) (bool,
 		return false, HeaderV3{}, nil, nil
 	}
 
-	r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength))
+	r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), rootValue.etag)
+	if isRefreshRequredError(err) && len(purgeEtag) == 0 {
+		purgeEtag = rootValue.etag
+		goto start
+	}
 	if err != nil {
 		return false, HeaderV3{}, nil, nil
 	}
@@ -286,7 +309,9 @@ func (server *Server) getMetadata(ctx context.Context, httpHeaders map[string]st
 }
 
 func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
-	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1)}
+	purgeEtag := ""
+start:
+	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag}
 	server.reqs <- rootReq
 
 	// https://golang.org/doc/faq#atomic_maps
@@ -328,9 +353,13 @@ func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string
 	dirOffset, dirLen := header.RootOffset, header.RootLength
 
 	for depth := 0; depth <= 3; depth++ {
-		dirReq := request{key: cacheKey{name: name, offset: dirOffset, length: dirLen}, value: make(chan cachedValue, 1)}
+		dirReq := request{key: cacheKey{name: name, offset: dirOffset, length: dirLen, etag: rootValue.etag}, value: make(chan cachedValue, 1)}
 		server.reqs <- dirReq
 		dirValue := <-dirReq.value
+		if dirValue.badEtag && len(purgeEtag) == 0 {
+			purgeEtag = rootValue.etag
+			goto start
+		}
 		directory := dirValue.directory
 		entry, ok := findTile(directory, tileID)
 		if !ok {
@@ -338,7 +367,11 @@ func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string
 		}
 
 		if entry.RunLength > 0 {
-			r, err := server.bucket.NewRangeReader(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length))
+			r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), rootValue.etag)
+			if isRefreshRequredError(err) && len(purgeEtag) == 0 {
+				purgeEtag = rootValue.etag
+				goto start
+			}
 			// possible we have the header/directory cached but the archive has disappeared
 			if err != nil {
 				server.logger.Printf("failed to fetch tile %s %d-%d", name, entry.Offset, entry.Length)
@@ -361,6 +394,11 @@ func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string
 		dirLen = uint64(entry.Length)
 	}
 	return 204, httpHeaders, nil
+}
+
+func isRefreshRequredError(err error) bool {
+	_, ok := err.(*RefreshRequiredError)
+	return ok
 }
 
 var tilePattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\/(\d+)\/(\d+)\/(\d+)\.([a-z]+)$`)

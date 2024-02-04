@@ -61,7 +61,7 @@ func (b HTTPBucket) NewRangeReaderEtag(_ context.Context, key string, offset, le
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		resp.Body.Close()
-		if isRefreshRequredError(resp.StatusCode) {
+		if isRefreshRequredCode(resp.StatusCode) {
 			err = &RefreshRequiredError{resp.StatusCode}
 		} else {
 			err = fmt.Errorf("HTTP error: %d", resp.StatusCode)
@@ -76,7 +76,7 @@ func (b HTTPBucket) Close() error {
 	return nil
 }
 
-func isRefreshRequredError(code int) bool {
+func isRefreshRequredCode(code int) bool {
 	return code == http.StatusPreconditionFailed || code == http.StatusRequestedRangeNotSatisfiable
 }
 
@@ -102,7 +102,7 @@ func (ba BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, offs
 	if err != nil {
 		var resp awserr.RequestFailure
 		errors.As(err, &resp)
-		if resp != nil && isRefreshRequredError(resp.StatusCode()) {
+		if resp != nil && isRefreshRequredCode(resp.StatusCode()) {
 			return nil, "", &RefreshRequiredError{resp.StatusCode()}
 		}
 		return nil, "", err
