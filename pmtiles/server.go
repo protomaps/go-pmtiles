@@ -244,7 +244,7 @@ start:
 	r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), rootValue.etag)
 	if isRefreshRequredError(err) && len(purgeEtag) == 0 {
 		purgeEtag = rootValue.etag
-		goto start
+		goto start // TODO cleaner way to handle the retry?
 	}
 	if err != nil {
 		return false, HeaderV3{}, nil, nil
@@ -358,7 +358,7 @@ start:
 		dirValue := <-dirReq.value
 		if dirValue.badEtag && len(purgeEtag) == 0 {
 			purgeEtag = rootValue.etag
-			goto start
+			goto start // TODO cleaner way to handle the retry?
 		}
 		directory := dirValue.directory
 		entry, ok := findTile(directory, tileID)
@@ -370,7 +370,7 @@ start:
 			r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), rootValue.etag)
 			if isRefreshRequredError(err) && len(purgeEtag) == 0 {
 				purgeEtag = rootValue.etag
-				goto start
+				goto start // TODO cleaner way to handle the retry?
 			}
 			// possible we have the header/directory cached but the archive has disappeared
 			if err != nil {
