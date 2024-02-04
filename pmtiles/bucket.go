@@ -2,6 +2,7 @@ package pmtiles
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"gocloud.dev/blob"
 )
@@ -20,6 +22,14 @@ type Bucket interface {
 	Close() error
 	NewRangeReader(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error)
 	NewRangeReaderEtag(ctx context.Context, key string, offset int64, length int64, etag string) (io.ReadCloser, string, error)
+}
+
+type RefreshRequiredError struct {
+	StatusCode int
+}
+
+func (m *RefreshRequiredError) Error() string {
+	return fmt.Sprintf("HTTP error indicates file has changed: %d", m.StatusCode)
 }
 
 type HTTPBucket struct {
@@ -51,7 +61,12 @@ func (b HTTPBucket) NewRangeReaderEtag(_ context.Context, key string, offset, le
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		resp.Body.Close()
-		return nil, "", fmt.Errorf("HTTP error: %d", resp.StatusCode)
+		if isRefreshRequredError(resp.StatusCode) {
+			err = &RefreshRequiredError{resp.StatusCode}
+		} else {
+			err = fmt.Errorf("HTTP error: %d", resp.StatusCode)
+		}
+		return nil, "", err
 	}
 
 	return resp.Body, resp.Header.Get("ETag"), nil
@@ -59,6 +74,10 @@ func (b HTTPBucket) NewRangeReaderEtag(_ context.Context, key string, offset, le
 
 func (b HTTPBucket) Close() error {
 	return nil
+}
+
+func isRefreshRequredError(code int) bool {
+	return code == http.StatusPreconditionFailed || code == http.StatusRequestedRangeNotSatisfiable
 }
 
 type BucketAdapter struct {
@@ -81,6 +100,11 @@ func (ba BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, offs
 		},
 	})
 	if err != nil {
+		var resp awserr.RequestFailure
+		errors.As(err, &resp)
+		if resp != nil && isRefreshRequredError(resp.StatusCode()) {
+			return nil, "", &RefreshRequiredError{resp.StatusCode()}
+		}
 		return nil, "", err
 	}
 	resultETag := ""
