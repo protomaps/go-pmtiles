@@ -3,7 +3,6 @@ package pmtiles
 import (
 	"context"
 	"fmt"
-	"gocloud.dev/blob"
 	"io"
 	"net/http"
 	"net/url"
@@ -11,39 +10,51 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/aws/aws-sdk-go/service/s3"
+	"gocloud.dev/blob"
 )
 
 // Bucket is an abstration over a gocloud or plain HTTP bucket.
 type Bucket interface {
 	Close() error
 	NewRangeReader(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error)
+	NewRangeReaderEtag(ctx context.Context, key string, offset int64, length int64, etag string) (io.ReadCloser, string, error)
 }
 
 type HTTPBucket struct {
 	baseURL string
 }
 
-func (b HTTPBucket) NewRangeReader(_ context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+func (b HTTPBucket) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+	body, _, err := b.NewRangeReaderEtag(ctx, key, offset, length, "")
+	return body, err
+}
+
+func (b HTTPBucket) NewRangeReaderEtag(_ context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, error) {
 	reqURL := b.baseURL + "/" + key
 
 	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, offset+length-1))
+	if len(etag) > 0 {
+		req.Header.Set("If-Match", etag)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		resp.Body.Close()
-		return nil, fmt.Errorf("HTTP error: %d", resp.StatusCode)
+		return nil, "", fmt.Errorf("HTTP error: %d", resp.StatusCode)
 	}
 
-	return resp.Body, nil
+	return resp.Body, resp.Header.Get("ETag"), nil
 }
 
 func (b HTTPBucket) Close() error {
@@ -54,12 +65,30 @@ type BucketAdapter struct {
 	Bucket *blob.Bucket
 }
 
-func (ba BucketAdapter) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
-	reader, err := ba.Bucket.NewRangeReader(ctx, key, offset, length, nil)
+func (b BucketAdapter) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+	body, _, err := b.NewRangeReaderEtag(ctx, key, offset, length, "")
+	return body, err
+}
+
+func (ba BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, error) {
+	reader, err := ba.Bucket.NewRangeReader(ctx, key, offset, length, &blob.ReaderOptions{
+		BeforeRead: func(asFunc func(interface{}) bool) error {
+			var req *s3.GetObjectInput
+			if len(etag) > 0 && asFunc(&req) {
+				req.IfMatch = &etag
+			}
+			return nil
+		},
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return reader, nil
+	resultETag := ""
+	var resp s3.GetObjectOutput
+	if reader.As(&resp) {
+		resultETag = *resp.ETag
+	}
+	return reader, resultETag, nil
 }
 
 func (ba BucketAdapter) Close() error {
