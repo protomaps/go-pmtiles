@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"log"
 	"sort"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -127,14 +126,6 @@ func TestMissingFileReturns404(t *testing.T) {
 	statusCode, _, _ = server.Get(context.Background(), "/archive/0/0/0.mvt")
 	assert.Equal(t, 404, statusCode)
 }
-func assertSameJSON(t *testing.T, expected string, actual []byte) {
-	var j, j2 interface{}
-	d := json.NewDecoder(strings.NewReader(expected))
-	assert.Nil(t, d.Decode(&j))
-	d = json.NewDecoder(bytes.NewReader(actual))
-	assert.Nil(t, d.Decode(&j2))
-	assert.Equal(t, j, j2, "Expected: %s\nActual:%s", expected, string(actual))
-}
 
 func TestMvtEmptyArchiveReads(t *testing.T) {
 	mockBucket, server := newServer(t)
@@ -146,7 +137,7 @@ func TestMvtEmptyArchiveReads(t *testing.T) {
 	statusCode, _, _ := server.Get(context.Background(), "/")
 	assert.Equal(t, 204, statusCode)
 	statusCode, _, data := server.Get(context.Background(), "/archive.json")
-	assertSameJSON(t, `{
+	assert.JSONEq(t, `{
 		"bounds": [0,0,0,0],
 		"center": [0,0,0],
 		"maxzoom": 0,
@@ -155,10 +146,10 @@ func TestMvtEmptyArchiveReads(t *testing.T) {
 		"tilejson": "3.0.0",
 		"tiles": ["tiles.example.com/archive/{z}/{x}/{y}.mvt"],
 		"vector_layers": null
-	}`, data)
+	}`, string(data))
 	assert.Equal(t, 200, statusCode)
 	statusCode, _, data = server.Get(context.Background(), "/archive/metadata")
-	assertSameJSON(t, `{}`, data)
+	assert.JSONEq(t, `{}`, string(data))
 	assert.Equal(t, 200, statusCode)
 	statusCode, _, _ = server.Get(context.Background(), "/archive/0/0/0.mvt")
 	assert.Equal(t, 204, statusCode)
@@ -180,7 +171,7 @@ func TestReadMetadata(t *testing.T) {
 	statusCode, _, _ := server.Get(context.Background(), "/")
 	assert.Equal(t, 204, statusCode)
 	statusCode, _, data := server.Get(context.Background(), "/archive.json")
-	assertSameJSON(t, `{
+	assert.JSONEq(t, `{
 		"attribution": "Attribution",
 		"description": "Description",
 		"name": "Name",
@@ -195,10 +186,10 @@ func TestReadMetadata(t *testing.T) {
 		"vector_layers": [
 			{"id": "layer1"}
 		]
-	}`, data)
+	}`, string(data))
 	assert.Equal(t, 200, statusCode)
 	statusCode, _, data = server.Get(context.Background(), "/archive/metadata")
-	assertSameJSON(t, `{
+	assert.JSONEq(t, `{
 		"attribution": "Attribution",
 		"description": "Description",
 		"name": "Name",
@@ -206,7 +197,7 @@ func TestReadMetadata(t *testing.T) {
 		"vector_layers": [
 			{"id": "layer1"}
 		]
-	}`, data)
+	}`, string(data))
 }
 
 func TestReadTiles(t *testing.T) {
@@ -317,7 +308,7 @@ func TestInvalidateCacheOnTileJSONRequest(t *testing.T) {
 	}, false)
 	statusCode, _, data := server.Get(context.Background(), "/archive.json")
 	assert.Equal(t, 200, statusCode)
-	assertSameJSON(t, `{
+	assert.JSONEq(t, `{
 		"bounds": [0,0,0,0],
 		"center": [0,0,0],
 		"maxzoom": 1,
@@ -326,7 +317,7 @@ func TestInvalidateCacheOnTileJSONRequest(t *testing.T) {
 		"tilejson": "3.0.0",
 		"tiles": ["tiles.example.com/archive/{z}/{x}/{y}.mvt"],
 		"vector_layers": null
-	}`, data)
+	}`, string(data))
 
 	header = HeaderV3{
 		TileType:   Mvt,
@@ -338,7 +329,7 @@ func TestInvalidateCacheOnTileJSONRequest(t *testing.T) {
 	}, false)
 	statusCode, _, data = server.Get(context.Background(), "/archive.json")
 	assert.Equal(t, 200, statusCode)
-	assertSameJSON(t, `{
+	assert.JSONEq(t, `{
 		"bounds": [0,0,0,0],
 		"center": [0,0,4],
 		"maxzoom": 1,
@@ -347,7 +338,7 @@ func TestInvalidateCacheOnTileJSONRequest(t *testing.T) {
 		"tilejson": "3.0.0",
 		"tiles": ["tiles.example.com/archive/{z}/{x}/{y}.mvt"],
 		"vector_layers": null
-	}`, data)
+	}`, string(data))
 }
 
 func TestInvalidateCacheOnMetadataRequest(t *testing.T) {
@@ -363,9 +354,9 @@ func TestInvalidateCacheOnMetadataRequest(t *testing.T) {
 	}, false)
 	statusCode, _, data := server.Get(context.Background(), "/archive/metadata")
 	assert.Equal(t, 200, statusCode)
-	assertSameJSON(t, `{
+	assert.JSONEq(t, `{
 		"meta": "data"
-	}`, data)
+	}`, string(data))
 
 	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{
 		"meta": "data2",
@@ -375,7 +366,7 @@ func TestInvalidateCacheOnMetadataRequest(t *testing.T) {
 	}, false)
 	statusCode, _, data = server.Get(context.Background(), "/archive/metadata")
 	assert.Equal(t, 200, statusCode)
-	assertSameJSON(t, `{
+	assert.JSONEq(t, `{
 		"meta": "data2"
-	}`, data)
+	}`, string(data))
 }
