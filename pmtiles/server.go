@@ -230,24 +230,29 @@ func (server *Server) Start() {
 }
 
 func (server *Server) getHeaderMetadata(ctx context.Context, name string) (bool, HeaderV3, []byte, error) {
-	purgeEtag := ""
-start:
+	found, header, metadataBytes, purgeEtag, err := server.getHeaderMetadataAttempt(ctx, name, "")
+	if len(purgeEtag) > 0 {
+		found, header, metadataBytes, _, err = server.getHeaderMetadataAttempt(ctx, name, purgeEtag)
+	}
+	return found, header, metadataBytes, err
+}
+
+func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeEtag string) (bool, HeaderV3, []byte, string, error) {
 	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag}
 	server.reqs <- rootReq
 	rootValue := <-rootReq.value
 	header := rootValue.header
 
 	if !rootValue.ok {
-		return false, HeaderV3{}, nil, nil
+		return false, HeaderV3{}, nil, "", nil
 	}
 
 	r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), rootValue.etag)
-	if isRefreshRequredError(err) && len(purgeEtag) == 0 {
-		purgeEtag = rootValue.etag
-		goto start // TODO cleaner way to handle the retry?
+	if isRefreshRequredError(err) {
+		return false, HeaderV3{}, nil, rootValue.etag, nil
 	}
 	if err != nil {
-		return false, HeaderV3{}, nil, nil
+		return false, HeaderV3{}, nil, "", nil
 	}
 	defer r.Close()
 
@@ -259,10 +264,10 @@ start:
 	} else if header.InternalCompression == NoCompression {
 		metadataBytes, err = io.ReadAll(r)
 	} else {
-		return true, HeaderV3{}, nil, errors.New("unknown compression")
+		return true, HeaderV3{}, nil, "", errors.New("unknown compression")
 	}
 
-	return true, header, metadataBytes, nil
+	return true, header, metadataBytes, "", nil
 }
 
 func (server *Server) getTileJSON(ctx context.Context, httpHeaders map[string]string, name string) (int, map[string]string, []byte) {
@@ -307,10 +312,15 @@ func (server *Server) getMetadata(ctx context.Context, httpHeaders map[string]st
 	httpHeaders["Content-Type"] = "application/json"
 	return 200, httpHeaders, metadataBytes
 }
-
 func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
-	purgeEtag := ""
-start:
+	status, headers, data, purgeEtag := server.getTileAttempt(ctx, httpHeaders, name, z, x, y, ext, "")
+	if len(purgeEtag) > 0 {
+		// file has new etag, retry once force-purging the etag that is no longer value
+		status, headers, data, _ = server.getTileAttempt(ctx, httpHeaders, name, z, x, y, ext, purgeEtag)
+	}
+	return status, headers, data
+}
+func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string, purgeEtag string) (int, map[string]string, []byte, string) {
 	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag}
 	server.reqs <- rootReq
 
@@ -319,33 +329,33 @@ start:
 	header := rootValue.header
 
 	if !rootValue.ok {
-		return 404, httpHeaders, []byte("Archive not found")
+		return 404, httpHeaders, []byte("Archive not found"), ""
 	}
 
 	if z < header.MinZoom || z > header.MaxZoom {
-		return 404, httpHeaders, []byte("Tile not found")
+		return 404, httpHeaders, []byte("Tile not found"), ""
 	}
 
 	switch header.TileType {
 	case Mvt:
 		if ext != "mvt" {
-			return 400, httpHeaders, []byte("path mismatch: archive is type MVT (.mvt)")
+			return 400, httpHeaders, []byte("path mismatch: archive is type MVT (.mvt)"), ""
 		}
 	case Png:
 		if ext != "png" {
-			return 400, httpHeaders, []byte("path mismatch: archive is type PNG (.png)")
+			return 400, httpHeaders, []byte("path mismatch: archive is type PNG (.png)"), ""
 		}
 	case Jpeg:
 		if ext != "jpg" {
-			return 400, httpHeaders, []byte("path mismatch: archive is type JPEG (.jpg)")
+			return 400, httpHeaders, []byte("path mismatch: archive is type JPEG (.jpg)"), ""
 		}
 	case Webp:
 		if ext != "webp" {
-			return 400, httpHeaders, []byte("path mismatch: archive is type WebP (.webp)")
+			return 400, httpHeaders, []byte("path mismatch: archive is type WebP (.webp)"), ""
 		}
 	case Avif:
 		if ext != "avif" {
-			return 400, httpHeaders, []byte("path mismatch: archive is type AVIF (.avif)")
+			return 400, httpHeaders, []byte("path mismatch: archive is type AVIF (.avif)"), ""
 		}
 	}
 
@@ -356,9 +366,8 @@ start:
 		dirReq := request{key: cacheKey{name: name, offset: dirOffset, length: dirLen, etag: rootValue.etag}, value: make(chan cachedValue, 1)}
 		server.reqs <- dirReq
 		dirValue := <-dirReq.value
-		if dirValue.badEtag && len(purgeEtag) == 0 {
-			purgeEtag = rootValue.etag
-			goto start // TODO cleaner way to handle the retry?
+		if dirValue.badEtag {
+			return 404, httpHeaders, []byte("archive not found"), rootValue.etag
 		}
 		directory := dirValue.directory
 		entry, ok := findTile(directory, tileID)
@@ -368,19 +377,19 @@ start:
 
 		if entry.RunLength > 0 {
 			r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), rootValue.etag)
-			if isRefreshRequredError(err) && len(purgeEtag) == 0 {
+			if isRefreshRequredError(err) {
 				purgeEtag = rootValue.etag
-				goto start // TODO cleaner way to handle the retry?
+				return 404, httpHeaders, []byte("archive not found"), rootValue.etag
 			}
 			// possible we have the header/directory cached but the archive has disappeared
 			if err != nil {
 				server.logger.Printf("failed to fetch tile %s %d-%d", name, entry.Offset, entry.Length)
-				return 404, httpHeaders, []byte("archive not found")
+				return 404, httpHeaders, []byte("archive not found"), ""
 			}
 			defer r.Close()
 			b, err := io.ReadAll(r)
 			if err != nil {
-				return 500, httpHeaders, []byte("I/O error")
+				return 500, httpHeaders, []byte("I/O error"), ""
 			}
 			if headerVal, ok := headerContentType(header); ok {
 				httpHeaders["Content-Type"] = headerVal
@@ -388,12 +397,12 @@ start:
 			if headerVal, ok := headerContentEncoding(header.TileCompression); ok {
 				httpHeaders["Content-Encoding"] = headerVal
 			}
-			return 200, httpHeaders, b
+			return 200, httpHeaders, b, ""
 		}
 		dirOffset = header.LeafDirectoryOffset + entry.Offset
 		dirLen = uint64(entry.Length)
 	}
-	return 204, httpHeaders, nil
+	return 204, httpHeaders, nil, ""
 }
 
 func isRefreshRequredError(err error) bool {
