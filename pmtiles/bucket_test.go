@@ -1,10 +1,11 @@
 package pmtiles
 
 import (
-	"github.com/stretchr/testify/assert"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNormalizeLocalFile(t *testing.T) {

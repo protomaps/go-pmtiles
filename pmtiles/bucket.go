@@ -1,7 +1,10 @@
 package pmtiles
 
 import (
+	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -30,6 +33,37 @@ type RefreshRequiredError struct {
 
 func (m *RefreshRequiredError) Error() string {
 	return fmt.Sprintf("HTTP error indicates file has changed: %d", m.StatusCode)
+}
+
+type mockBucket struct {
+	items map[string][]byte
+}
+
+func (m mockBucket) Close() error {
+	return nil
+}
+
+func (m mockBucket) NewRangeReader(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error) {
+	body, _, err := m.NewRangeReaderEtag(ctx, key, offset, length, "")
+	return body, err
+
+}
+func (m mockBucket) NewRangeReaderEtag(ctx context.Context, key string, offset int64, length int64, etag string) (io.ReadCloser, string, error) {
+	bs, ok := m.items[key]
+	if !ok {
+		return nil, "", fmt.Errorf("Not found %s", key)
+	}
+
+	hash := md5.Sum(bs)
+	resultEtag := hex.EncodeToString(hash[:])
+	if len(etag) > 0 && resultEtag != etag {
+		return nil, "", &RefreshRequiredError{}
+	}
+	if offset+length > int64(len(bs)) {
+		return nil, "", &RefreshRequiredError{416}
+	}
+
+	return io.NopCloser(bytes.NewReader(bs[offset:(offset + length)])), resultEtag, nil
 }
 
 type HTTPBucket struct {
