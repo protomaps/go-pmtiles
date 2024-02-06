@@ -66,8 +66,13 @@ func (m mockBucket) NewRangeReaderEtag(ctx context.Context, key string, offset i
 	return io.NopCloser(bytes.NewReader(bs[offset:(offset + length)])), resultEtag, nil
 }
 
+type HttpClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 type HTTPBucket struct {
 	baseURL string
+	client  HttpClient
 }
 
 func (b HTTPBucket) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
@@ -88,7 +93,7 @@ func (b HTTPBucket) NewRangeReaderEtag(_ context.Context, key string, offset, le
 		req.Header.Set("If-Match", etag)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := b.client.Do(req)
 	if err != nil {
 		return nil, "", err
 	}
@@ -188,7 +193,7 @@ func NormalizeBucketKey(bucket string, prefix string, key string) (string, strin
 
 func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Bucket, error) {
 	if strings.HasPrefix(bucketURL, "http") {
-		bucket := HTTPBucket{bucketURL}
+		bucket := HTTPBucket{bucketURL, http.DefaultClient}
 		return bucket, nil
 	}
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
