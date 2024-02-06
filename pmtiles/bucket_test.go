@@ -105,4 +105,12 @@ func TestHttpBucketRequestRequestEtagFailed(t *testing.T) {
 	_, _, err := bucket.NewRangeReaderEtag(context.Background(), "a/b/c", 0, 3, "etag1")
 	assert.Equal(t, "etag1", mock.request.Header.Get("If-Match"))
 	assert.True(t, isRefreshRequredError(err))
+
+	mock.response.StatusCode = 416
+	_, _, err = bucket.NewRangeReaderEtag(context.Background(), "a/b/c", 0, 3, "etag1")
+	assert.True(t, isRefreshRequredError(err))
+
+	mock.response.StatusCode = 404
+	_, _, err = bucket.NewRangeReaderEtag(context.Background(), "a/b/c", 0, 3, "etag1")
+	assert.False(t, isRefreshRequredError(err))
 }
