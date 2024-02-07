@@ -367,7 +367,7 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 		server.reqs <- dirReq
 		dirValue := <-dirReq.value
 		if dirValue.badEtag {
-			return 404, httpHeaders, []byte("archive not found"), rootValue.etag
+			return 500, httpHeaders, []byte("I/O Error"), rootValue.etag
 		}
 		directory := dirValue.directory
 		entry, ok := findTile(directory, tileID)
@@ -378,8 +378,7 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 		if entry.RunLength > 0 {
 			r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), rootValue.etag)
 			if isRefreshRequredError(err) {
-				purgeEtag = rootValue.etag
-				return 404, httpHeaders, []byte("archive not found"), rootValue.etag
+				return 500, httpHeaders, []byte("I/O Error"), rootValue.etag
 			}
 			// possible we have the header/directory cached but the archive has disappeared
 			if err != nil {
