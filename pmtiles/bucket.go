@@ -27,6 +27,7 @@ type Bucket interface {
 	NewRangeReaderEtag(ctx context.Context, key string, offset int64, length int64, etag string) (io.ReadCloser, string, error)
 }
 
+// RefreshRequiredError is an error that indicates the etag has chanced on the remote file
 type RefreshRequiredError struct {
 	StatusCode int
 }
@@ -48,7 +49,7 @@ func (m mockBucket) NewRangeReader(ctx context.Context, key string, offset int64
 	return body, err
 
 }
-func (m mockBucket) NewRangeReaderEtag(ctx context.Context, key string, offset int64, length int64, etag string) (io.ReadCloser, string, error) {
+func (m mockBucket) NewRangeReaderEtag(_ context.Context, key string, offset int64, length int64, etag string) (io.ReadCloser, string, error) {
 	bs, ok := m.items[key]
 	if !ok {
 		return nil, "", fmt.Errorf("Not found %s", key)
@@ -66,13 +67,14 @@ func (m mockBucket) NewRangeReaderEtag(ctx context.Context, key string, offset i
 	return io.NopCloser(bytes.NewReader(bs[offset:(offset + length)])), resultEtag, nil
 }
 
-type HttpClient interface {
+// HTTPClient is an interface that lets you swap out the default client with a mock one in tests
+type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
 type HTTPBucket struct {
 	baseURL string
-	client  HttpClient
+	client  HTTPClient
 }
 
 func (b HTTPBucket) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
@@ -123,8 +125,8 @@ type BucketAdapter struct {
 	Bucket *blob.Bucket
 }
 
-func (b BucketAdapter) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
-	body, _, err := b.NewRangeReaderEtag(ctx, key, offset, length, "")
+func (ba BucketAdapter) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+	body, _, err := ba.NewRangeReaderEtag(ctx, key, offset, length, "")
 	return body, err
 }
 

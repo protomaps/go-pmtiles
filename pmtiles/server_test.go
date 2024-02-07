@@ -46,19 +46,19 @@ func TestRegex(t *testing.T) {
 }
 
 func fakeArchive(t *testing.T, header HeaderV3, metadata map[string]interface{}, tiles map[Zxy][]byte, leaves bool) []byte {
-	byTileId := make(map[uint64][]byte)
+	byTileID := make(map[uint64][]byte)
 	keys := make([]uint64, 0, len(tiles))
 	for zxy, bytes := range tiles {
 		header.MaxZoom = max(header.MaxZoom, zxy.Z)
 		id := ZxyToID(zxy.Z, zxy.X, zxy.Y)
-		byTileId[id] = bytes
+		byTileID[id] = bytes
 		keys = append(keys, id)
 	}
 	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 	resolver := newResolver(false, false)
 	tileDataBytes := make([]byte, 0)
 	for _, id := range keys {
-		tileBytes := byTileId[id]
+		tileBytes := byTileID[id]
 		resolver.AddTileIsNew(id, tileBytes)
 		tileDataBytes = append(tileDataBytes, tileBytes...)
 	}
