@@ -80,10 +80,10 @@ func (b HTTPBucket) NewRangeReader(ctx context.Context, key string, offset, leng
 	return body, err
 }
 
-func (b HTTPBucket) NewRangeReaderEtag(_ context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, error) {
+func (b HTTPBucket) NewRangeReaderEtag(ctx context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, error) {
 	reqURL := b.baseURL + "/" + key
 
-	req, err := http.NewRequest("GET", reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return nil, "", err
 	}
