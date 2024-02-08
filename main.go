@@ -146,7 +146,7 @@ func main() {
 			}
 			w.WriteHeader(statusCode)
 			w.Write(body)
-			logger.Printf("served %s in %s", r.URL.Path, time.Since(start))
+			logger.Printf("served %d %s in %s", statusCode, r.URL.Path, time.Since(start))
 		})
 
 		logger.Printf("Serving %s %s on port %d and interface %s with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Interface, cli.Serve.Cors)
