@@ -135,7 +135,7 @@ func TestFileBucketReplace(t *testing.T) {
 	assert.Equal(t, []byte{2}, data)
 
 	// change file, verify etag changes
-	assert.Nil(t, os.WriteFile(dir+"/archive.pmtiles", []byte{4, 5, 6}, 0666))
+	assert.Nil(t, os.WriteFile(dir+"/archive.pmtiles", []byte{4, 5, 6, 7}, 0666))
 	reader, etag2, err := bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, "")
 	assert.Nil(t, err)
 	data, err = io.ReadAll(reader)
@@ -151,7 +151,7 @@ func TestFileBucketReplace(t *testing.T) {
 func TestFileBucketRename(t *testing.T) {
 	dir := t.TempDir()
 	assert.Nil(t, os.WriteFile(dir+"/archive.pmtiles", []byte{1, 2, 3}, 0666))
-	assert.Nil(t, os.WriteFile(dir+"/archive2.pmtiles", []byte{4, 5, 6}, 0666))
+	assert.Nil(t, os.WriteFile(dir+"/archive2.pmtiles", []byte{4, 5, 6, 7}, 0666))
 
 	bucketURL, _, err := NormalizeBucketKey("", dir, "")
 	assert.Nil(t, err)
