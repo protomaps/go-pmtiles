@@ -2,6 +2,7 @@ package pmtiles
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	_ "gocloud.dev/blob/fileblob"
 )
 
 func TestNormalizeLocalFile(t *testing.T) {
@@ -113,4 +115,35 @@ func TestHttpBucketRequestRequestEtagFailed(t *testing.T) {
 	mock.response.StatusCode = 404
 	_, _, err = bucket.NewRangeReaderEtag(context.Background(), "a/b/c", 0, 3, "etag1")
 	assert.False(t, isRefreshRequredError(err))
+}
+
+func TestFileBucket(t *testing.T) {
+	dir := t.TempDir()
+	bucketURL, _, err := NormalizeBucketKey("", dir, "")
+	assert.Nil(t, err)
+	fmt.Println(bucketURL)
+	bucket, err := OpenBucket(context.Background(), bucketURL, "")
+	assert.Nil(t, err)
+	assert.NotNil(t, bucket)
+	assert.Nil(t, os.WriteFile(dir+"/archive.pmtiles", []byte{1, 2, 3}, 0666))
+
+	// first read from file
+	reader, etag1, err := bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, "")
+	assert.Nil(t, err)
+	data, err := io.ReadAll(reader)
+	assert.Nil(t, err)
+	assert.Equal(t, []byte{2}, data)
+
+	// change file, verify etag changes
+	assert.Nil(t, os.WriteFile(dir+"/archive.pmtiles", []byte{4, 5, 6}, 0666))
+	reader, etag2, err := bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, "")
+	assert.Nil(t, err)
+	data, err = io.ReadAll(reader)
+	assert.Nil(t, err)
+	assert.NotEqual(t, etag1, etag2)
+	assert.Equal(t, []byte{5}, data)
+
+	// and requesting with old etag fails with refresh required error
+	_, _, err = bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, etag1)
+	assert.True(t, isRefreshRequredError(err))
 }

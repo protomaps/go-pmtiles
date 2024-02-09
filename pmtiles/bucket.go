@@ -67,6 +67,46 @@ func (m mockBucket) NewRangeReaderEtag(_ context.Context, key string, offset int
 	return io.NopCloser(bytes.NewReader(bs[offset:(offset + length)])), resultEtag, nil
 }
 
+// FileBucket is a bucket backed by a directory on disk
+type FileBucket struct {
+	path string
+}
+
+func (b FileBucket) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+	body, _, err := b.NewRangeReaderEtag(ctx, key, offset, length, "")
+	return body, err
+}
+
+func (b FileBucket) NewRangeReaderEtag(ctx context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, error) {
+	name := b.path + string(os.PathSeparator) + key
+	file, err := os.Open(name)
+	defer file.Close()
+	if err != nil {
+		return nil, "", err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return nil, "", err
+	}
+	newEtag := fmt.Sprintf("%d %d", info.ModTime().UnixNano(), info.Size())
+	if len(etag) > 0 && etag != newEtag {
+		return nil, "", &RefreshRequiredError{}
+	}
+	result := make([]byte, length)
+	read, err := file.ReadAt(result, offset)
+	if err != nil {
+		return nil, "", err
+	}
+	if read != int(length) {
+		return nil, "", fmt.Errorf("Expected to read %d bytes but only read %d", length, read)
+	}
+	return io.NopCloser(bytes.NewReader(result)), newEtag, nil
+}
+
+func (b FileBucket) Close() error {
+	return nil
+}
+
 // HTTPClient is an interface that lets you swap out the default client with a mock one in tests
 type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
@@ -196,6 +236,14 @@ func NormalizeBucketKey(bucket string, prefix string, key string) (string, strin
 func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Bucket, error) {
 	if strings.HasPrefix(bucketURL, "http") {
 		bucket := HTTPBucket{bucketURL, http.DefaultClient}
+		return bucket, nil
+	}
+	if strings.HasPrefix(bucketURL, "file") {
+		url, err := url.ParseRequestURI(bucketURL)
+		if err != nil {
+			return nil, err
+		}
+		bucket := FileBucket{url.Path}
 		return bucket, nil
 	}
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
