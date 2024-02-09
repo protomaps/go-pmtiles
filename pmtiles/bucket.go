@@ -70,7 +70,6 @@ func (m mockBucket) NewRangeReaderEtag(_ context.Context, key string, offset int
 // FileBucket is a bucket backed by a directory on disk
 type FileBucket struct {
 	path string
-	file *os.File
 }
 
 func (b FileBucket) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
@@ -246,7 +245,7 @@ func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Buc
 		if err != nil {
 			return nil, err
 		}
-		bucket := FileBucket{url.Path, nil}
+		bucket := FileBucket{url.Path}
 		return bucket, nil
 	}
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
