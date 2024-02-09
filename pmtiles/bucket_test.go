@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -118,14 +119,14 @@ func TestHttpBucketRequestRequestEtagFailed(t *testing.T) {
 }
 
 func TestFileBucketReplace(t *testing.T) {
-	dir := t.TempDir() + string(os.PathSeparator)
-	bucketURL, _, err := NormalizeBucketKey("", dir, "")
+	tmp := t.TempDir()
+	bucketURL, _, err := NormalizeBucketKey("", tmp, "")
 	assert.Nil(t, err)
 	fmt.Println(bucketURL)
 	bucket, err := OpenBucket(context.Background(), bucketURL, "")
 	assert.Nil(t, err)
 	assert.NotNil(t, bucket)
-	assert.Nil(t, os.WriteFile(dir+"archive.pmtiles", []byte{1, 2, 3}, 0666))
+	assert.Nil(t, os.WriteFile(filepath.Join(tmp, "archive.pmtiles"), []byte{1, 2, 3}, 0666))
 
 	// first read from file
 	reader, etag1, err := bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, "")
@@ -135,7 +136,7 @@ func TestFileBucketReplace(t *testing.T) {
 	assert.Equal(t, []byte{2}, data)
 
 	// change file, verify etag changes
-	assert.Nil(t, os.WriteFile(dir+"archive.pmtiles", []byte{4, 5, 6, 7}, 0666))
+	assert.Nil(t, os.WriteFile(filepath.Join(tmp, "archive.pmtiles"), []byte{4, 5, 6, 7}, 0666))
 	reader, etag2, err := bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, "")
 	assert.Nil(t, err)
 	data, err = io.ReadAll(reader)
@@ -149,17 +150,17 @@ func TestFileBucketReplace(t *testing.T) {
 }
 
 func TestFileBucketRename(t *testing.T) {
-	dir := t.TempDir() + string(os.PathSeparator)
-	assert.Nil(t, os.WriteFile(dir+"archive.pmtiles", []byte{1, 2, 3}, 0666))
-	assert.Nil(t, os.WriteFile(dir+"archive2.pmtiles", []byte{4, 5, 6, 7}, 0666))
+	tmp := t.TempDir()
+	assert.Nil(t, os.WriteFile(filepath.Join(tmp, "archive.pmtiles"), []byte{1, 2, 3}, 0666))
+	assert.Nil(t, os.WriteFile(filepath.Join(tmp, "archive2.pmtiles"), []byte{4, 5, 6, 7}, 0666))
 
-	bucketURL, _, err := NormalizeBucketKey("", dir, "")
+	bucketURL, _, err := NormalizeBucketKey("", tmp, "")
 	assert.Nil(t, err)
 	fmt.Println(bucketURL)
 	bucket, err := OpenBucket(context.Background(), bucketURL, "")
 	assert.Nil(t, err)
 	assert.NotNil(t, bucket)
-	assert.Nil(t, os.WriteFile(dir+"archive.pmtiles", []byte{1, 2, 3}, 0666))
+	assert.Nil(t, os.WriteFile(filepath.Join(tmp, "archive.pmtiles"), []byte{1, 2, 3}, 0666))
 
 	// first read from file
 	reader, etag1, err := bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, "")
@@ -169,8 +170,8 @@ func TestFileBucketRename(t *testing.T) {
 	assert.Equal(t, []byte{2}, data)
 
 	// change file, verify etag changes
-	os.Rename(dir+"archive.pmtiles", dir+"archive3.pmtiles")
-	os.Rename(dir+"archive2.pmtiles", dir+"archive.pmtiles")
+	os.Rename(filepath.Join(tmp, "archive.pmtiles"), filepath.Join(tmp, "archive3.pmtiles"))
+	os.Rename(filepath.Join(tmp, "archive2.pmtiles"), filepath.Join(tmp, "archive.pmtiles"))
 	reader, etag2, err := bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, "")
 	assert.Nil(t, err)
 	data, err = io.ReadAll(reader)
