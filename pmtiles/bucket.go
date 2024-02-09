@@ -241,11 +241,12 @@ func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Buc
 		return bucket, nil
 	}
 	if strings.HasPrefix(bucketURL, "file") {
-		url, err := url.ParseRequestURI(bucketURL)
-		if err != nil {
-			return nil, err
+		fileprotocol := "file://"
+		if string(os.PathSeparator) != "/" {
+			fileprotocol += "/"
 		}
-		bucket := FileBucket{url.Path}
+		path := strings.Replace(bucketURL, fileprotocol, "", 1)
+		bucket := FileBucket{filepath.FromSlash(path)}
 		return bucket, nil
 	}
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
