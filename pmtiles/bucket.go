@@ -70,6 +70,7 @@ func (m mockBucket) NewRangeReaderEtag(_ context.Context, key string, offset int
 // FileBucket is a bucket backed by a directory on disk
 type FileBucket struct {
 	path string
+	file *os.File
 }
 
 func (b FileBucket) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
@@ -88,7 +89,9 @@ func (b FileBucket) NewRangeReaderEtag(ctx context.Context, key string, offset, 
 	if err != nil {
 		return nil, "", err
 	}
-	newEtag := fmt.Sprintf("%d %d", info.ModTime().UnixNano(), info.Size())
+	modInfo := fmt.Sprintf("%d %d", info.ModTime().UnixNano(), info.Size())
+	hash := md5.Sum([]byte(modInfo))
+	newEtag := fmt.Sprintf(`"%s"`, hex.EncodeToString(hash[:]))
 	if len(etag) > 0 && etag != newEtag {
 		return nil, "", &RefreshRequiredError{}
 	}
@@ -243,7 +246,7 @@ func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Buc
 		if err != nil {
 			return nil, err
 		}
-		bucket := FileBucket{url.Path}
+		bucket := FileBucket{url.Path, nil}
 		return bucket, nil
 	}
 	bucket, err := blob.OpenBucket(ctx, bucketURL)

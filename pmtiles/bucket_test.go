@@ -117,7 +117,7 @@ func TestHttpBucketRequestRequestEtagFailed(t *testing.T) {
 	assert.False(t, isRefreshRequredError(err))
 }
 
-func TestFileBucket(t *testing.T) {
+func TestFileBucketReplace(t *testing.T) {
 	dir := t.TempDir()
 	bucketURL, _, err := NormalizeBucketKey("", dir, "")
 	assert.Nil(t, err)
@@ -136,6 +136,41 @@ func TestFileBucket(t *testing.T) {
 
 	// change file, verify etag changes
 	assert.Nil(t, os.WriteFile(dir+"/archive.pmtiles", []byte{4, 5, 6}, 0666))
+	reader, etag2, err := bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, "")
+	assert.Nil(t, err)
+	data, err = io.ReadAll(reader)
+	assert.Nil(t, err)
+	assert.NotEqual(t, etag1, etag2)
+	assert.Equal(t, []byte{5}, data)
+
+	// and requesting with old etag fails with refresh required error
+	_, _, err = bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, etag1)
+	assert.True(t, isRefreshRequredError(err))
+}
+
+func TestFileBucketRename(t *testing.T) {
+	dir := t.TempDir()
+	assert.Nil(t, os.WriteFile(dir+"/archive.pmtiles", []byte{1, 2, 3}, 0666))
+	assert.Nil(t, os.WriteFile(dir+"/archive2.pmtiles", []byte{4, 5, 6}, 0666))
+
+	bucketURL, _, err := NormalizeBucketKey("", dir, "")
+	assert.Nil(t, err)
+	fmt.Println(bucketURL)
+	bucket, err := OpenBucket(context.Background(), bucketURL, "")
+	assert.Nil(t, err)
+	assert.NotNil(t, bucket)
+	assert.Nil(t, os.WriteFile(dir+"/archive.pmtiles", []byte{1, 2, 3}, 0666))
+
+	// first read from file
+	reader, etag1, err := bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, "")
+	assert.Nil(t, err)
+	data, err := io.ReadAll(reader)
+	assert.Nil(t, err)
+	assert.Equal(t, []byte{2}, data)
+
+	// change file, verify etag changes
+	os.Rename(dir+"/archive.pmtiles", dir+"/archive3.pmtiles")
+	os.Rename(dir+"/archive2.pmtiles", dir+"/archive.pmtiles")
 	reader, etag2, err := bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, "")
 	assert.Nil(t, err)
 	data, err = io.ReadAll(reader)
