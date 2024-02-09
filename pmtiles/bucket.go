@@ -78,7 +78,7 @@ func (b FileBucket) NewRangeReader(ctx context.Context, key string, offset, leng
 }
 
 func (b FileBucket) NewRangeReaderEtag(ctx context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, error) {
-	name := b.path + string(os.PathSeparator) + key
+	name := filepath.Join(b.path, key)
 	file, err := os.Open(name)
 	defer file.Close()
 	if err != nil {
