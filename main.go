@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"net/http"
@@ -88,6 +89,7 @@ var cli struct {
 		CacheSize int    `default:"64" help:"Size of cache in Megabytes."`
 		Bucket    string `help:"Remote bucket"`
 		PublicURL string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles/"`
+		TileEtag  bool   `help:"Generate etag for each tile instead of using archive etag"`
 	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
 
 	Download struct {
@@ -130,7 +132,7 @@ func main() {
 			logger.Fatalf("Failed to show tile, %v", err)
 		}
 	case "serve <path>":
-		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors, cli.Serve.PublicURL)
+		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors, cli.Serve.PublicURL, cli.Serve.TileEtag)
 
 		if err != nil {
 			logger.Fatalf("Failed to create new server, %v", err)
@@ -144,8 +146,18 @@ func main() {
 			for k, v := range headers {
 				w.Header().Set(k, v)
 			}
-			w.WriteHeader(statusCode)
-			w.Write(body)
+			if statusCode == 200 {
+				// handle if-match, if-none-match request headers based on response etag
+				http.ServeContent(
+					w, r,
+					"",                // name used to infer content-type, but we've already set that
+					time.UnixMilli(0), // ignore setting last-modified time and handling if-modified-since headers
+					bytes.NewReader(body),
+				)
+			} else {
+				w.WriteHeader(statusCode)
+				w.Write(body)
+			}
 			logger.Printf("served %d %s in %s", statusCode, r.URL.Path, time.Since(start))
 		})
 

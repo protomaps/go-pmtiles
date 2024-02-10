@@ -77,6 +77,11 @@ func (b FileBucket) NewRangeReader(ctx context.Context, key string, offset, leng
 	return body, err
 }
 
+func generateEtag(data []byte) string {
+	hash := md5.Sum([]byte(data))
+	return fmt.Sprintf(`"%s"`, hex.EncodeToString(hash[:]))
+}
+
 func (b FileBucket) NewRangeReaderEtag(_ context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, error) {
 	name := filepath.Join(b.path, key)
 	file, err := os.Open(name)
@@ -89,8 +94,7 @@ func (b FileBucket) NewRangeReaderEtag(_ context.Context, key string, offset, le
 		return nil, "", err
 	}
 	modInfo := fmt.Sprintf("%d %d", info.ModTime().UnixNano(), info.Size())
-	hash := md5.Sum([]byte(modInfo))
-	newEtag := fmt.Sprintf(`"%s"`, hex.EncodeToString(hash[:]))
+	newEtag := generateEtag([]byte(modInfo))
 	if len(etag) > 0 && etag != newEtag {
 		return nil, "", &RefreshRequiredError{}
 	}

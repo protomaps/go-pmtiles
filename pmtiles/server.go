@@ -51,10 +51,14 @@ type Server struct {
 	cacheSize int
 	cors      string
 	publicURL string
+	tileEtag  bool
 }
 
+var emptyData = make([]byte, 0)
+var emptyEtag = generateEtag(emptyData)
+
 // NewServer creates a new pmtiles HTTP server.
-func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
+func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicURL string, tileEtag bool) (*Server, error) {
 
 	ctx := context.Background()
 
@@ -70,11 +74,11 @@ func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize in
 		return nil, err
 	}
 
-	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicURL)
+	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicURL, tileEtag)
 }
 
 // NewServerWithBucket creates a new HTTP server for a gocloud Bucket.
-func NewServerWithBucket(bucket Bucket, _ string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
+func NewServerWithBucket(bucket Bucket, _ string, logger *log.Logger, cacheSize int, cors string, publicURL string, tileEtag bool) (*Server, error) {
 
 	reqs := make(chan request, 8)
 
@@ -85,6 +89,7 @@ func NewServerWithBucket(bucket Bucket, _ string, logger *log.Logger, cacheSize 
 		cacheSize: cacheSize,
 		cors:      cors,
 		publicURL: publicURL,
+		tileEtag:  tileEtag,
 	}
 
 	return l, nil
@@ -320,6 +325,7 @@ func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string
 	}
 	return status, headers, data
 }
+
 func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string, purgeEtag string) (int, map[string]string, []byte, string) {
 	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag}
 	server.reqs <- rootReq
@@ -389,6 +395,12 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 			b, err := io.ReadAll(r)
 			if err != nil {
 				return 500, httpHeaders, []byte("I/O error"), ""
+			}
+
+			if server.tileEtag {
+				httpHeaders["Etag"] = generateEtag(b)
+			} else {
+				httpHeaders["Etag"] = rootValue.etag
 			}
 			if headerVal, ok := headerContentType(header); ok {
 				httpHeaders["Content-Type"] = headerVal
