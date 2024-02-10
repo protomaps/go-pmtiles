@@ -1,6 +1,7 @@
 package caddy
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -72,8 +73,12 @@ func (m Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddy
 	for k, v := range headers {
 		w.Header().Set(k, v)
 	}
-	w.WriteHeader(statusCode)
-	w.Write(body)
+	if statusCode == 200 {
+		http.ServeContent(w, r, "", time.UnixMilli(0), bytes.NewReader(body))
+	} else {
+		w.WriteHeader(statusCode)
+		w.Write(body)
+	}
 	m.logger.Info("response", zap.Int("status", statusCode), zap.String("path", r.URL.Path), zap.Duration("duration", time.Since(start)))
 
 	return next.ServeHTTP(w, r)
