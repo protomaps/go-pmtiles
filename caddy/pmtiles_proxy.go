@@ -2,6 +2,12 @@ package caddy
 
 import (
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"strconv"
+	"time"
+
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
@@ -12,11 +18,6 @@ import (
 	_ "gocloud.dev/blob/fileblob"
 	_ "gocloud.dev/blob/gcsblob"
 	_ "gocloud.dev/blob/s3blob"
-	"io"
-	"log"
-	"net/http"
-	"strconv"
-	"time"
 )
 
 func init() {
@@ -29,6 +30,7 @@ type Middleware struct {
 	Bucket    string `json:"bucket"`
 	CacheSize int    `json:"cache_size"`
 	PublicURL string `json:"public_url"`
+	TileEtag  bool   `json:"tile_etag"`
 	logger    *zap.Logger
 	server    *pmtiles.Server
 }
@@ -45,7 +47,7 @@ func (m *Middleware) Provision(ctx caddy.Context) error {
 	m.logger = ctx.Logger()
 	logger := log.New(io.Discard, "", log.Ldate)
 	prefix := "." // serve only the root of the bucket for now, at the root route of Caddyfile
-	server, err := pmtiles.NewServer(m.Bucket, prefix, logger, m.CacheSize, "", m.PublicURL)
+	server, err := pmtiles.NewServer(m.Bucket, prefix, logger, m.CacheSize, "", m.PublicURL, m.TileEtag)
 	if err != nil {
 		return err
 	}
