@@ -106,6 +106,12 @@ func (m *Middleware) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				if !d.Args(&m.PublicURL) {
 					return d.ArgErr()
 				}
+			case "tile_etag":
+				var tileEtag string
+				if !d.Args(&tileEtag) {
+					return d.ArgErr()
+				}
+				m.TileEtag = tileEtag == "true"
 			}
 		}
 	}
