@@ -56,9 +56,6 @@ type Server struct {
 	tileEtag  bool
 }
 
-var emptyData = make([]byte, 0)
-var emptyEtag = generateEtag(emptyData)
-
 // NewServer creates a new pmtiles HTTP server.
 func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicURL string, tileEtag bool) (*Server, error) {
 

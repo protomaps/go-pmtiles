@@ -3,7 +3,7 @@ package pmtiles
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -17,6 +17,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/cespare/xxhash/v2"
 	"gocloud.dev/blob"
 )
 
@@ -55,8 +56,7 @@ func (m mockBucket) NewRangeReaderEtag(_ context.Context, key string, offset int
 		return nil, "", fmt.Errorf("Not found %s", key)
 	}
 
-	hash := md5.Sum(bs)
-	resultEtag := hex.EncodeToString(hash[:])
+	resultEtag := generateEtag(bs)
 	if len(etag) > 0 && resultEtag != etag {
 		return nil, "", &RefreshRequiredError{}
 	}
@@ -77,9 +77,29 @@ func (b FileBucket) NewRangeReader(ctx context.Context, key string, offset, leng
 	return body, err
 }
 
+func uintToBytes(n uint64) []byte {
+	bs := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bs, n)
+	return bs
+}
+
+func hasherToEtag(hasher *xxhash.Digest) string {
+	sum := uintToBytes(hasher.Sum64())
+	return fmt.Sprintf(`"%s"`, hex.EncodeToString(sum))
+}
+
 func generateEtag(data []byte) string {
-	hash := md5.Sum([]byte(data))
-	return fmt.Sprintf(`"%s"`, hex.EncodeToString(hash[:]))
+	hasher := xxhash.New()
+	hasher.Write(data)
+	return hasherToEtag(hasher)
+}
+
+func generateEtagFromInts(ns ...int64) string {
+	hasher := xxhash.New()
+	for _, n := range ns {
+		hasher.Write(uintToBytes(uint64(n)))
+	}
+	return hasherToEtag(hasher)
 }
 
 func (b FileBucket) NewRangeReaderEtag(_ context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, error) {
@@ -93,8 +113,7 @@ func (b FileBucket) NewRangeReaderEtag(_ context.Context, key string, offset, le
 	if err != nil {
 		return nil, "", err
 	}
-	modInfo := fmt.Sprintf("%d %d", info.ModTime().UnixNano(), info.Size())
-	newEtag := generateEtag([]byte(modInfo))
+	newEtag := generateEtagFromInts(info.ModTime().UnixNano(), info.Size())
 	if len(etag) > 0 && etag != newEtag {
 		return nil, "", &RefreshRequiredError{}
 	}
