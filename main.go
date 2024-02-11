@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"log"
 	"net/http"
@@ -142,22 +141,7 @@ func main() {
 
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			statusCode, headers, body := server.Get(r.Context(), r.URL.Path)
-			for k, v := range headers {
-				w.Header().Set(k, v)
-			}
-			if statusCode == 200 {
-				// handle if-match, if-none-match request headers based on response etag
-				http.ServeContent(
-					w, r,
-					"",                // name used to infer content-type, but we've already set that
-					time.UnixMilli(0), // ignore setting last-modified time and handling if-modified-since headers
-					bytes.NewReader(body),
-				)
-			} else {
-				w.WriteHeader(statusCode)
-				w.Write(body)
-			}
+			statusCode := server.ServeHTTP(w, r)
 			logger.Printf("served %d %s in %s", statusCode, r.URL.Path, time.Since(start))
 		})
 

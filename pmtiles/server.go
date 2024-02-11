@@ -9,8 +9,10 @@ import (
 	"errors"
 	"io"
 	"log"
+	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -487,4 +489,25 @@ func (server *Server) Get(ctx context.Context, path string) (int, map[string]str
 	}
 
 	return 404, httpHeaders, []byte("Path not found")
+}
+
+// Serve an HTTP response from the archive
+func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) int {
+	statusCode, headers, body := server.Get(r.Context(), r.URL.Path)
+	for k, v := range headers {
+		w.Header().Set(k, v)
+	}
+	if statusCode == 200 {
+		// handle if-match, if-none-match request headers based on response etag
+		http.ServeContent(
+			w, r,
+			"",                // name used to infer content-type, but we've already set that
+			time.UnixMilli(0), // ignore setting last-modified time and handling if-modified-since headers
+			bytes.NewReader(body),
+		)
+	} else {
+		w.WriteHeader(statusCode)
+		w.Write(body)
+	}
+	return statusCode
 }
