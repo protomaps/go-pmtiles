@@ -53,11 +53,10 @@ type Server struct {
 	cacheSize int
 	cors      string
 	publicURL string
-	tileEtag  bool
 }
 
 // NewServer creates a new pmtiles HTTP server.
-func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicURL string, tileEtag bool) (*Server, error) {
+func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
 
 	ctx := context.Background()
 
@@ -73,11 +72,11 @@ func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize in
 		return nil, err
 	}
 
-	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicURL, tileEtag)
+	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicURL)
 }
 
 // NewServerWithBucket creates a new HTTP server for a gocloud Bucket.
-func NewServerWithBucket(bucket Bucket, _ string, logger *log.Logger, cacheSize int, cors string, publicURL string, tileEtag bool) (*Server, error) {
+func NewServerWithBucket(bucket Bucket, _ string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
 
 	reqs := make(chan request, 8)
 
@@ -88,7 +87,6 @@ func NewServerWithBucket(bucket Bucket, _ string, logger *log.Logger, cacheSize 
 		cacheSize: cacheSize,
 		cors:      cors,
 		publicURL: publicURL,
-		tileEtag:  tileEtag,
 	}
 
 	return l, nil
@@ -233,30 +231,30 @@ func (server *Server) Start() {
 	}()
 }
 
-func (server *Server) getHeaderMetadata(ctx context.Context, name string) (bool, HeaderV3, []byte, string, error) {
-	found, header, metadataBytes, purgeEtag, newEtag, err := server.getHeaderMetadataAttempt(ctx, name, "")
+func (server *Server) getHeaderMetadata(ctx context.Context, name string) (bool, HeaderV3, []byte, error) {
+	found, header, metadataBytes, purgeEtag, err := server.getHeaderMetadataAttempt(ctx, name, "")
 	if len(purgeEtag) > 0 {
-		found, header, metadataBytes, _, newEtag, err = server.getHeaderMetadataAttempt(ctx, name, purgeEtag)
+		found, header, metadataBytes, _, err = server.getHeaderMetadataAttempt(ctx, name, purgeEtag)
 	}
-	return found, header, metadataBytes, newEtag, err
+	return found, header, metadataBytes, err
 }
 
-func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeEtag string) (bool, HeaderV3, []byte, string, string, error) {
+func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeEtag string) (bool, HeaderV3, []byte, string, error) {
 	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag}
 	server.reqs <- rootReq
 	rootValue := <-rootReq.value
 	header := rootValue.header
 
 	if !rootValue.ok {
-		return false, HeaderV3{}, nil, "", rootValue.etag, nil
+		return false, HeaderV3{}, nil, "", nil
 	}
 
 	r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), rootValue.etag)
 	if isRefreshRequredError(err) {
-		return false, HeaderV3{}, nil, rootValue.etag, rootValue.etag, nil
+		return false, HeaderV3{}, nil, rootValue.etag, nil
 	}
 	if err != nil {
-		return false, HeaderV3{}, nil, "", rootValue.etag, nil
+		return false, HeaderV3{}, nil, "", nil
 	}
 	defer r.Close()
 
@@ -268,14 +266,14 @@ func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeE
 	} else if header.InternalCompression == NoCompression {
 		metadataBytes, err = io.ReadAll(r)
 	} else {
-		return true, HeaderV3{}, nil, "", "", errors.New("unknown compression")
+		return true, HeaderV3{}, nil, "", errors.New("unknown compression")
 	}
 
-	return true, header, metadataBytes, "", rootValue.etag, nil
+	return true, header, metadataBytes, "", nil
 }
 
 func (server *Server) getTileJSON(ctx context.Context, httpHeaders map[string]string, name string) (int, map[string]string, []byte) {
-	found, header, metadataBytes, etag, err := server.getHeaderMetadata(ctx, name)
+	found, header, metadataBytes, err := server.getHeaderMetadata(ctx, name)
 
 	if err != nil {
 		return 500, httpHeaders, []byte("I/O Error")
@@ -298,18 +296,13 @@ func (server *Server) getTileJSON(ctx context.Context, httpHeaders map[string]st
 	}
 
 	httpHeaders["Content-Type"] = "application/json"
-
-	if server.tileEtag {
-		httpHeaders["Etag"] = etag
-	} else {
-		httpHeaders["Etag"] = generateEtag(tilejsonBytes)
-	}
+	httpHeaders["Etag"] = generateEtag(tilejsonBytes)
 
 	return 200, httpHeaders, tilejsonBytes
 }
 
 func (server *Server) getMetadata(ctx context.Context, httpHeaders map[string]string, name string) (int, map[string]string, []byte) {
-	found, _, metadataBytes, etag, err := server.getHeaderMetadata(ctx, name)
+	found, _, metadataBytes, err := server.getHeaderMetadata(ctx, name)
 
 	if err != nil {
 		return 500, httpHeaders, []byte("I/O Error")
@@ -320,11 +313,7 @@ func (server *Server) getMetadata(ctx context.Context, httpHeaders map[string]st
 	}
 
 	httpHeaders["Content-Type"] = "application/json"
-	if server.tileEtag {
-		httpHeaders["Etag"] = etag
-	} else {
-		httpHeaders["Etag"] = generateEtag(metadataBytes)
-	}
+	httpHeaders["Etag"] = generateEtag(metadataBytes)
 	return 200, httpHeaders, metadataBytes
 }
 func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
@@ -407,11 +396,7 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 				return 500, httpHeaders, []byte("I/O error"), ""
 			}
 
-			if server.tileEtag {
-				httpHeaders["Etag"] = generateEtag(b)
-			} else {
-				httpHeaders["Etag"] = rootValue.etag
-			}
+			httpHeaders["Etag"] = generateEtag(b)
 			if headerVal, ok := headerContentType(header); ok {
 				httpHeaders["Content-Type"] = headerVal
 			}

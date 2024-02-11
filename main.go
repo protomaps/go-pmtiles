@@ -88,7 +88,6 @@ var cli struct {
 		CacheSize int    `default:"64" help:"Size of cache in Megabytes."`
 		Bucket    string `help:"Remote bucket"`
 		PublicURL string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles/"`
-		TileEtag  bool   `help:"Generate etag for each tile instead of using archive etag"`
 	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
 
 	Download struct {
@@ -131,7 +130,7 @@ func main() {
 			logger.Fatalf("Failed to show tile, %v", err)
 		}
 	case "serve <path>":
-		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors, cli.Serve.PublicURL, cli.Serve.TileEtag)
+		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors, cli.Serve.PublicURL)
 
 		if err != nil {
 			logger.Fatalf("Failed to create new server, %v", err)

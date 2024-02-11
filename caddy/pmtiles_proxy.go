@@ -30,7 +30,6 @@ type Middleware struct {
 	Bucket    string `json:"bucket"`
 	CacheSize int    `json:"cache_size"`
 	PublicURL string `json:"public_url"`
-	TileEtag  bool   `json:"tile_etag"`
 	logger    *zap.Logger
 	server    *pmtiles.Server
 }
@@ -47,7 +46,7 @@ func (m *Middleware) Provision(ctx caddy.Context) error {
 	m.logger = ctx.Logger()
 	logger := log.New(io.Discard, "", log.Ldate)
 	prefix := "." // serve only the root of the bucket for now, at the root route of Caddyfile
-	server, err := pmtiles.NewServer(m.Bucket, prefix, logger, m.CacheSize, "", m.PublicURL, m.TileEtag)
+	server, err := pmtiles.NewServer(m.Bucket, prefix, logger, m.CacheSize, "", m.PublicURL)
 	if err != nil {
 		return err
 	}
@@ -96,12 +95,6 @@ func (m *Middleware) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 				if !d.Args(&m.PublicURL) {
 					return d.ArgErr()
 				}
-			case "tile_etag":
-				var tileEtag string
-				if !d.Args(&tileEtag) {
-					return d.ArgErr()
-				}
-				m.TileEtag = tileEtag == "true"
 			}
 		}
 	}

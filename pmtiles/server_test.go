@@ -108,12 +108,8 @@ func fakeArchive(t *testing.T, header HeaderV3, metadata map[string]interface{},
 }
 
 func newServer(t *testing.T) (mockBucket, *Server) {
-	return newServerWithTileEtags(t, false)
-}
-
-func newServerWithTileEtags(t *testing.T, tileEtags bool) (mockBucket, *Server) {
 	bucket := mockBucket{make(map[string][]byte)}
-	server, err := NewServerWithBucket(bucket, "", log.Default(), 10, "", "tiles.example.com", tileEtags)
+	server, err := NewServerWithBucket(bucket, "", log.Default(), 10, "", "tiles.example.com")
 	assert.Nil(t, err)
 	server.Start()
 	return bucket, server
@@ -375,45 +371,8 @@ func TestInvalidateCacheOnMetadataRequest(t *testing.T) {
 	}`, string(data))
 }
 
-func TestEtagResponsesFromArchive(t *testing.T) {
-	mockBucket, server := newServerWithTileEtags(t, false)
-	header := HeaderV3{
-		TileType: Mvt,
-	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
-		{0, 0, 0}: {0, 1, 2, 3},
-		{4, 1, 2}: {1, 2, 3},
-	}, false)
-
-	statusCode, headers000v1, _ := server.Get(context.Background(), "/archive/0/0/0.mvt")
-	assert.Equal(t, 200, statusCode)
-	statusCode, headers412v1, _ := server.Get(context.Background(), "/archive/4/1/2.mvt")
-	assert.Equal(t, 200, statusCode)
-	statusCode, headers311v1, _ := server.Get(context.Background(), "/archive/3/1/1.mvt")
-	assert.Equal(t, 204, statusCode)
-
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
-		{0, 0, 0}: {0, 1, 2, 3},
-		{4, 1, 2}: {1, 2, 3, 4}, // different
-	}, false)
-
-	statusCode, headers000v2, _ := server.Get(context.Background(), "/archive/0/0/0.mvt")
-	assert.Equal(t, 200, statusCode)
-	statusCode, headers412v2, _ := server.Get(context.Background(), "/archive/4/1/2.mvt")
-	assert.Equal(t, 200, statusCode)
-	statusCode, headers311v2, _ := server.Get(context.Background(), "/archive/3/1/1.mvt")
-	assert.Equal(t, 204, statusCode)
-
-	assert.Equal(t, headers000v1["Etag"], headers412v1["Etag"])
-	assert.NotEqual(t, headers000v1["Etag"], headers000v2["Etag"])
-	assert.Equal(t, headers000v2["Etag"], headers412v2["Etag"])
-
-	assert.Equal(t, "", headers311v1["Etag"])
-	assert.Equal(t, "", headers311v2["Etag"])
-}
-
 func TestEtagResponsesFromTile(t *testing.T) {
-	mockBucket, server := newServerWithTileEtags(t, true)
+	mockBucket, server := newServer(t)
 	header := HeaderV3{
 		TileType: Mvt,
 	}
