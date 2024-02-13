@@ -401,16 +401,16 @@ func TestEtagResponsesFromTile(t *testing.T) {
 	assert.Equal(t, 204, statusCode)
 
 	// 204's have no etag
-	assert.Equal(t, "", headers311v1["Etag"])
-	assert.Equal(t, "", headers311v2["Etag"])
+	assert.Equal(t, "", headers311v1["ETag"])
+	assert.Equal(t, "", headers311v2["ETag"])
 
 	// 000 and 311 didn't change
-	assert.Equal(t, headers000v1["Etag"], headers000v2["Etag"])
+	assert.Equal(t, headers000v1["ETag"], headers000v2["ETag"])
 
 	// 412 did change
-	assert.NotEqual(t, headers412v1["Etag"], headers412v2["Etag"])
+	assert.NotEqual(t, headers412v1["ETag"], headers412v2["ETag"])
 
 	// all are different
-	assert.NotEqual(t, headers000v1["Etag"], headers311v1["Etag"])
-	assert.NotEqual(t, headers000v1["Etag"], headers412v1["Etag"])
+	assert.NotEqual(t, headers000v1["ETag"], headers311v1["ETag"])
+	assert.NotEqual(t, headers000v1["ETag"], headers412v1["ETag"])
 }
