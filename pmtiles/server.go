@@ -296,7 +296,7 @@ func (server *Server) getTileJSON(ctx context.Context, httpHeaders map[string]st
 	}
 
 	httpHeaders["Content-Type"] = "application/json"
-	httpHeaders["Etag"] = generateEtag(tilejsonBytes)
+	httpHeaders["ETag"] = generateEtag(tilejsonBytes)
 
 	return 200, httpHeaders, tilejsonBytes
 }
@@ -313,7 +313,7 @@ func (server *Server) getMetadata(ctx context.Context, httpHeaders map[string]st
 	}
 
 	httpHeaders["Content-Type"] = "application/json"
-	httpHeaders["Etag"] = generateEtag(metadataBytes)
+	httpHeaders["ETag"] = generateEtag(metadataBytes)
 	return 200, httpHeaders, metadataBytes
 }
 func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
@@ -396,7 +396,7 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 				return 500, httpHeaders, []byte("I/O error"), ""
 			}
 
-			httpHeaders["Etag"] = generateEtag(b)
+			httpHeaders["ETag"] = generateEtag(b)
 			if headerVal, ok := headerContentType(header); ok {
 				httpHeaders["Content-Type"] = headerVal
 			}
