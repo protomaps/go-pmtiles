@@ -140,12 +140,7 @@ func main() {
 
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			statusCode, headers, body := server.Get(r.Context(), r.URL.Path)
-			for k, v := range headers {
-				w.Header().Set(k, v)
-			}
-			w.WriteHeader(statusCode)
-			w.Write(body)
+			statusCode := server.ServeHTTP(w, r)
 			logger.Printf("served %d %s in %s", statusCode, r.URL.Path, time.Since(start))
 		})
 

@@ -7,6 +7,7 @@ require (
 	github.com/alecthomas/kong v0.8.0
 	github.com/aws/aws-sdk-go v1.45.12
 	github.com/caddyserver/caddy/v2 v2.7.5
+	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/paulmach/orb v0.10.0
 	github.com/prometheus/client_golang v1.18.0
@@ -62,7 +63,6 @@ require (
 	github.com/bits-and-blooms/bitset v1.2.0 // indirect
 	github.com/caddyserver/certmagic v0.19.2 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
-	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/chzyer/readline v1.5.1 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect

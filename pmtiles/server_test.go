@@ -370,3 +370,47 @@ func TestInvalidateCacheOnMetadataRequest(t *testing.T) {
 		"meta": "data2"
 	}`, string(data))
 }
+
+func TestEtagResponsesFromTile(t *testing.T) {
+	mockBucket, server := newServer(t)
+	header := HeaderV3{
+		TileType: Mvt,
+	}
+	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1, 2, 3},
+		{4, 1, 2}: {1, 2, 3},
+	}, false)
+
+	statusCode, headers000v1, _ := server.Get(context.Background(), "/archive/0/0/0.mvt")
+	assert.Equal(t, 200, statusCode)
+	statusCode, headers412v1, _ := server.Get(context.Background(), "/archive/4/1/2.mvt")
+	assert.Equal(t, 200, statusCode)
+	statusCode, headers311v1, _ := server.Get(context.Background(), "/archive/3/1/1.mvt")
+	assert.Equal(t, 204, statusCode)
+
+	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1, 2, 3},
+		{4, 1, 2}: {1, 2, 3, 4}, // different
+	}, false)
+
+	statusCode, headers000v2, _ := server.Get(context.Background(), "/archive/0/0/0.mvt")
+	assert.Equal(t, 200, statusCode)
+	statusCode, headers412v2, _ := server.Get(context.Background(), "/archive/4/1/2.mvt")
+	assert.Equal(t, 200, statusCode)
+	statusCode, headers311v2, _ := server.Get(context.Background(), "/archive/3/1/1.mvt")
+	assert.Equal(t, 204, statusCode)
+
+	// 204's have no etag
+	assert.Equal(t, "", headers311v1["Etag"])
+	assert.Equal(t, "", headers311v2["Etag"])
+
+	// 000 and 311 didn't change
+	assert.Equal(t, headers000v1["Etag"], headers000v2["Etag"])
+
+	// 412 did change
+	assert.NotEqual(t, headers412v1["Etag"], headers412v2["Etag"])
+
+	// all are different
+	assert.NotEqual(t, headers000v1["Etag"], headers311v1["Etag"])
+	assert.NotEqual(t, headers000v1["Etag"], headers412v1["Etag"])
+}

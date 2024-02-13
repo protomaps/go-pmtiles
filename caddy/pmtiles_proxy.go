@@ -2,6 +2,12 @@ package caddy
 
 import (
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"strconv"
+	"time"
+
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
@@ -12,11 +18,6 @@ import (
 	_ "gocloud.dev/blob/fileblob"
 	_ "gocloud.dev/blob/gcsblob"
 	_ "gocloud.dev/blob/s3blob"
-	"io"
-	"log"
-	"net/http"
-	"strconv"
-	"time"
 )
 
 func init() {
@@ -66,12 +67,7 @@ func (m *Middleware) Validate() error {
 
 func (m Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	start := time.Now()
-	statusCode, headers, body := m.server.Get(r.Context(), r.URL.Path)
-	for k, v := range headers {
-		w.Header().Set(k, v)
-	}
-	w.WriteHeader(statusCode)
-	w.Write(body)
+	statusCode := m.server.ServeHTTP(w, r)
 	m.logger.Info("response", zap.Int("status", statusCode), zap.String("path", r.URL.Path), zap.Duration("duration", time.Since(start)))
 
 	return next.ServeHTTP(w, r)

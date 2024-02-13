@@ -9,8 +9,10 @@ import (
 	"errors"
 	"io"
 	"log"
+	"net/http"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -294,6 +296,7 @@ func (server *Server) getTileJSON(ctx context.Context, httpHeaders map[string]st
 	}
 
 	httpHeaders["Content-Type"] = "application/json"
+	httpHeaders["Etag"] = generateEtag(tilejsonBytes)
 
 	return 200, httpHeaders, tilejsonBytes
 }
@@ -310,6 +313,7 @@ func (server *Server) getMetadata(ctx context.Context, httpHeaders map[string]st
 	}
 
 	httpHeaders["Content-Type"] = "application/json"
+	httpHeaders["Etag"] = generateEtag(metadataBytes)
 	return 200, httpHeaders, metadataBytes
 }
 func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
@@ -320,6 +324,7 @@ func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string
 	}
 	return status, headers, data
 }
+
 func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string, purgeEtag string) (int, map[string]string, []byte, string) {
 	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag}
 	server.reqs <- rootReq
@@ -390,6 +395,8 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 			if err != nil {
 				return 500, httpHeaders, []byte("I/O error"), ""
 			}
+
+			httpHeaders["Etag"] = generateEtag(b)
 			if headerVal, ok := headerContentType(header); ok {
 				httpHeaders["Content-Type"] = headerVal
 			}
@@ -464,4 +471,25 @@ func (server *Server) Get(ctx context.Context, path string) (int, map[string]str
 	}
 
 	return 404, httpHeaders, []byte("Path not found")
+}
+
+// Serve an HTTP response from the archive
+func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) int {
+	statusCode, headers, body := server.Get(r.Context(), r.URL.Path)
+	for k, v := range headers {
+		w.Header().Set(k, v)
+	}
+	if statusCode == 200 {
+		// handle if-match, if-none-match request headers based on response etag
+		http.ServeContent(
+			w, r,
+			"",                // name used to infer content-type, but we've already set that
+			time.UnixMilli(0), // ignore setting last-modified time and handling if-modified-since headers
+			bytes.NewReader(body),
+		)
+	} else {
+		w.WriteHeader(statusCode)
+		w.Write(body)
+	}
+	return statusCode
 }
