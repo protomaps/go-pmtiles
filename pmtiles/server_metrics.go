@@ -126,7 +126,7 @@ func createMetrics(scope string, logger *log.Logger) *metrics {
 	durationBuckets := prometheus.DefBuckets
 	kib := 1024.0
 	mib := kib * kib
-	sizeBuckets := []float64{1.0 * kib, 5.0 * kib, 10.0 * kib, 50.0 * kib, 100 * kib, 200 * kib, 500 * kib, 1.0 * mib, 2.5 * mib, 5.0 * mib}
+	sizeBuckets := []float64{1.0 * kib, 5.0 * kib, 10.0 * kib, 25.0 * kib, 50.0 * kib, 100 * kib, 250 * kib, 500 * kib, 1.0 * mib}
 
 	return &metrics{
 		// overall requests
@@ -174,7 +174,7 @@ func createMetrics(scope string, logger *log.Logger) *metrics {
 			Namespace: namespace,
 			Subsystem: scope,
 			Name:      "dir_cache_requests",
-			Help:      "Requests to the directory cache by archive and status (hit/inflight/miss)",
+			Help:      "Requests to the directory cache by archive and status (hit/miss)",
 		}, []string{"archive", "status"})),
 
 		// requests to bucket

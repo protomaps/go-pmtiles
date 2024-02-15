@@ -129,7 +129,7 @@ func (server *Server) Start() {
 					server.metrics.cacheRequest(key.name, "hit")
 				} else if _, ok := inflight[key]; ok {
 					inflight[key] = append(inflight[key], req)
-					server.metrics.cacheRequest(key.name, "inflight")
+					server.metrics.cacheRequest(key.name, "hit") // treat inflight as a hit since it doesn't make a new server request
 				} else {
 					inflight[key] = []request{req}
 					server.metrics.cacheRequest(key.name, "miss")
