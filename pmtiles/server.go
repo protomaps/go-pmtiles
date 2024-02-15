@@ -134,19 +134,22 @@ func (server *Server) Start() {
 					inflight[key] = []request{req}
 					server.metrics.cacheRequest(key.name, "miss")
 					go func() {
-						status := "ok"
-						tracker := server.metrics.startBucketRequest(key.name)
-						defer func() { tracker.finish(status) }()
 						var result cachedValue
 						isRoot := (key.offset == 0 && key.length == 0)
 
 						offset := int64(key.offset)
 						length := int64(key.length)
 
+						kind := "leaf"
 						if isRoot {
 							offset = 0
 							length = 16384
+							kind = "root"
 						}
+
+						status := "ok"
+						tracker := server.metrics.startBucketRequest(key.name, kind)
+						defer func() { tracker.finish(status) }()
 
 						server.logger.Printf("fetching %s %d-%d", key.name, offset, length)
 						r, etag, err := server.bucket.NewRangeReaderEtag(ctx, key.name+".pmtiles", offset, length, key.etag)
@@ -252,7 +255,7 @@ func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeE
 	}
 
 	status := "ok"
-	tracker := server.metrics.startBucketRequest(name)
+	tracker := server.metrics.startBucketRequest(name, "metadata")
 	defer func() { tracker.finish(status) }()
 	r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), rootValue.etag)
 	if isRefreshRequredError(err) {
@@ -390,7 +393,7 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 
 		if entry.RunLength > 0 {
 			status := "ok"
-			tracker := server.metrics.startBucketRequest(name)
+			tracker := server.metrics.startBucketRequest(name, "tile")
 			defer func() { tracker.finish(status) }()
 			r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), rootValue.etag)
 			if isRefreshRequredError(err) {

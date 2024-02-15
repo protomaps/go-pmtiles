@@ -87,18 +87,18 @@ type bucketRequestTracker struct {
 	start    time.Time
 	metrics  *metrics
 	archive  string
+	kind     string
 }
 
-func (m *metrics) startBucketRequest(archive string) *bucketRequestTracker {
-	return &bucketRequestTracker{start: time.Now(), metrics: m, archive: archive}
+func (m *metrics) startBucketRequest(archive, kind string) *bucketRequestTracker {
+	return &bucketRequestTracker{start: time.Now(), metrics: m, archive: archive, kind: kind}
 }
 
 func (r *bucketRequestTracker) finish(status string) {
 	if !r.finished {
 		r.finished = true
-		labels := []string{r.archive, status}
-		r.metrics.bucketRequests.WithLabelValues(labels...).Inc()
-		r.metrics.bucketRequestDuration.WithLabelValues(labels...).Observe(time.Since(r.start).Seconds())
+		r.metrics.bucketRequests.WithLabelValues(r.archive, r.kind, status).Inc()
+		r.metrics.bucketRequestDuration.WithLabelValues(r.archive, status).Observe(time.Since(r.start).Seconds())
 	}
 }
 
@@ -191,7 +191,7 @@ func createMetrics(scope string, logger *log.Logger) *metrics {
 			Subsystem: scope,
 			Name:      "bucket_requests_total",
 			Help:      "Requests to the underlying bucket",
-		}, []string{"archive", "status"})),
+		}, []string{"archive", "kind", "status"})),
 		bucketRequestDuration: register(logger, prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: scope,
