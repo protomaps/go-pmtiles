@@ -60,8 +60,9 @@ type metrics struct {
 
 // utility to time an overall tile request
 type requestTracker struct {
-	start   time.Time
-	metrics *metrics
+	finished bool
+	start    time.Time
+	metrics  *metrics
 }
 
 func (m *metrics) startRequest() *requestTracker {
@@ -69,19 +70,23 @@ func (m *metrics) startRequest() *requestTracker {
 }
 
 func (r *requestTracker) finish(archive, handler string, status, responseSize int, logDetails bool) {
-	labels := []string{archive, handler, strconv.Itoa(status)}
-	r.metrics.requests.WithLabelValues(labels...).Inc()
-	if logDetails {
-		r.metrics.responseSize.WithLabelValues(labels...).Observe(float64(responseSize))
-		r.metrics.requestDuration.WithLabelValues(labels...).Observe(time.Since(r.start).Seconds())
+	if !r.finished {
+		r.finished = true
+		labels := []string{archive, handler, strconv.Itoa(status)}
+		r.metrics.requests.WithLabelValues(labels...).Inc()
+		if logDetails {
+			r.metrics.responseSize.WithLabelValues(labels...).Observe(float64(responseSize))
+			r.metrics.requestDuration.WithLabelValues(labels...).Observe(time.Since(r.start).Seconds())
+		}
 	}
 }
 
 // utility to time an individual request to the underlying bucket
 type bucketRequestTracker struct {
-	start   time.Time
-	metrics *metrics
-	archive string
+	finished bool
+	start    time.Time
+	metrics  *metrics
+	archive  string
 }
 
 func (m *metrics) startBucketRequest(archive string) *bucketRequestTracker {
@@ -89,9 +94,12 @@ func (m *metrics) startBucketRequest(archive string) *bucketRequestTracker {
 }
 
 func (r *bucketRequestTracker) finish(status string) {
-	labels := []string{r.archive, status}
-	r.metrics.bucketRequests.WithLabelValues(labels...).Inc()
-	r.metrics.bucketRequestDuration.WithLabelValues(labels...).Observe(time.Since(r.start).Seconds())
+	if !r.finished {
+		r.finished = true
+		labels := []string{r.archive, status}
+		r.metrics.bucketRequests.WithLabelValues(labels...).Inc()
+		r.metrics.bucketRequestDuration.WithLabelValues(labels...).Observe(time.Since(r.start).Seconds())
+	}
 }
 
 // misc helpers

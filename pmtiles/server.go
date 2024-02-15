@@ -180,6 +180,7 @@ func (server *Server) Start() {
 								server.logger.Printf("parsing header failed: %v", err)
 								return
 							}
+							tracker.finish(status) // track time to deserialize a header separately
 
 							// populate the root first before header
 							rootEntries := deserializeEntries(bytes.NewBuffer(b[header.RootOffset : header.RootOffset+header.RootLength]))
