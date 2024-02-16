@@ -70,7 +70,7 @@ func (m *metrics) startRequest() *requestTracker {
 	return &requestTracker{start: time.Now(), metrics: m}
 }
 
-func (r *requestTracker) finish(ctx context.Context, archive, handler string, status, responseSize int, logDetails bool, dirMisses int) {
+func (r *requestTracker) finish(ctx context.Context, archive, handler string, status, responseSize int, logDetails bool) {
 	if !r.finished {
 		r.finished = true
 		// exclude archive path from "not found" metrics to limit cardinality on requests for nonexistant archives
@@ -81,7 +81,7 @@ func (r *requestTracker) finish(ctx context.Context, archive, handler string, st
 		if isCanceled(ctx) {
 			statusString = "canceled"
 		}
-		labels := []string{archive, handler, statusString, strconv.Itoa(dirMisses)}
+		labels := []string{archive, handler, statusString}
 		r.metrics.requests.WithLabelValues(labels...).Inc()
 		if logDetails {
 			r.metrics.responseSize.WithLabelValues(labels...).Observe(float64(responseSize))
@@ -159,21 +159,21 @@ func createMetrics(scope string, logger *log.Logger) *metrics {
 			Subsystem: scope,
 			Name:      "requests_total",
 			Help:      "Overall number of requests to the service",
-		}, []string{"archive", "handler", "status", "dir_misses"})),
+		}, []string{"archive", "handler", "status"})),
 		responseSize: register(logger, prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: scope,
 			Name:      "response_size_bytes",
 			Help:      "Overall response size in bytes",
 			Buckets:   sizeBuckets,
-		}, []string{"archive", "handler", "status", "dir_misses"})),
+		}, []string{"archive", "handler", "status"})),
 		requestDuration: register(logger, prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: scope,
 			Name:      "request_duration_seconds",
 			Help:      "Overall request duration in seconds",
 			Buckets:   durationBuckets,
-		}, []string{"archive", "handler", "status", "dir_misses"})),
+		}, []string{"archive", "handler", "status"})),
 
 		// dir cache
 		dirCacheEntries: register(logger, prometheus.NewGauge(prometheus.GaugeOpts{
