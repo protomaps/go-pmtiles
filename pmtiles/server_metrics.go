@@ -1,6 +1,7 @@
 package pmtiles
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strconv"
@@ -69,10 +70,18 @@ func (m *metrics) startRequest() *requestTracker {
 	return &requestTracker{start: time.Now(), metrics: m}
 }
 
-func (r *requestTracker) finish(archive, handler string, status, responseSize int, logDetails bool) {
+func (r *requestTracker) finish(ctx context.Context, archive, handler string, status, responseSize int, logDetails bool) {
 	if !r.finished {
 		r.finished = true
-		labels := []string{archive, handler, strconv.Itoa(status)}
+		// exclude archive path from "not found" metrics to limit cardinality on requests for nonexistant archives
+		if status == 404 {
+			archive = ""
+		}
+		statusString := strconv.Itoa(status)
+		if isCanceled(ctx) {
+			statusString = "canceled"
+		}
+		labels := []string{archive, handler, statusString}
 		r.metrics.requests.WithLabelValues(labels...).Inc()
 		if logDetails {
 			r.metrics.responseSize.WithLabelValues(labels...).Observe(float64(responseSize))
@@ -94,9 +103,16 @@ func (m *metrics) startBucketRequest(archive, kind string) *bucketRequestTracker
 	return &bucketRequestTracker{start: time.Now(), metrics: m, archive: archive, kind: kind}
 }
 
-func (r *bucketRequestTracker) finish(status string) {
+func (r *bucketRequestTracker) finish(ctx context.Context, status string) {
 	if !r.finished {
 		r.finished = true
+		// exclude archive path from "not found" metrics to limit cardinality on requests for nonexistant archives
+		if status == "404" || status == "403" {
+			r.archive = ""
+		}
+		if isCanceled(ctx) {
+			status = "canceled"
+		}
 		r.metrics.bucketRequests.WithLabelValues(r.archive, r.kind, status).Inc()
 		r.metrics.bucketRequestDuration.WithLabelValues(r.archive, status).Observe(time.Since(r.start).Seconds())
 	}

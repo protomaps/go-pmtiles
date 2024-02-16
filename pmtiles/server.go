@@ -147,21 +147,17 @@ func (server *Server) Start() {
 							kind = "root"
 						}
 
-						status := "ok"
+						status := ""
 						tracker := server.metrics.startBucketRequest(key.name, kind)
-						defer func() { tracker.finish(status) }()
+						defer func() { tracker.finish(ctx, status) }()
 
 						server.logger.Printf("fetching %s %d-%d", key.name, offset, length)
-						r, etag, err := server.bucket.NewRangeReaderEtag(ctx, key.name+".pmtiles", offset, length, key.etag)
+						r, etag, statusCode, err := server.bucket.NewRangeReaderEtag(ctx, key.name+".pmtiles", offset, length, key.etag)
+						status = strconv.Itoa(statusCode)
 
 						if err != nil {
 							ok = false
 							result.badEtag = isRefreshRequredError(err)
-							if result.badEtag {
-								status = "refresh_required"
-							} else {
-								status = canceledOrError(ctx)
-							}
 							resps <- response{key: key, value: result}
 							server.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
 							return
@@ -170,7 +166,7 @@ func (server *Server) Start() {
 						b, err := io.ReadAll(r)
 						if err != nil {
 							ok = false
-							status = canceledOrError(ctx)
+							status = "error"
 							resps <- response{key: key, value: result}
 							server.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
 							return
@@ -183,7 +179,6 @@ func (server *Server) Start() {
 								server.logger.Printf("parsing header failed: %v", err)
 								return
 							}
-							tracker.finish(status) // track time to deserialize a header separately
 
 							// populate the root first before header
 							rootEntries := deserializeEntries(bytes.NewBuffer(b[header.RootOffset : header.RootOffset+header.RootLength]))
@@ -254,16 +249,15 @@ func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeE
 		return false, HeaderV3{}, nil, "", nil
 	}
 
-	status := "ok"
+	status := ""
 	tracker := server.metrics.startBucketRequest(name, "metadata")
-	defer func() { tracker.finish(status) }()
-	r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), rootValue.etag)
+	defer func() { tracker.finish(ctx, status) }()
+	r, _, statusCode, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), rootValue.etag)
+	status = strconv.Itoa(statusCode)
 	if isRefreshRequredError(err) {
-		status = "refresh_required"
 		return false, HeaderV3{}, nil, rootValue.etag, nil
 	}
 	if err != nil {
-		status = canceledOrError(ctx)
 		return false, HeaderV3{}, nil, "", nil
 	}
 	defer r.Close()
@@ -392,17 +386,16 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 		}
 
 		if entry.RunLength > 0 {
-			status := "ok"
+			status := ""
 			tracker := server.metrics.startBucketRequest(name, "tile")
-			defer func() { tracker.finish(status) }()
-			r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), rootValue.etag)
+			defer func() { tracker.finish(ctx, status) }()
+			r, _, statusCode, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), rootValue.etag)
+			status = strconv.Itoa(statusCode)
 			if isRefreshRequredError(err) {
-				status = "refresh_required"
 				return 500, httpHeaders, []byte("I/O Error"), rootValue.etag
 			}
 			// possible we have the header/directory cached but the archive has disappeared
 			if err != nil {
-				status = canceledOrError(ctx)
 				if isCanceled(ctx) {
 					return 499, httpHeaders, []byte("Canceled"), ""
 				}
@@ -412,7 +405,7 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 			defer r.Close()
 			b, err := io.ReadAll(r)
 			if err != nil {
-				status = canceledOrError(ctx)
+				status = "error"
 				if isCanceled(ctx) {
 					return 499, httpHeaders, []byte("Canceled"), ""
 				}

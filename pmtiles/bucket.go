@@ -25,7 +25,7 @@ import (
 type Bucket interface {
 	Close() error
 	NewRangeReader(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error)
-	NewRangeReaderEtag(ctx context.Context, key string, offset int64, length int64, etag string) (io.ReadCloser, string, error)
+	NewRangeReaderEtag(ctx context.Context, key string, offset int64, length int64, etag string) (io.ReadCloser, string, int, error)
 }
 
 // RefreshRequiredError is an error that indicates the etag has chanced on the remote file
@@ -46,25 +46,25 @@ func (m mockBucket) Close() error {
 }
 
 func (m mockBucket) NewRangeReader(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error) {
-	body, _, err := m.NewRangeReaderEtag(ctx, key, offset, length, "")
+	body, _, _, err := m.NewRangeReaderEtag(ctx, key, offset, length, "")
 	return body, err
 
 }
-func (m mockBucket) NewRangeReaderEtag(_ context.Context, key string, offset int64, length int64, etag string) (io.ReadCloser, string, error) {
+func (m mockBucket) NewRangeReaderEtag(_ context.Context, key string, offset int64, length int64, etag string) (io.ReadCloser, string, int, error) {
 	bs, ok := m.items[key]
 	if !ok {
-		return nil, "", fmt.Errorf("Not found %s", key)
+		return nil, "", 404, fmt.Errorf("Not found %s", key)
 	}
 
 	resultEtag := generateEtag(bs)
 	if len(etag) > 0 && resultEtag != etag {
-		return nil, "", &RefreshRequiredError{}
+		return nil, "", 412, &RefreshRequiredError{}
 	}
 	if offset+length > int64(len(bs)) {
-		return nil, "", &RefreshRequiredError{416}
+		return nil, "", 416, &RefreshRequiredError{416}
 	}
 
-	return io.NopCloser(bytes.NewReader(bs[offset:(offset + length)])), resultEtag, nil
+	return io.NopCloser(bytes.NewReader(bs[offset:(offset + length)])), resultEtag, 206, nil
 }
 
 // FileBucket is a bucket backed by a directory on disk
@@ -73,7 +73,7 @@ type FileBucket struct {
 }
 
 func (b FileBucket) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
-	body, _, err := b.NewRangeReaderEtag(ctx, key, offset, length, "")
+	body, _, _, err := b.NewRangeReaderEtag(ctx, key, offset, length, "")
 	return body, err
 }
 
@@ -102,30 +102,30 @@ func generateEtagFromInts(ns ...int64) string {
 	return hasherToEtag(hasher)
 }
 
-func (b FileBucket) NewRangeReaderEtag(_ context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, error) {
+func (b FileBucket) NewRangeReaderEtag(_ context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, int, error) {
 	name := filepath.Join(b.path, key)
 	file, err := os.Open(name)
 	defer file.Close()
 	if err != nil {
-		return nil, "", err
+		return nil, "", 404, err
 	}
 	info, err := file.Stat()
 	if err != nil {
-		return nil, "", err
+		return nil, "", 404, err
 	}
 	newEtag := generateEtagFromInts(info.ModTime().UnixNano(), info.Size())
 	if len(etag) > 0 && etag != newEtag {
-		return nil, "", &RefreshRequiredError{}
+		return nil, "", 412, &RefreshRequiredError{}
 	}
 	result := make([]byte, length)
 	read, err := file.ReadAt(result, offset)
 	if err != nil {
-		return nil, "", err
+		return nil, "", 500, err
 	}
 	if read != int(length) {
-		return nil, "", fmt.Errorf("Expected to read %d bytes but only read %d", length, read)
+		return nil, "", 416, fmt.Errorf("Expected to read %d bytes but only read %d", length, read)
 	}
-	return io.NopCloser(bytes.NewReader(result)), newEtag, nil
+	return io.NopCloser(bytes.NewReader(result)), newEtag, 206, nil
 }
 
 func (b FileBucket) Close() error {
@@ -143,16 +143,16 @@ type HTTPBucket struct {
 }
 
 func (b HTTPBucket) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
-	body, _, err := b.NewRangeReaderEtag(ctx, key, offset, length, "")
+	body, _, _, err := b.NewRangeReaderEtag(ctx, key, offset, length, "")
 	return body, err
 }
 
-func (b HTTPBucket) NewRangeReaderEtag(ctx context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, error) {
+func (b HTTPBucket) NewRangeReaderEtag(ctx context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, int, error) {
 	reqURL := b.baseURL + "/" + key
 
 	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
-		return nil, "", err
+		return nil, "", 500, err
 	}
 
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, offset+length-1))
@@ -162,7 +162,7 @@ func (b HTTPBucket) NewRangeReaderEtag(ctx context.Context, key string, offset, 
 
 	resp, err := b.client.Do(req)
 	if err != nil {
-		return nil, "", err
+		return nil, "", resp.StatusCode, err
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
@@ -172,10 +172,10 @@ func (b HTTPBucket) NewRangeReaderEtag(ctx context.Context, key string, offset, 
 		} else {
 			err = fmt.Errorf("HTTP error: %d", resp.StatusCode)
 		}
-		return nil, "", err
+		return nil, "", resp.StatusCode, err
 	}
 
-	return resp.Body, resp.Header.Get("ETag"), nil
+	return resp.Body, resp.Header.Get("ETag"), resp.StatusCode, nil
 }
 
 func (b HTTPBucket) Close() error {
@@ -191,11 +191,11 @@ type BucketAdapter struct {
 }
 
 func (ba BucketAdapter) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
-	body, _, err := ba.NewRangeReaderEtag(ctx, key, offset, length, "")
+	body, _, _, err := ba.NewRangeReaderEtag(ctx, key, offset, length, "")
 	return body, err
 }
 
-func (ba BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, error) {
+func (ba BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, int, error) {
 	reader, err := ba.Bucket.NewRangeReader(ctx, key, offset, length, &blob.ReaderOptions{
 		BeforeRead: func(asFunc func(interface{}) bool) error {
 			var req *s3.GetObjectInput
@@ -205,20 +205,25 @@ func (ba BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, offs
 			return nil
 		},
 	})
+	status := 206
 	if err != nil {
 		var resp awserr.RequestFailure
 		errors.As(err, &resp)
-		if resp != nil && isRefreshRequredCode(resp.StatusCode()) {
-			return nil, "", &RefreshRequiredError{resp.StatusCode()}
+		status = 404
+		if resp != nil {
+			status = resp.StatusCode()
+			if isRefreshRequredCode(resp.StatusCode()) {
+				return nil, "", resp.StatusCode(), &RefreshRequiredError{resp.StatusCode()}
+			}
 		}
-		return nil, "", err
+		return nil, "", status, err
 	}
 	resultETag := ""
 	var resp s3.GetObjectOutput
 	if reader.As(&resp) {
 		resultETag = *resp.ETag
 	}
-	return reader, resultETag, nil
+	return reader, resultETag, status, nil
 }
 
 func (ba BucketAdapter) Close() error {
