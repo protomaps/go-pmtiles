@@ -74,13 +74,13 @@ func (r *requestTracker) finish(ctx context.Context, archive, handler string, st
 	if !r.finished {
 		r.finished = true
 		// exclude archive path from "not found" metrics to limit cardinality on requests for nonexistant archives
+		statusString := strconv.Itoa(status)
 		if status == 404 {
 			archive = ""
-		}
-		statusString := strconv.Itoa(status)
-		if isCanceled(ctx) {
+		} else if isCanceled(ctx) {
 			statusString = "canceled"
 		}
+
 		labels := []string{archive, handler, statusString}
 		r.metrics.requests.WithLabelValues(labels...).Inc()
 		if logDetails {
@@ -109,8 +109,7 @@ func (r *bucketRequestTracker) finish(ctx context.Context, status string) {
 		// exclude archive path from "not found" metrics to limit cardinality on requests for nonexistant archives
 		if status == "404" || status == "403" {
 			r.archive = ""
-		}
-		if isCanceled(ctx) {
+		} else if isCanceled(ctx) {
 			status = "canceled"
 		}
 		r.metrics.bucketRequests.WithLabelValues(r.archive, r.kind, status).Inc()

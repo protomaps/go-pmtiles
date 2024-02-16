@@ -409,7 +409,7 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 				if isCanceled(ctx) {
 					return 499, httpHeaders, []byte("Canceled"), ""
 				}
-				return canceledOrStatusCode(ctx, 500), httpHeaders, []byte("I/O error"), ""
+				return 500, httpHeaders, []byte("I/O error"), ""
 			}
 
 			httpHeaders["Etag"] = generateEtag(b)
@@ -430,20 +430,6 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 func isRefreshRequredError(err error) bool {
 	_, ok := err.(*RefreshRequiredError)
 	return ok
-}
-
-func canceledOrError(ctx context.Context) string {
-	if isCanceled(ctx) {
-		return "canceled"
-	}
-	return "error"
-}
-
-func canceledOrStatusCode(ctx context.Context, code int) int {
-	if isCanceled(ctx) {
-		return 499
-	}
-	return code
 }
 
 func isCanceled(ctx context.Context) bool {
