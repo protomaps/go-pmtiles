@@ -25,6 +25,7 @@ type cacheKey struct {
 type request struct {
 	key       cacheKey
 	value     chan cachedValue
+	miss      chan int
 	purgeEtag string
 }
 
@@ -125,12 +126,15 @@ func (server *Server) Start() {
 				key := req.key
 				if val, ok := cache[key]; ok {
 					evictList.MoveToFront(val)
+					req.miss <- 0
 					req.value <- val.Value.(*response).value
 					server.metrics.cacheRequest(key.name, "hit")
 				} else if _, ok := inflight[key]; ok {
+					req.miss <- 0
 					inflight[key] = append(inflight[key], req)
 					server.metrics.cacheRequest(key.name, "hit") // treat inflight as a hit since it doesn't make a new server request
 				} else {
+					req.miss <- 1
 					inflight[key] = []request{req}
 					server.metrics.cacheRequest(key.name, "miss")
 					go func() {
@@ -240,7 +244,7 @@ func (server *Server) getHeaderMetadata(ctx context.Context, name string) (bool,
 }
 
 func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeEtag string) (bool, HeaderV3, []byte, string, error) {
-	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag}
+	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), miss: make(chan int, 1), purgeEtag: purgeEtag}
 	server.reqs <- rootReq
 	rootValue := <-rootReq.value
 	header := rootValue.header
@@ -321,51 +325,52 @@ func (server *Server) getMetadata(ctx context.Context, httpHeaders map[string]st
 	httpHeaders["Etag"] = generateEtag(metadataBytes)
 	return 200, httpHeaders, metadataBytes
 }
-func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte) {
-	status, headers, data, purgeEtag := server.getTileAttempt(ctx, httpHeaders, name, z, x, y, ext, "")
+func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string) (int, map[string]string, []byte, int) {
+	status, headers, data, dirMisses, purgeEtag := server.getTileAttempt(ctx, httpHeaders, name, z, x, y, ext, "")
 	if len(purgeEtag) > 0 {
 		// file has new etag, retry once force-purging the etag that is no longer value
-		status, headers, data, _ = server.getTileAttempt(ctx, httpHeaders, name, z, x, y, ext, purgeEtag)
+		status, headers, data, dirMisses, _ = server.getTileAttempt(ctx, httpHeaders, name, z, x, y, ext, purgeEtag)
 	}
-	return status, headers, data
+	return status, headers, data, dirMisses
 }
 
-func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string, purgeEtag string) (int, map[string]string, []byte, string) {
-	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag}
+func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string, purgeEtag string) (int, map[string]string, []byte, int, string) {
+	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), miss: make(chan int, 1), purgeEtag: purgeEtag}
 	server.reqs <- rootReq
 
 	// https://golang.org/doc/faq#atomic_maps
 	rootValue := <-rootReq.value
+	dirMisses := <-rootReq.miss
 	header := rootValue.header
 
 	if !rootValue.ok {
-		return 404, httpHeaders, []byte("Archive not found"), ""
+		return 404, httpHeaders, []byte("Archive not found"), dirMisses, ""
 	}
 
 	if z < header.MinZoom || z > header.MaxZoom {
-		return 404, httpHeaders, []byte("Tile not found"), ""
+		return 404, httpHeaders, []byte("Tile not found"), dirMisses, ""
 	}
 
 	switch header.TileType {
 	case Mvt:
 		if ext != "mvt" {
-			return 400, httpHeaders, []byte("path mismatch: archive is type MVT (.mvt)"), ""
+			return 400, httpHeaders, []byte("path mismatch: archive is type MVT (.mvt)"), dirMisses, ""
 		}
 	case Png:
 		if ext != "png" {
-			return 400, httpHeaders, []byte("path mismatch: archive is type PNG (.png)"), ""
+			return 400, httpHeaders, []byte("path mismatch: archive is type PNG (.png)"), dirMisses, ""
 		}
 	case Jpeg:
 		if ext != "jpg" {
-			return 400, httpHeaders, []byte("path mismatch: archive is type JPEG (.jpg)"), ""
+			return 400, httpHeaders, []byte("path mismatch: archive is type JPEG (.jpg)"), dirMisses, ""
 		}
 	case Webp:
 		if ext != "webp" {
-			return 400, httpHeaders, []byte("path mismatch: archive is type WebP (.webp)"), ""
+			return 400, httpHeaders, []byte("path mismatch: archive is type WebP (.webp)"), dirMisses, ""
 		}
 	case Avif:
 		if ext != "avif" {
-			return 400, httpHeaders, []byte("path mismatch: archive is type AVIF (.avif)"), ""
+			return 400, httpHeaders, []byte("path mismatch: archive is type AVIF (.avif)"), dirMisses, ""
 		}
 	}
 
@@ -373,11 +378,12 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 	dirOffset, dirLen := header.RootOffset, header.RootLength
 
 	for depth := 0; depth <= 3; depth++ {
-		dirReq := request{key: cacheKey{name: name, offset: dirOffset, length: dirLen, etag: rootValue.etag}, value: make(chan cachedValue, 1)}
+		dirReq := request{key: cacheKey{name: name, offset: dirOffset, length: dirLen, etag: rootValue.etag}, value: make(chan cachedValue, 1), miss: make(chan int, 1)}
 		server.reqs <- dirReq
 		dirValue := <-dirReq.value
+		dirMisses = dirMisses + <-dirReq.miss
 		if dirValue.badEtag {
-			return 500, httpHeaders, []byte("I/O Error"), rootValue.etag
+			return 500, httpHeaders, []byte("I/O Error"), dirMisses, rootValue.etag
 		}
 		directory := dirValue.directory
 		entry, ok := findTile(directory, tileID)
@@ -392,24 +398,24 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 			r, _, statusCode, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), rootValue.etag)
 			status = strconv.Itoa(statusCode)
 			if isRefreshRequredError(err) {
-				return 500, httpHeaders, []byte("I/O Error"), rootValue.etag
+				return 500, httpHeaders, []byte("I/O Error"), dirMisses, rootValue.etag
 			}
 			// possible we have the header/directory cached but the archive has disappeared
 			if err != nil {
 				if isCanceled(ctx) {
-					return 499, httpHeaders, []byte("Canceled"), ""
+					return 499, httpHeaders, []byte("Canceled"), dirMisses, ""
 				}
 				server.logger.Printf("failed to fetch tile %s %d-%d %v", name, entry.Offset, entry.Length, err)
-				return 404, httpHeaders, []byte("Tile not found"), ""
+				return 404, httpHeaders, []byte("Tile not found"), dirMisses, ""
 			}
 			defer r.Close()
 			b, err := io.ReadAll(r)
 			if err != nil {
 				status = "error"
 				if isCanceled(ctx) {
-					return 499, httpHeaders, []byte("Canceled"), ""
+					return 499, httpHeaders, []byte("Canceled"), dirMisses, ""
 				}
-				return canceledOrStatusCode(ctx, 500), httpHeaders, []byte("I/O error"), ""
+				return canceledOrStatusCode(ctx, 500), httpHeaders, []byte("I/O error"), dirMisses, ""
 			}
 
 			httpHeaders["Etag"] = generateEtag(b)
@@ -419,12 +425,12 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 			if headerVal, ok := headerContentEncoding(header.TileCompression); ok {
 				httpHeaders["Content-Encoding"] = headerVal
 			}
-			return 200, httpHeaders, b, ""
+			return 200, httpHeaders, b, dirMisses, ""
 		}
 		dirOffset = header.LeafDirectoryOffset + entry.Offset
 		dirLen = uint64(entry.Length)
 	}
-	return 204, httpHeaders, nil, ""
+	return 204, httpHeaders, nil, dirMisses, ""
 }
 
 func isRefreshRequredError(err error) bool {
@@ -482,7 +488,7 @@ func parseMetadataPath(path string) (bool, string) {
 	return false, ""
 }
 
-func (server *Server) get(ctx context.Context, path string) (archive, handler string, status int, headers map[string]string, data []byte) {
+func (server *Server) get(ctx context.Context, path string) (archive, handler string, status int, headers map[string]string, data []byte, dirMisses int) {
 	handler = ""
 	archive = ""
 	headers = make(map[string]string)
@@ -492,7 +498,7 @@ func (server *Server) get(ctx context.Context, path string) (archive, handler st
 
 	if ok, key, z, x, y, ext := parseTilePath(path); ok {
 		archive, handler = key, "tile"
-		status, headers, data = server.getTile(ctx, headers, key, z, x, y, ext)
+		status, headers, data, dirMisses = server.getTile(ctx, headers, key, z, x, y, ext)
 	} else if ok, key := parseTilejsonPath(path); ok {
 		archive, handler = key, "tilejson"
 		status, headers, data = server.getTileJSON(ctx, headers, key)
@@ -512,8 +518,8 @@ func (server *Server) get(ctx context.Context, path string) (archive, handler st
 // Return status code, HTTP headers, and body.
 func (server *Server) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
 	tracker := server.metrics.startRequest()
-	archive, handler, status, headers, data := server.get(ctx, path)
-	tracker.finish(ctx, archive, handler, status, len(data), true)
+	archive, handler, status, headers, data, dirMisses := server.get(ctx, path)
+	tracker.finish(ctx, archive, handler, status, len(data), true, dirMisses)
 	return status, headers, data
 }
 
@@ -535,14 +541,14 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) int {
 			w.Header().Set("Access-Control-Allow-Origin", server.cors)
 		}
 		w.WriteHeader(204)
-		tracker.finish(r.Context(), "", r.Method, 204, 0, false)
+		tracker.finish(r.Context(), "", r.Method, 204, 0, false, 0)
 		return 204
 	} else if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.WriteHeader(405)
-		tracker.finish(r.Context(), "", r.Method, 405, 0, false)
+		tracker.finish(r.Context(), "", r.Method, 405, 0, false, 0)
 		return 405
 	}
-	archive, handler, statusCode, headers, body := server.get(r.Context(), r.URL.Path)
+	archive, handler, statusCode, headers, body, dirMisses := server.get(r.Context(), r.URL.Path)
 	for k, v := range headers {
 		w.Header().Set(k, v)
 	}
@@ -560,7 +566,7 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) int {
 		w.WriteHeader(statusCode)
 		w.Write(body)
 	}
-	tracker.finish(r.Context(), archive, handler, statusCode, len(body), true)
+	tracker.finish(r.Context(), archive, handler, statusCode, len(body), true, dirMisses)
 
 	return statusCode
 }
