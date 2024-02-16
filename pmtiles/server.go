@@ -513,7 +513,7 @@ func (server *Server) get(ctx context.Context, path string) (archive, handler st
 func (server *Server) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
 	tracker := server.metrics.startRequest()
 	archive, handler, status, headers, data := server.get(ctx, path)
-	tracker.finish(archive, handler, status, len(data), true)
+	tracker.finish(ctx, archive, handler, status, len(data), true)
 	return status, headers, data
 }
 
@@ -535,11 +535,11 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) int {
 			w.Header().Set("Access-Control-Allow-Origin", server.cors)
 		}
 		w.WriteHeader(204)
-		tracker.finish("", r.Method, 204, 0, false)
+		tracker.finish(r.Context(), "", r.Method, 204, 0, false)
 		return 204
 	} else if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.WriteHeader(405)
-		tracker.finish("", r.Method, 405, 0, false)
+		tracker.finish(r.Context(), "", r.Method, 405, 0, false)
 		return 405
 	}
 	archive, handler, statusCode, headers, body := server.get(r.Context(), r.URL.Path)
@@ -560,7 +560,7 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) int {
 		w.WriteHeader(statusCode)
 		w.Write(body)
 	}
-	tracker.finish(archive, handler, statusCode, len(body), true)
+	tracker.finish(r.Context(), archive, handler, statusCode, len(body), true)
 
 	return statusCode
 }
