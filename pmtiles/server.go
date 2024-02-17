@@ -123,28 +123,30 @@ func (server *Server) Start() {
 					server.metrics.updateCacheStats(totalSize, len(cache))
 				}
 				key := req.key
+				isRoot := (key.offset == 0 && key.length == 0)
+				kind := "leaf"
+				if isRoot {
+					kind = "root"
+				}
 				if val, ok := cache[key]; ok {
 					evictList.MoveToFront(val)
 					req.value <- val.Value.(*response).value
-					server.metrics.cacheRequest(key.name, "hit")
+					server.metrics.cacheRequest(key.name, kind, "hit")
 				} else if _, ok := inflight[key]; ok {
 					inflight[key] = append(inflight[key], req)
-					server.metrics.cacheRequest(key.name, "hit") // treat inflight as a hit since it doesn't make a new server request
+					server.metrics.cacheRequest(key.name, kind, "hit") // treat inflight as a hit since it doesn't make a new server request
 				} else {
 					inflight[key] = []request{req}
-					server.metrics.cacheRequest(key.name, "miss")
+					server.metrics.cacheRequest(key.name, kind, "miss")
 					go func() {
 						var result cachedValue
-						isRoot := (key.offset == 0 && key.length == 0)
 
 						offset := int64(key.offset)
 						length := int64(key.length)
 
-						kind := "leaf"
 						if isRoot {
 							offset = 0
 							length = 16384
-							kind = "root"
 						}
 
 						status := ""

@@ -133,8 +133,8 @@ func (m *metrics) updateCacheStats(sizeBytes, entries int) {
 	m.dirCacheSizeBytes.Set(float64(sizeBytes))
 }
 
-func (m *metrics) cacheRequest(archive, status string) {
-	m.dirCacheRequests.WithLabelValues(archive, status).Inc()
+func (m *metrics) cacheRequest(archive, kind, status string) {
+	m.dirCacheRequests.WithLabelValues(archive, kind, status).Inc()
 }
 
 func register[K prometheus.Collector](logger *log.Logger, metric K) K {
@@ -198,7 +198,7 @@ func createMetrics(scope string, logger *log.Logger) *metrics {
 			Subsystem: scope,
 			Name:      "dir_cache_requests",
 			Help:      "Requests to the directory cache by archive and status (hit/miss)",
-		}, []string{"archive", "status"})),
+		}, []string{"archive", "kind", "status"})),
 
 		// requests to bucket
 		bucketRequests: register(logger, prometheus.NewCounterVec(prometheus.CounterOpts{
