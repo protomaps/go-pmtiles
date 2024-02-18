@@ -136,6 +136,7 @@ func main() {
 			logger.Fatalf("Failed to create new server, %v", err)
 		}
 
+		pmtiles.SetBuildInfo(version, commit, date)
 		server.Start()
 
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

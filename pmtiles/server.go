@@ -13,8 +13,6 @@ import (
 	"regexp"
 	"strconv"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type cacheKey struct {
@@ -53,6 +51,7 @@ type Server struct {
 	cacheSize int
 	cors      string
 	publicURL string
+	metrics   *metrics
 }
 
 // NewServer creates a new pmtiles HTTP server.
@@ -87,16 +86,10 @@ func NewServerWithBucket(bucket Bucket, _ string, logger *log.Logger, cacheSize 
 		cacheSize: cacheSize,
 		cors:      cors,
 		publicURL: publicURL,
+		metrics:   createMetrics("", logger), // change scope string if there are multiple servers running in one process
 	}
 
 	return l, nil
-}
-
-func register[K prometheus.Collector](server *Server, metric K) K {
-	if err := prometheus.Register(metric); err != nil {
-		server.logger.Println(err)
-	}
-	return metric
 }
 
 // Start the server HTTP listener.
@@ -109,19 +102,14 @@ func (server *Server) Start() {
 		evictList := list.New()
 		totalSize := 0
 		ctx := context.Background()
-
-		cacheSize := register(server, prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "pmtiles",
-			Subsystem: "cache",
-			Name:      "size",
-			Help:      "Current number or directories in the cache",
-		}))
+		server.metrics.initCacheStats(server.cacheSize * 1000 * 1000)
 
 		for {
 			select {
 			case req := <-server.reqs:
 				if len(req.purgeEtag) > 0 {
 					if _, dup := inflight[req.key]; !dup {
+						server.metrics.reloadFile(req.key.name)
 						server.logger.Printf("re-fetching directories for changed file %s", req.key.name)
 					}
 					for k, v := range cache {
@@ -132,19 +120,26 @@ func (server *Server) Start() {
 							totalSize -= resp.size
 						}
 					}
-					cacheSize.Set(float64(len(cache)))
+					server.metrics.updateCacheStats(totalSize, len(cache))
 				}
 				key := req.key
+				isRoot := (key.offset == 0 && key.length == 0)
+				kind := "leaf"
+				if isRoot {
+					kind = "root"
+				}
 				if val, ok := cache[key]; ok {
 					evictList.MoveToFront(val)
 					req.value <- val.Value.(*response).value
+					server.metrics.cacheRequest(key.name, kind, "hit")
 				} else if _, ok := inflight[key]; ok {
 					inflight[key] = append(inflight[key], req)
+					server.metrics.cacheRequest(key.name, kind, "hit") // treat inflight as a hit since it doesn't make a new server request
 				} else {
 					inflight[key] = []request{req}
+					server.metrics.cacheRequest(key.name, kind, "miss")
 					go func() {
 						var result cachedValue
-						isRoot := (key.offset == 0 && key.length == 0)
 
 						offset := int64(key.offset)
 						length := int64(key.length)
@@ -154,8 +149,13 @@ func (server *Server) Start() {
 							length = 16384
 						}
 
+						status := ""
+						tracker := server.metrics.startBucketRequest(key.name, kind)
+						defer func() { tracker.finish(ctx, status) }()
+
 						server.logger.Printf("fetching %s %d-%d", key.name, offset, length)
-						r, etag, err := server.bucket.NewRangeReaderEtag(ctx, key.name+".pmtiles", offset, length, key.etag)
+						r, etag, statusCode, err := server.bucket.NewRangeReaderEtag(ctx, key.name+".pmtiles", offset, length, key.etag)
+						status = strconv.Itoa(statusCode)
 
 						if err != nil {
 							ok = false
@@ -168,6 +168,7 @@ func (server *Server) Start() {
 						b, err := io.ReadAll(r)
 						if err != nil {
 							ok = false
+							status = "error"
 							resps <- response{key: key, value: result}
 							server.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
 							return
@@ -176,6 +177,7 @@ func (server *Server) Start() {
 						if isRoot {
 							header, err := deserializeHeader(b[0:HeaderV3LenBytes])
 							if err != nil {
+								status = "error"
 								server.logger.Printf("parsing header failed: %v", err)
 								return
 							}
@@ -224,7 +226,7 @@ func (server *Server) Start() {
 							totalSize -= kv.size
 						}
 					}
-					cacheSize.Set(float64(len(cache)))
+					server.metrics.updateCacheStats(totalSize, len(cache))
 				}
 			}
 		}
@@ -249,7 +251,11 @@ func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeE
 		return false, HeaderV3{}, nil, "", nil
 	}
 
-	r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), rootValue.etag)
+	status := ""
+	tracker := server.metrics.startBucketRequest(name, "metadata")
+	defer func() { tracker.finish(ctx, status) }()
+	r, _, statusCode, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), rootValue.etag)
+	status = strconv.Itoa(statusCode)
 	if isRefreshRequredError(err) {
 		return false, HeaderV3{}, nil, rootValue.etag, nil
 	}
@@ -266,6 +272,7 @@ func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeE
 	} else if header.InternalCompression == NoCompression {
 		metadataBytes, err = io.ReadAll(r)
 	} else {
+		status = "error"
 		return true, HeaderV3{}, nil, "", errors.New("unknown compression")
 	}
 
@@ -381,18 +388,29 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 		}
 
 		if entry.RunLength > 0 {
-			r, _, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), rootValue.etag)
+			status := ""
+			tracker := server.metrics.startBucketRequest(name, "tile")
+			defer func() { tracker.finish(ctx, status) }()
+			r, _, statusCode, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), rootValue.etag)
+			status = strconv.Itoa(statusCode)
 			if isRefreshRequredError(err) {
 				return 500, httpHeaders, []byte("I/O Error"), rootValue.etag
 			}
 			// possible we have the header/directory cached but the archive has disappeared
 			if err != nil {
-				server.logger.Printf("failed to fetch tile %s %d-%d", name, entry.Offset, entry.Length)
-				return 404, httpHeaders, []byte("archive not found"), ""
+				if isCanceled(ctx) {
+					return 499, httpHeaders, []byte("Canceled"), ""
+				}
+				server.logger.Printf("failed to fetch tile %s %d-%d %v", name, entry.Offset, entry.Length, err)
+				return 404, httpHeaders, []byte("Tile not found"), ""
 			}
 			defer r.Close()
 			b, err := io.ReadAll(r)
 			if err != nil {
+				status = "error"
+				if isCanceled(ctx) {
+					return 499, httpHeaders, []byte("Canceled"), ""
+				}
 				return 500, httpHeaders, []byte("I/O error"), ""
 			}
 
@@ -414,6 +432,10 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 func isRefreshRequredError(err error) bool {
 	_, ok := err.(*RefreshRequiredError)
 	return ok
+}
+
+func isCanceled(ctx context.Context) bool {
+	return errors.Is(ctx.Err(), context.Canceled)
 }
 
 var tilePattern = regexp.MustCompile(`^\/([-A-Za-z0-9_\/!-_\.\*'\(\)']+)\/(\d+)\/(\d+)\/(\d+)\.([a-z]+)$`)
@@ -448,48 +470,85 @@ func parseMetadataPath(path string) (bool, string) {
 	return false, ""
 }
 
-// Get a response for the given path.
-// Return status code, HTTP headers, and body.
-func (server *Server) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
-	httpHeaders := make(map[string]string)
+func (server *Server) get(ctx context.Context, path string) (archive, handler string, status int, headers map[string]string, data []byte) {
+	handler = ""
+	archive = ""
+	headers = make(map[string]string)
 	if len(server.cors) > 0 {
-		httpHeaders["Access-Control-Allow-Origin"] = server.cors
+		headers["Access-Control-Allow-Origin"] = server.cors
 	}
 
 	if ok, key, z, x, y, ext := parseTilePath(path); ok {
-		return server.getTile(ctx, httpHeaders, key, z, x, y, ext)
-	}
-	if ok, key := parseTilejsonPath(path); ok {
-		return server.getTileJSON(ctx, httpHeaders, key)
-	}
-	if ok, key := parseMetadataPath(path); ok {
-		return server.getMetadata(ctx, httpHeaders, key)
+		archive, handler = key, "tile"
+		status, headers, data = server.getTile(ctx, headers, key, z, x, y, ext)
+	} else if ok, key := parseTilejsonPath(path); ok {
+		archive, handler = key, "tilejson"
+		status, headers, data = server.getTileJSON(ctx, headers, key)
+	} else if ok, key := parseMetadataPath(path); ok {
+		archive, handler = key, "metadata"
+		status, headers, data = server.getMetadata(ctx, headers, key)
+	} else if path == "/" {
+		handler, status, data = "/", 204, []byte{}
+	} else {
+		handler, status, data = "404", 404, []byte("Path not found")
 	}
 
-	if path == "/" {
-		return 204, httpHeaders, []byte{}
-	}
+	return
+}
 
-	return 404, httpHeaders, []byte("Path not found")
+// Get a response for the given path.
+// Return status code, HTTP headers, and body.
+func (server *Server) Get(ctx context.Context, path string) (int, map[string]string, []byte) {
+	tracker := server.metrics.startRequest()
+	archive, handler, status, headers, data := server.get(ctx, path)
+	tracker.finish(ctx, archive, handler, status, len(data), true)
+	return status, headers, data
+}
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (lrw *loggingResponseWriter) WriteHeader(code int) {
+	lrw.statusCode = code
+	lrw.ResponseWriter.WriteHeader(code)
 }
 
 // Serve an HTTP response from the archive
 func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) int {
-	statusCode, headers, body := server.Get(r.Context(), r.URL.Path)
+	tracker := server.metrics.startRequest()
+	if r.Method == http.MethodOptions {
+		if len(server.cors) > 0 {
+			w.Header().Set("Access-Control-Allow-Origin", server.cors)
+		}
+		w.WriteHeader(204)
+		tracker.finish(r.Context(), "", r.Method, 204, 0, false)
+		return 204
+	} else if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.WriteHeader(405)
+		tracker.finish(r.Context(), "", r.Method, 405, 0, false)
+		return 405
+	}
+	archive, handler, statusCode, headers, body := server.get(r.Context(), r.URL.Path)
 	for k, v := range headers {
 		w.Header().Set(k, v)
 	}
 	if statusCode == 200 {
+		lrw := &loggingResponseWriter{w, 200}
 		// handle if-match, if-none-match request headers based on response etag
 		http.ServeContent(
-			w, r,
+			lrw, r,
 			"",                // name used to infer content-type, but we've already set that
 			time.UnixMilli(0), // ignore setting last-modified time and handling if-modified-since headers
 			bytes.NewReader(body),
 		)
+		statusCode = lrw.statusCode
 	} else {
 		w.WriteHeader(statusCode)
 		w.Write(body)
 	}
+	tracker.finish(r.Context(), archive, handler, statusCode, len(body), true)
+
 	return statusCode
 }
