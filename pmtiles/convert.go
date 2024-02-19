@@ -257,22 +257,6 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 		return fmt.Errorf("Failed to convert MBTiles to header JSON, %w", err)
 	}
 
-	logger.Println("Querying total tile count...")
-	// determine the count
-	var totalTiles int64
-	{
-		stmt, _, err := conn.PrepareTransient("SELECT count(*) FROM tiles")
-		if err != nil {
-			return fmt.Errorf("Failed to create statement, %w", err)
-		}
-		defer stmt.Finalize()
-		row, err := stmt.Step()
-		if err != nil || !row {
-			return fmt.Errorf("Failed to step row, %w", err)
-		}
-		totalTiles = stmt.ColumnInt64(0)
-	}
-
 	logger.Println("Pass 1: Assembling TileID set")
 	// assemble a sorted set of all TileIds
 	tileset := roaring64.New()
@@ -282,8 +266,6 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 			return fmt.Errorf("Failed to create statement, %w", err)
 		}
 		defer stmt.Finalize()
-
-		bar := progressbar.Default(totalTiles)
 
 		for {
 			row, err := stmt.Step()
@@ -299,7 +281,6 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 			flippedY := (1 << z) - 1 - y
 			id := ZxyToID(z, x, flippedY)
 			tileset.Add(id)
-			bar.Add(1)
 		}
 	}
 
