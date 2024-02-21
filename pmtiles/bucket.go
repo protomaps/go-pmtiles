@@ -124,12 +124,19 @@ func (b FileBucket) NewRangeReaderEtag(_ context.Context, key string, offset, le
 	}
 	result := make([]byte, length)
 	read, err := file.ReadAt(result, offset)
+
+	if err == io.EOF && offset == 0 {
+		part := result[0:read]
+		return io.NopCloser(bytes.NewReader(part)), newEtag, 206, nil
+	}
+
 	if err != nil {
 		return nil, "", 500, err
 	}
 	if read != int(length) {
 		return nil, "", 416, fmt.Errorf("Expected to read %d bytes but only read %d", length, read)
 	}
+
 	return io.NopCloser(bytes.NewReader(result)), newEtag, 206, nil
 }
 
