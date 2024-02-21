@@ -127,7 +127,6 @@ func TestFileBucketReplace(t *testing.T) {
 	tmp := t.TempDir()
 	bucketURL, _, err := NormalizeBucketKey("", tmp, "")
 	assert.Nil(t, err)
-	fmt.Println(bucketURL)
 	bucket, err := OpenBucket(context.Background(), bucketURL, "")
 	assert.Nil(t, err)
 	assert.NotNil(t, bucket)
