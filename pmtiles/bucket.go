@@ -72,6 +72,11 @@ type FileBucket struct {
 	path string
 }
 
+// NewFileBucket initializes a FileBucket and returns a new instance
+func NewFileBucket(path string) *FileBucket {
+	return &FileBucket{path: path}
+}
+
 func (b FileBucket) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
 	body, _, _, err := b.NewRangeReaderEtag(ctx, key, offset, length, "")
 	return body, err
@@ -274,7 +279,7 @@ func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Buc
 			fileprotocol += "/"
 		}
 		path := strings.Replace(bucketURL, fileprotocol, "", 1)
-		bucket := FileBucket{filepath.FromSlash(path)}
+		bucket := NewFileBucket(filepath.FromSlash(path))
 		return bucket, nil
 	}
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
