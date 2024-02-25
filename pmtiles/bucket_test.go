@@ -2,7 +2,6 @@ package pmtiles
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -110,16 +109,16 @@ func TestHttpBucketRequestRequestEtagFailed(t *testing.T) {
 	_, _, status, err := bucket.NewRangeReaderEtag(context.Background(), "a/b/c", 0, 3, "etag1")
 	assert.Equal(t, "etag1", mock.request.Header.Get("If-Match"))
 	assert.Equal(t, 412, status)
-	assert.True(t, isRefreshRequredError(err))
+	assert.True(t, isRefreshRequiredError(err))
 
 	mock.response.StatusCode = 416
 	_, _, status, err = bucket.NewRangeReaderEtag(context.Background(), "a/b/c", 0, 3, "etag1")
 	assert.Equal(t, 416, status)
-	assert.True(t, isRefreshRequredError(err))
+	assert.True(t, isRefreshRequiredError(err))
 
 	mock.response.StatusCode = 404
 	_, _, status, err = bucket.NewRangeReaderEtag(context.Background(), "a/b/c", 0, 3, "etag1")
-	assert.False(t, isRefreshRequredError(err))
+	assert.False(t, isRefreshRequiredError(err))
 	assert.Equal(t, 404, status)
 }
 
@@ -127,7 +126,6 @@ func TestFileBucketReplace(t *testing.T) {
 	tmp := t.TempDir()
 	bucketURL, _, err := NormalizeBucketKey("", tmp, "")
 	assert.Nil(t, err)
-	fmt.Println(bucketURL)
 	bucket, err := OpenBucket(context.Background(), bucketURL, "")
 	assert.Nil(t, err)
 	assert.NotNil(t, bucket)
@@ -154,7 +152,7 @@ func TestFileBucketReplace(t *testing.T) {
 	// and requesting with old etag fails with refresh required error
 	_, _, status, err = bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, etag1)
 	assert.Equal(t, 412, status)
-	assert.True(t, isRefreshRequredError(err))
+	assert.True(t, isRefreshRequiredError(err))
 }
 
 func TestFileBucketRename(t *testing.T) {
@@ -164,7 +162,6 @@ func TestFileBucketRename(t *testing.T) {
 
 	bucketURL, _, err := NormalizeBucketKey("", tmp, "")
 	assert.Nil(t, err)
-	fmt.Println(bucketURL)
 	bucket, err := OpenBucket(context.Background(), bucketURL, "")
 	assert.Nil(t, err)
 	assert.NotNil(t, bucket)
@@ -192,5 +189,20 @@ func TestFileBucketRename(t *testing.T) {
 	// and requesting with old etag fails with refresh required error
 	_, _, status, err = bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 1, 1, etag1)
 	assert.Equal(t, 412, status)
-	assert.True(t, isRefreshRequredError(err))
+	assert.True(t, isRefreshRequiredError(err))
+}
+
+func TestFileShorterThan16K(t *testing.T) {
+	tmp := t.TempDir()
+	assert.Nil(t, os.WriteFile(filepath.Join(tmp, "archive.pmtiles"), []byte{1, 2, 3}, 0666))
+
+	bucketURL, _, err := NormalizeBucketKey("", tmp, "")
+	bucket, err := OpenBucket(context.Background(), bucketURL, "")
+
+	reader, _, status, err := bucket.NewRangeReaderEtag(context.Background(), "archive.pmtiles", 0, 16384, "")
+	assert.Equal(t, 206, status)
+	assert.Nil(t, err)
+	data, err := io.ReadAll(reader)
+	assert.Nil(t, err)
+	assert.Equal(t, 3, len(data))
 }

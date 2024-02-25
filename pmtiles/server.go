@@ -159,7 +159,7 @@ func (server *Server) Start() {
 
 						if err != nil {
 							ok = false
-							result.badEtag = isRefreshRequredError(err)
+							result.badEtag = isRefreshRequiredError(err)
 							resps <- response{key: key, value: result}
 							server.logger.Printf("failed to fetch %s %d-%d, %v", key.name, key.offset, key.length, err)
 							return
@@ -256,7 +256,7 @@ func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeE
 	defer func() { tracker.finish(ctx, status) }()
 	r, _, statusCode, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.MetadataOffset), int64(header.MetadataLength), rootValue.etag)
 	status = strconv.Itoa(statusCode)
-	if isRefreshRequredError(err) {
+	if isRefreshRequiredError(err) {
 		return false, HeaderV3{}, nil, rootValue.etag, nil
 	}
 	if err != nil {
@@ -393,7 +393,7 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 			defer func() { tracker.finish(ctx, status) }()
 			r, _, statusCode, err := server.bucket.NewRangeReaderEtag(ctx, name+".pmtiles", int64(header.TileDataOffset+entry.Offset), int64(entry.Length), rootValue.etag)
 			status = strconv.Itoa(statusCode)
-			if isRefreshRequredError(err) {
+			if isRefreshRequiredError(err) {
 				return 500, httpHeaders, []byte("I/O Error"), rootValue.etag
 			}
 			// possible we have the header/directory cached but the archive has disappeared
@@ -429,7 +429,7 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 	return 204, httpHeaders, nil, ""
 }
 
-func isRefreshRequredError(err error) bool {
+func isRefreshRequiredError(err error) bool {
 	_, ok := err.(*RefreshRequiredError)
 	return ok
 }

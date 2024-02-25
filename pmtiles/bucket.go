@@ -60,11 +60,15 @@ func (m mockBucket) NewRangeReaderEtag(_ context.Context, key string, offset int
 	if len(etag) > 0 && resultEtag != etag {
 		return nil, "", 412, &RefreshRequiredError{}
 	}
-	if offset+length > int64(len(bs)) {
+	if offset > int64(len(bs)) {
 		return nil, "", 416, &RefreshRequiredError{416}
 	}
 
-	return io.NopCloser(bytes.NewReader(bs[offset:(offset + length)])), resultEtag, 206, nil
+	end := offset + length
+	if end > int64(len(bs)) {
+		end = int64(len(bs))
+	}
+	return io.NopCloser(bytes.NewReader(bs[offset:end])), resultEtag, 206, nil
 }
 
 // FileBucket is a bucket backed by a directory on disk
@@ -124,12 +128,19 @@ func (b FileBucket) NewRangeReaderEtag(_ context.Context, key string, offset, le
 	}
 	result := make([]byte, length)
 	read, err := file.ReadAt(result, offset)
+
+	if err == io.EOF {
+		part := result[0:read]
+		return io.NopCloser(bytes.NewReader(part)), newEtag, 206, nil
+	}
+
 	if err != nil {
 		return nil, "", 500, err
 	}
 	if read != int(length) {
 		return nil, "", 416, fmt.Errorf("Expected to read %d bytes but only read %d", length, read)
 	}
+
 	return io.NopCloser(bytes.NewReader(result)), newEtag, 206, nil
 }
 
@@ -172,7 +183,7 @@ func (b HTTPBucket) NewRangeReaderEtag(ctx context.Context, key string, offset, 
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		resp.Body.Close()
-		if isRefreshRequredCode(resp.StatusCode) {
+		if isRefreshRequiredCode(resp.StatusCode) {
 			err = &RefreshRequiredError{resp.StatusCode}
 		} else {
 			err = fmt.Errorf("HTTP error: %d", resp.StatusCode)
@@ -187,7 +198,7 @@ func (b HTTPBucket) Close() error {
 	return nil
 }
 
-func isRefreshRequredCode(code int) bool {
+func isRefreshRequiredCode(code int) bool {
 	return code == http.StatusPreconditionFailed || code == http.StatusRequestedRangeNotSatisfiable
 }
 
@@ -217,7 +228,7 @@ func (ba BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, offs
 		status = 404
 		if resp != nil {
 			status = resp.StatusCode()
-			if isRefreshRequredCode(resp.StatusCode()) {
+			if isRefreshRequiredCode(resp.StatusCode()) {
 				return nil, "", resp.StatusCode(), &RefreshRequiredError{resp.StatusCode()}
 			}
 		}
