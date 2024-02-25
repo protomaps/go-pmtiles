@@ -60,11 +60,15 @@ func (m mockBucket) NewRangeReaderEtag(_ context.Context, key string, offset int
 	if len(etag) > 0 && resultEtag != etag {
 		return nil, "", 412, &RefreshRequiredError{}
 	}
-	if offset+length > int64(len(bs)) {
+	if offset > int64(len(bs)) {
 		return nil, "", 416, &RefreshRequiredError{416}
 	}
 
-	return io.NopCloser(bytes.NewReader(bs[offset:(offset + length)])), resultEtag, 206, nil
+	end := offset + length
+	if end > int64(len(bs)) {
+		end = int64(len(bs))
+	}
+	return io.NopCloser(bytes.NewReader(bs[offset:end])), resultEtag, 206, nil
 }
 
 // FileBucket is a bucket backed by a directory on disk
@@ -125,7 +129,7 @@ func (b FileBucket) NewRangeReaderEtag(_ context.Context, key string, offset, le
 	result := make([]byte, length)
 	read, err := file.ReadAt(result, offset)
 
-	if err == io.EOF && offset == 0 {
+	if err == io.EOF {
 		part := result[0:read]
 		return io.NopCloser(bytes.NewReader(part)), newEtag, 206, nil
 	}

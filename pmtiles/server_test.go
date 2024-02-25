@@ -102,9 +102,6 @@ func fakeArchive(t *testing.T, header HeaderV3, metadata map[string]interface{},
 	archiveBytes = append(archiveBytes, metadataBytes...)
 	archiveBytes = append(archiveBytes, leavesBytes...)
 	archiveBytes = append(archiveBytes, tileDataBytes...)
-	if len(archiveBytes) < 16384 {
-		archiveBytes = append(archiveBytes, make([]byte, 16384-len(archiveBytes))...)
-	}
 	return archiveBytes
 }
 
