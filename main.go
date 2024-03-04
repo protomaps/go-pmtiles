@@ -152,10 +152,10 @@ func main() {
 				logger.Printf("Serving /metrics on port %s and interface %s\n", adminPort, cli.Serve.Interface)
 				adminMux := http.NewServeMux()
 				adminMux.Handle("/metrics", promhttp.Handler())
-				logger.Fatal(http.ListenAndServe(cli.Serve.Interface+":"+adminPort, adminMux))
+				logger.Fatal(startHTTPServer(cli.Serve.Interface+":"+adminPort, adminMux))
 			}()
 		}
-		logger.Fatal(http.ListenAndServe(cli.Serve.Interface+":"+strconv.Itoa(cli.Serve.Port), nil))
+		logger.Fatal(startHTTPServer(cli.Serve.Interface+":"+strconv.Itoa(cli.Serve.Port), nil))
 	case "extract <input> <output>":
 		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Minzoom, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Bbox, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
 		if err != nil {
@@ -221,4 +221,15 @@ func main() {
 		panic(ctx.Command())
 	}
 
+}
+func startHTTPServer(addr string, handler http.Handler) error {
+	server := &http.Server{
+		ReadTimeout:       10 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       30 * time.Second,
+		Addr:              addr,
+		Handler:           handler,
+	}
+	return server.ListenAndServe()
 }
