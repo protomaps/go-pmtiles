@@ -60,7 +60,7 @@ func (m mockBucket) NewRangeReaderEtag(_ context.Context, key string, offset int
 	if len(etag) > 0 && resultEtag != etag {
 		return nil, "", 412, &RefreshRequiredError{}
 	}
-	if offset > int64(len(bs)) {
+	if offset >= int64(len(bs)) {
 		return nil, "", 416, &RefreshRequiredError{416}
 	}
 
