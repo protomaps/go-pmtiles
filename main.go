@@ -75,9 +75,9 @@ var cli struct {
 	} `cmd:"" hidden:""`
 
 	Sync struct {
-		Existing string `arg:"" type:"existingfile"`
-		Syncfile string `arg:"" type:"existingfile"`
-		Overfetch       float32 `default:0.05 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
+		Existing  string  `arg:"" type:"existingfile"`
+		Syncfile  string  `arg:"" type:"existingfile"`
+		Overfetch float32 `default:0.05 help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
 	} `cmd:"" hidden:""`
 
 	Serve struct {
