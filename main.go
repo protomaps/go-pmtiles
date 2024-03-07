@@ -76,8 +76,8 @@ var cli struct {
 
 	Sync struct {
 		Existing  string  `arg:"" type:"existingfile"`
-		Syncfile  string  `arg:"" type:"existingfile"`
-		Overfetch float32 `default:"0.05" help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
+		New 			string  `arg:"" help:"Local or remote archive, with .sync sidecar file."`
+		DryRun          bool    `help:"Calculate new parts to download, but don't download them."`
 	} `cmd:"" hidden:""`
 
 	Serve struct {
@@ -211,8 +211,8 @@ func main() {
 		if err != nil {
 			logger.Fatalf("Failed to makesync archive, %v", err)
 		}
-	case "sync <existing> <syncfile>":
-		err := pmtiles.Sync(logger, cli.Sync.Existing, cli.Sync.Syncfile, cli.Sync.Overfetch)
+	case "sync <existing> <new>":
+		err := pmtiles.Sync(logger, cli.Sync.Existing, cli.Sync.New, cli.Sync.DryRun)
 		if err != nil {
 			logger.Fatalf("Failed to sync archive, %v", err)
 		}

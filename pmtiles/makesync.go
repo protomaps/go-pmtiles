@@ -255,7 +255,7 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 	return nil
 }
 
-func Sync(logger *log.Logger, file string, syncfilename string, overfetch float32) error {
+func Sync(logger *log.Logger, file string, syncfilename string, dryRun bool) error {
 	start := time.Now()
 
 	syncfile, err := os.Open(syncfilename)
@@ -428,9 +428,6 @@ func Sync(logger *log.Logger, file string, syncfilename string, overfetch float3
 		}
 	}
 	fmt.Printf("need %d chunks.\n", len(ranges))
-
-	requests, _ := MergeRanges(ranges, overfetch)
-	fmt.Printf("need %d requests with overfetch=%f.\n", requests.Len(), overfetch)
 
 	fmt.Printf("Completed sync in %v.\n", time.Since(start))
 	return nil
