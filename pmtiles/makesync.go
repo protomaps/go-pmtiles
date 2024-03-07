@@ -60,7 +60,7 @@ func serializeSyncBlocks(output io.Writer, blocks []syncBlock) {
 	}
 }
 
-func deserializesyncBlocks(numBlocks int, reader *bufio.Reader) []syncBlock {
+func deserializeSyncBlocks(numBlocks int, reader *bufio.Reader) []syncBlock {
 	blocks := make([]syncBlock, 0)
 
 	lastStartID := uint64(0)
@@ -271,7 +271,7 @@ func Sync(logger *log.Logger, file string, syncfilename string, overfetch float3
 
 	json.Unmarshal(jsonBytes, &metadata)
 
-	blocks := deserializesyncBlocks(metadata.NumBlocks, bufferedReader)
+	blocks := deserializeSyncBlocks(metadata.NumBlocks, bufferedReader)
 
 	ctx := context.Background()
 
