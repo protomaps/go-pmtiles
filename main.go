@@ -70,7 +70,7 @@ var cli struct {
 	Makesync struct {
 		Input        string `arg:"" type:"existingfile"`
 		BlockSizeKb  int    `default:"20" help:"The approximate block size, in kilobytes. 0 means 1 tile = 1 block."`
-		HashFunction string `default:"fnv1a" help:"The hash function."`
+		HashFunction string `default:"xxh64" help:"The hash function."`
 		Checksum     string `help:"Store a checksum in the syncfile."`
 	} `cmd:"" hidden:""`
 

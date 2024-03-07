@@ -8,10 +8,10 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cespare/xxhash/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
-	"hash/fnv"
 	"io"
 	"log"
 	"os"
@@ -177,11 +177,11 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 	blocks := make([]syncBlock, 0)
 
 	errs, _ := errgroup.WithContext(ctx)
-	// workers
+
 	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
 		errs.Go(func() error {
 			wg.Add(1)
-			hasher := fnv.New64a()
+			hasher := xxhash.New()
 			for block := range tasks {
 				r, err := bucket.NewRangeReader(ctx, key, int64(header.TileDataOffset+block.Offset), int64(block.Length))
 				if err != nil {
@@ -241,7 +241,7 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 		Version:   cliVersion,
 		HashSize:  8,
 		BlockSize: blockSizeBytes,
-		HashType:  "fnv1a",
+		HashType:  "xxh64",
 		NumBlocks: len(blocks),
 	})
 
@@ -343,11 +343,11 @@ func Sync(logger *log.Logger, file string, syncfilename string, overfetch float3
 	var mu sync.Mutex
 
 	errs, _ := errgroup.WithContext(ctx)
-	// workers
+
 	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
 		errs.Go(func() error {
 			wg.Add(1)
-			hasher := fnv.New64a()
+			hasher := xxhash.New()
 			for task := range tasks {
 				r, err := bucket.NewRangeReader(ctx, key, int64(header.TileDataOffset+task.OldOffset), int64(task.NewBlock.Length))
 				if err != nil {
