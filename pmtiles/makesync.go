@@ -14,9 +14,13 @@ import (
 	"golang.org/x/sync/errgroup"
 	"io"
 	"log"
+	"mime"
+	"mime/multipart"
+	"net/http"
 	"os"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -80,8 +84,6 @@ func deserializeSyncBlocks(numBlocks int, reader *bufio.Reader) []syncBlock {
 	return blocks
 }
 
-// measure the number of "missing blocks"
-// what to do about extra blocks at the end
 func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb int, checksum string) error {
 	ctx := context.Background()
 	start := time.Now()
@@ -255,16 +257,37 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 	return nil
 }
 
-func Sync(logger *log.Logger, file string, syncfilename string, dryRun bool) error {
+func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool) error {
 	start := time.Now()
 
-	syncfile, err := os.Open(syncfilename)
-	if err != nil {
-		return fmt.Errorf("error opening syncfile: %v", err)
-	}
-	defer syncfile.Close()
+	client := &http.Client{}
 
-	bufferedReader := bufio.NewReader(syncfile)
+	var bufferedReader *bufio.Reader
+	if strings.HasPrefix(newVersion, "http") {
+		req, err := http.NewRequest("GET", newVersion+".sync", nil)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(req)
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf(".sync file not found")
+		}
+		if err != nil {
+			return err
+		}
+		bar := progressbar.DefaultBytes(
+			resp.ContentLength,
+			"downloading syncfile",
+		)
+		bufferedReader = bufio.NewReader(io.TeeReader(resp.Body, bar))
+	} else {
+		newFile, err := os.Open(newVersion + ".sync")
+		if err != nil {
+			return fmt.Errorf("error opening syncfile: %v", err)
+		}
+		defer newFile.Close()
+		bufferedReader = bufio.NewReader(newFile)
+	}
 
 	var metadata syncMetadata
 	jsonBytes, _ := bufferedReader.ReadSlice('\n')
@@ -275,7 +298,7 @@ func Sync(logger *log.Logger, file string, syncfilename string, dryRun bool) err
 
 	ctx := context.Background()
 
-	bucketURL, key, err := NormalizeBucketKey("", "", file)
+	bucketURL, key, err := NormalizeBucketKey("", "", oldVersion)
 
 	if err != nil {
 		return err
@@ -347,8 +370,8 @@ func Sync(logger *log.Logger, file string, syncfilename string, dryRun bool) err
 	for i := 0; i < runtime.GOMAXPROCS(0); i++ {
 		errs.Go(func() error {
 			wg.Add(1)
-			hasher := xxhash.New()
 			for task := range tasks {
+				hasher := xxhash.New()
 				r, err := bucket.NewRangeReader(ctx, key, int64(header.TileDataOffset+task.OldOffset), int64(task.NewBlock.Length))
 				if err != nil {
 					log.Fatal(err)
@@ -366,8 +389,6 @@ func Sync(logger *log.Logger, file string, syncfilename string, dryRun bool) err
 					wanted = append(wanted, task.NewBlock)
 				}
 				mu.Unlock()
-
-				hasher.Reset()
 			}
 			wg.Done()
 			return nil
@@ -377,7 +398,9 @@ func Sync(logger *log.Logger, file string, syncfilename string, dryRun bool) err
 	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
 		if idx < len(blocks) {
 			for e.TileID > blocks[idx].Start {
+				mu.Lock()
 				wanted = append(wanted, blocks[idx])
+				mu.Unlock()
 				bar.Add(1)
 				idx = idx + 1
 			}
@@ -392,7 +415,9 @@ func Sync(logger *log.Logger, file string, syncfilename string, dryRun bool) err
 
 	// we may not have consumed until the end
 	for idx < len(blocks) {
+		mu.Lock()
 		wanted = append(wanted, blocks[idx])
+		mu.Unlock()
 		bar.Add(1)
 		idx = idx + 1
 	}
@@ -428,6 +453,49 @@ func Sync(logger *log.Logger, file string, syncfilename string, dryRun bool) err
 		}
 	}
 	fmt.Printf("need %d chunks.\n", len(ranges))
+
+	if !dryRun {
+		req, err := http.NewRequest("GET", newVersion, nil)
+
+		var rangeParts []string
+
+		for _, r := range ranges {
+			rangeParts = append(rangeParts, fmt.Sprintf("%d-%d", r.SrcOffset, r.SrcOffset+r.Length+1))
+		}
+
+		headerVal := strings.Join(rangeParts, ",")
+		req.Header.Set("Range", fmt.Sprintf("bytes=%s", headerVal))
+		resp, err := client.Do(req)
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("non-OK multirange request")
+		}
+
+		_, params, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+		if err != nil {
+			return err
+		}
+
+		mr := multipart.NewReader(resp.Body, params["boundary"])
+
+		for {
+			part, err := mr.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return err
+			}
+
+			_ = part.Header.Get("Content-Range")
+
+			partBytes, err := io.ReadAll(part)
+			if err != nil {
+				return err
+			}
+
+			_ = partBytes
+		}
+	}
 
 	fmt.Printf("Completed sync in %v.\n", time.Since(start))
 	return nil
