@@ -75,9 +75,9 @@ var cli struct {
 	} `cmd:"" hidden:""`
 
 	Sync struct {
-		Existing  string  `arg:"" type:"existingfile"`
-		New 			string  `arg:"" help:"Local or remote archive, with .sync sidecar file."`
-		DryRun          bool    `help:"Calculate new parts to download, but don't download them."`
+		Existing string `arg:"" type:"existingfile"`
+		New      string `arg:"" help:"Local or remote archive, with .sync sidecar file."`
+		DryRun   bool   `help:"Calculate new parts to download, but don't download them."`
 	} `cmd:"" hidden:""`
 
 	Serve struct {
