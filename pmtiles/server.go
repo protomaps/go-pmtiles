@@ -470,7 +470,7 @@ func parseMetadataPath(path string) (bool, string) {
 	return false, ""
 }
 
-func (server *Server) get(ctx context.Context, path string) (archive, handler string, status int, headers map[string]string, data []byte) {
+func (server *Server) get(ctx context.Context, unsanitizedPath string) (archive, handler string, status int, headers map[string]string, data []byte) {
 	handler = ""
 	archive = ""
 	headers = make(map[string]string)
@@ -478,16 +478,16 @@ func (server *Server) get(ctx context.Context, path string) (archive, handler st
 		headers["Access-Control-Allow-Origin"] = server.cors
 	}
 
-	if ok, key, z, x, y, ext := parseTilePath(path); ok {
+	if ok, key, z, x, y, ext := parseTilePath(unsanitizedPath); ok {
 		archive, handler = key, "tile"
 		status, headers, data = server.getTile(ctx, headers, key, z, x, y, ext)
-	} else if ok, key := parseTilejsonPath(path); ok {
+	} else if ok, key := parseTilejsonPath(unsanitizedPath); ok {
 		archive, handler = key, "tilejson"
 		status, headers, data = server.getTileJSON(ctx, headers, key)
-	} else if ok, key := parseMetadataPath(path); ok {
+	} else if ok, key := parseMetadataPath(unsanitizedPath); ok {
 		archive, handler = key, "metadata"
 		status, headers, data = server.getMetadata(ctx, headers, key)
-	} else if path == "/" {
+	} else if unsanitizedPath == "/" {
 		handler, status, data = "/", 204, []byte{}
 	} else {
 		handler, status, data = "404", 404, []byte("Path not found")
