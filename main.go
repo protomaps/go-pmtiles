@@ -53,14 +53,14 @@ var cli struct {
 	} `cmd:"" help:"Fetch one tile from a local or remote archive and output on stdout."`
 
 	WriteHeader struct {
-		Input      string `arg:"" help:"Input archive file." type:"existingfile"`
+		Input          string `arg:"" help:"Input archive file." type:"existingfile"`
 		HeaderJsonFile string `arg:"" help:"Input header JSON (written by show --header-json)." type:"existingfile"`
 	} `cmd:"" help:"Write header data to an existing archive in-place."`
 
 	WriteMetadata struct {
-		Input    string `arg:"" help:"Input archive file." type:"existingfile"`
+		Input        string `arg:"" help:"Input archive file." type:"existingfile"`
 		MetadataFile string `arg:"" help:"Input metadata JSON." type:"existingfile"`
-		Tmpdir   string `help:"An optional path to a folder for tmp data." type:"existingdir"`
+		Tmpdir       string `help:"An optional path to a folder for tmp data." type:"existingdir"`
 	} `cmd:"" help:"Write JSON metadata to an existing archive in-place."`
 
 	Extract struct {
