@@ -14,7 +14,7 @@ import (
 )
 
 // Show prints detailed information about an archive.
-func Show(_ *log.Logger, bucketURL string, key string, showMetadataOnly bool, showTilejson bool, publicURL string, showTile bool, z int, x int, y int) error {
+func Show(_ *log.Logger, bucketURL string, key string, showHeaderJsonOnly bool, showMetadataOnly bool, showTilejson bool, publicURL string, showTile bool, z int, x int, y int) error {
 	ctx := context.Background()
 
 	bucketURL, key, err := NormalizeBucketKey(bucketURL, "", key)
@@ -90,11 +90,13 @@ func Show(_ *log.Logger, bucketURL string, key string, showMetadataOnly bool, sh
 		metadataReader.Close()
 
 		if showMetadataOnly && showTilejson {
-			return fmt.Errorf("cannot use --metadata and --tilejson together")
+			return fmt.Errorf("cannot use more than one of --header-json, --metadata, and --tilejson together")
 		}
 
-		if showMetadataOnly {
-			fmt.Print(string(metadataBytes))
+		if showHeaderJsonOnly {
+			fmt.Println(headerToStringifiedJson(header))
+		} else if showMetadataOnly {
+			fmt.Println(string(metadataBytes))
 		} else if showTilejson {
 			if publicURL == "" {
 				// Using Fprintf instead of logger here, as this message should be written to Stderr in case

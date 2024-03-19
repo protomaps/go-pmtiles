@@ -36,11 +36,12 @@ var cli struct {
 	} `cmd:"" help:"Convert an MBTiles or older spec version to PMTiles."`
 
 	Show struct {
-		Path      string `arg:""`
-		Bucket    string `help:"Remote bucket"`
-		Metadata  bool   `help:"Print only the JSON metadata."`
-		Tilejson  bool   `help:"Print the TileJSON."`
-		PublicURL string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles"`
+		Path       string `arg:""`
+		Bucket     string `help:"Remote bucket"`
+		Metadata   bool   `help:"Print only the JSON metadata."`
+		HeaderJson bool   `help:Print a JSON representation of the header information.`
+		Tilejson   bool   `help:"Print the TileJSON."`
+		PublicURL  string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles"`
 	} `cmd:"" help:"Inspect a local or remote archive."`
 
 	Tile struct {
@@ -50,6 +51,17 @@ var cli struct {
 		Y      int    `arg:""`
 		Bucket string `help:"Remote bucket"`
 	} `cmd:"" help:"Fetch one tile from a local or remote archive and output on stdout."`
+
+	WriteHeader struct {
+		Input      string `arg:"" help:"Input archive file." type:"existingfile"`
+		HeaderJsonFile string `arg:"" help:"Input header JSON (written by show --header-json)." type:"existingfile"`
+	} `cmd:"" help:"Write header data to an existing archive in-place."`
+
+	WriteMetadata struct {
+		Input    string `arg:"" help:"Input archive file." type:"existingfile"`
+		MetadataFile string `arg:"" help:"Input metadata JSON." type:"existingfile"`
+		Tmpdir   string `help:"An optional path to a folder for tmp data." type:"existingdir"`
+	} `cmd:"" help:"Write JSON metadata to an existing archive in-place."`
 
 	Extract struct {
 		Input           string  `arg:"" help:"Input local or remote archive."`
@@ -122,12 +134,12 @@ func main() {
 
 	switch ctx.Command() {
 	case "show <path>":
-		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, cli.Show.Metadata, cli.Show.Tilejson, cli.Show.PublicURL, false, 0, 0, 0)
+		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, cli.Show.HeaderJson, cli.Show.Metadata, cli.Show.Tilejson, cli.Show.PublicURL, false, 0, 0, 0)
 		if err != nil {
 			logger.Fatalf("Failed to show archive, %v", err)
 		}
 	case "tile <path> <z> <x> <y>":
-		err := pmtiles.Show(logger, cli.Tile.Bucket, cli.Tile.Path, false, false, "", true, cli.Tile.Z, cli.Tile.X, cli.Tile.Y)
+		err := pmtiles.Show(logger, cli.Tile.Bucket, cli.Tile.Path, false, false, false, "", true, cli.Tile.Z, cli.Tile.X, cli.Tile.Y)
 		if err != nil {
 			logger.Fatalf("Failed to show tile, %v", err)
 		}
