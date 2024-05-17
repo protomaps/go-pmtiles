@@ -66,7 +66,7 @@ type HeaderV3 struct {
 
 // HeaderJson is a human-readable representation of parts of the binary header
 // that may need to be manually edited.
-// Omitted parts are the responsibility of the generated program and not editable.
+// Omitted parts are the responsibility of the generator program and not editable.
 type HeaderJson struct {
 	TileCompression string
 	TileType        string

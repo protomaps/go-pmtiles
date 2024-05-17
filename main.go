@@ -55,8 +55,7 @@ var cli struct {
 	Write struct {
 		Input          string `arg:"" help:"Input archive file." type:"existingfile"`
 		HeaderJson string `help:"Input header JSON file (written by show --header-json)." type:"existingfile"`
-		MetadataFile string `help:"Input metadata JSON (written by show --metadata)." type:"existingfile"`
-		Tmpdir       string `help:"An optional path to a folder for tmp data." type:"existingdir"`
+		Metadata string `help:"Input metadata JSON (written by show --metadata)." type:"existingfile"`
 	} `cmd:"" help:"Write header data or metadata to an existing archive."`
 
 	Extract struct {
@@ -130,12 +129,12 @@ func main() {
 
 	switch ctx.Command() {
 	case "show <path>":
-		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, cli.Show.HeaderJson, cli.Show.Metadata, cli.Show.Tilejson, cli.Show.PublicURL, false, 0, 0, 0)
+		err := pmtiles.Show(logger, os.Stdout, cli.Show.Bucket, cli.Show.Path, cli.Show.HeaderJson, cli.Show.Metadata, cli.Show.Tilejson, cli.Show.PublicURL, false, 0, 0, 0)
 		if err != nil {
 			logger.Fatalf("Failed to show archive, %v", err)
 		}
 	case "tile <path> <z> <x> <y>":
-		err := pmtiles.Show(logger, cli.Tile.Bucket, cli.Tile.Path, false, false, false, "", true, cli.Tile.Z, cli.Tile.X, cli.Tile.Y)
+		err := pmtiles.Show(logger, os.Stdout, cli.Tile.Bucket, cli.Tile.Path, false, false, false, "", true, cli.Tile.Z, cli.Tile.X, cli.Tile.Y)
 		if err != nil {
 			logger.Fatalf("Failed to show tile, %v", err)
 		}
@@ -170,6 +169,11 @@ func main() {
 		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Minzoom, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Bbox, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
 		if err != nil {
 			logger.Fatalf("Failed to extract, %v", err)
+		}
+	case "write <input>":
+		err := pmtiles.Write(logger, cli.Write.Input, cli.Write.HeaderJson, cli.Write.Metadata)
+		if err != nil {
+			logger.Fatalf("Failed to write, %v", err)
 		}
 	case "convert <input> <output>":
 		path := cli.Convert.Input
