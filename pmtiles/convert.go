@@ -251,6 +251,11 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 			mbtilesMetadata = append(mbtilesMetadata, stmt.ColumnText(1))
 		}
 	}
+
+	if !mbtilesMetadataHasFormat(mbtilesMetadata) {
+		logger.Println("WARNING: MBTiles metadata is missing format information. Update this with: INSERT INTO metadata (name, value) VALUES ('format', 'png')")
+	}
+
 	header, jsonMetadata, err := mbtilesToHeaderJSON(mbtilesMetadata)
 
 	if err != nil {
@@ -556,6 +561,15 @@ func parseCenter(center string) (int32, int32, uint8, error) {
 		return 0, 0, 0, err
 	}
 	return int32(centerLon * E7), int32(centerLat * E7), uint8(centerZoom), nil
+}
+
+func mbtilesMetadataHasFormat(mbtilesMetadata []string) bool {
+	for i := 0; i < len(mbtilesMetadata); i += 2 {
+		if mbtilesMetadata[i] == "format" {
+			return true
+		}
+	}
+	return false
 }
 
 func mbtilesToHeaderJSON(mbtilesMetadata []string) (HeaderV3, map[string]interface{}, error) {

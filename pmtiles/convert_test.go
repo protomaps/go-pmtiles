@@ -176,6 +176,11 @@ func TestMbtiles(t *testing.T) {
 	assert.True(t, ok)
 }
 
+func TestMbtilesMissingFormat(t *testing.T) {
+	assert.False(t, mbtilesMetadataHasFormat([]string{"version", "1.0"}))
+	assert.True(t, mbtilesMetadataHasFormat([]string{"format", "png"}))
+}
+
 func TestMbtilesMissingBoundsCenter(t *testing.T) {
 	header, _, err := mbtilesToHeaderJSON([]string{
 		"name", "test_name",
