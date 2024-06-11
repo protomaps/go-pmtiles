@@ -6,5 +6,6 @@ RUN go build -o /workspace/go-pmtiles
 FROM scratch
 COPY --from=builder /workspace/go-pmtiles /go-pmtiles
 COPY --from=builder etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+ADD root_tmp.tgz /
 EXPOSE 8080
 ENTRYPOINT ["/go-pmtiles"]
