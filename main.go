@@ -36,11 +36,12 @@ var cli struct {
 	} `cmd:"" help:"Convert an MBTiles or older spec version to PMTiles."`
 
 	Show struct {
-		Path      string `arg:""`
-		Bucket    string `help:"Remote bucket"`
-		Metadata  bool   `help:"Print only the JSON metadata."`
-		Tilejson  bool   `help:"Print the TileJSON."`
-		PublicURL string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles"`
+		Path       string `arg:""`
+		Bucket     string `help:"Remote bucket"`
+		Metadata   bool   `help:"Print only the JSON metadata."`
+		HeaderJson bool   `help:"Print a JSON representation of the header information."`
+		Tilejson   bool   `help:"Print the TileJSON."`
+		PublicURL  string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles"`
 	} `cmd:"" help:"Inspect a local or remote archive."`
 
 	Tile struct {
@@ -50,6 +51,13 @@ var cli struct {
 		Y      int    `arg:""`
 		Bucket string `help:"Remote bucket"`
 	} `cmd:"" help:"Fetch one tile from a local or remote archive and output on stdout."`
+
+	Write struct {
+		Input          string `arg:"" help:"Input archive file." type:"existingfile"`
+		HeaderJson string `help:"Input header JSON file (written by show --header-json)." type:"existingfile"`
+		MetadataFile string `help:"Input metadata JSON (written by show --metadata)." type:"existingfile"`
+		Tmpdir       string `help:"An optional path to a folder for tmp data." type:"existingdir"`
+	} `cmd:"" help:"Write header data or metadata to an existing archive."`
 
 	Extract struct {
 		Input           string  `arg:"" help:"Input local or remote archive."`
@@ -92,15 +100,6 @@ var cli struct {
 		PublicURL string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles/"`
 	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
 
-	Download struct {
-		OldFile         string  `type:"existingfile" help:"The old archive on disk. Providing this will check the new archive for a .sync file"`
-		NewFile         string  `arg:"The remote file."`
-		Bucket          string  `required:"" help:"Bucket of file to download."`
-		DownloadThreads int     `default:"4" help:"Number of download threads."`
-		DryRun          bool    `help:"Calculate new parts to download, but don't download them."`
-		Overfetch       float32 `default:"0.05" help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
-	} `cmd:"" help:"Upload a local archive to remote storage."`
-
 	Upload struct {
 		Input          string `arg:"" type:"existingfile"`
 		Key            string `arg:""`
@@ -122,12 +121,12 @@ func main() {
 
 	switch ctx.Command() {
 	case "show <path>":
-		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, cli.Show.Metadata, cli.Show.Tilejson, cli.Show.PublicURL, false, 0, 0, 0)
+		err := pmtiles.Show(logger, cli.Show.Bucket, cli.Show.Path, cli.Show.HeaderJson, cli.Show.Metadata, cli.Show.Tilejson, cli.Show.PublicURL, false, 0, 0, 0)
 		if err != nil {
 			logger.Fatalf("Failed to show archive, %v", err)
 		}
 	case "tile <path> <z> <x> <y>":
-		err := pmtiles.Show(logger, cli.Tile.Bucket, cli.Tile.Path, false, false, "", true, cli.Tile.Z, cli.Tile.X, cli.Tile.Y)
+		err := pmtiles.Show(logger, cli.Tile.Bucket, cli.Tile.Path, false, false, false, "", true, cli.Tile.Z, cli.Tile.X, cli.Tile.Y)
 		if err != nil {
 			logger.Fatalf("Failed to show tile, %v", err)
 		}

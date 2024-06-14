@@ -84,6 +84,33 @@ func TestHeaderRoundtrip(t *testing.T) {
 	assert.Equal(t, int32(32000000), result.CenterLatE7)
 }
 
+func TestHeaderJsonRoundtrip(t *testing.T) {
+	header := HeaderV3{}
+	header.TileCompression = Brotli
+	header.TileType = Mvt
+	header.MinZoom = 1
+	header.MaxZoom = 3
+	header.MinLonE7 = 1.1 * 10000000
+	header.MinLatE7 = 2.1 * 10000000
+	header.MaxLonE7 = 1.2 * 10000000
+	header.MaxLatE7 = 2.2 * 10000000
+	header.CenterZoom = 2
+	header.CenterLonE7 = 3.1 * 10000000
+	header.CenterLatE7 = 3.2 * 10000000
+	j := headerToJson(header)
+	assert.Equal(t, "br", j.TileCompression)
+	assert.Equal(t, "mvt", j.TileType)
+	assert.Equal(t, 1, j.MinZoom)
+	assert.Equal(t, 3, j.MaxZoom)
+	assert.Equal(t, 2, j.CenterZoom)
+	assert.Equal(t, 1.1, j.MinLon)
+	assert.Equal(t, 2.1, j.MinLat)
+	assert.Equal(t, 1.2, j.MaxLon)
+	assert.Equal(t, 2.2, j.MaxLat)
+	assert.Equal(t, 3.1, j.CenterLon)
+	assert.Equal(t, 3.2, j.CenterLat)
+}
+
 func TestOptimizeDirectories(t *testing.T) {
 	rand.Seed(3857)
 	entries := make([]EntryV3, 0)
@@ -170,4 +197,17 @@ func TestBuildRootsLeaves(t *testing.T) {
 	}
 	_, _, numLeaves := buildRootsLeaves(entries, 1)
 	assert.Equal(t, 1, numLeaves)
+}
+
+func TestStringifiedCompression(t *testing.T) {
+
+}
+
+func TestStringifiedExtension(t *testing.T) {
+	assert.Equal(t, "", headerExt(HeaderV3{}))
+	assert.Equal(t, ".mvt", headerExt(HeaderV3{TileType: Mvt}))
+	assert.Equal(t, ".png", headerExt(HeaderV3{TileType: Png}))
+	assert.Equal(t, ".jpg", headerExt(HeaderV3{TileType: Jpeg}))
+	assert.Equal(t, ".webp", headerExt(HeaderV3{TileType: Webp}))
+	assert.Equal(t, ".avif", headerExt(HeaderV3{TileType: Avif}))
 }
