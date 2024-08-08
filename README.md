@@ -84,3 +84,27 @@ To upload your files to AWS S3 you will need an IAM policy for writing/reading t
         ]
     }
     
+## Azure Specific Dev Notes
+Run a local blobstore emulator:
+```shell
+podman run -p 10000:10000 -v .:/log  mcr.microsoft.com/azure-storage/azurite \ 
+    azurite-blob --debug /log/debug.log 
+```
+Azurite accepts the same well-known account and key used by the legacy Azure Storage Emulator.
+
+- Account name: `devstoreaccount1`
+- Account key: `Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==`
+
+Uploading files:
+```sh
+export AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+az storage  container create --name data       
+az storage blob upload --file a1.pmtiles --container-name data --name a.pmtiles    
+az storage blob upload --overwrite  --file a2.pmtiles --container-name data --name a.pmtiles    
+```
+
+
+Starting pmtiles:
+```sh
+AZURE_STORAGE_ACCOUNT=devstoreaccount1 AZURE_STORAGE_KEY="Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==" ./go-pmtiles serve --port=8084 / --bucket="azblob://data?protocol=http&domain=127.0.0.1:10000"
+```

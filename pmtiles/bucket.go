@@ -15,6 +15,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+
+	azblobblob "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/cespare/xxhash/v2"
@@ -48,8 +51,8 @@ func (m mockBucket) Close() error {
 func (m mockBucket) NewRangeReader(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, error) {
 	body, _, _, err := m.NewRangeReaderEtag(ctx, key, offset, length, "")
 	return body, err
-
 }
+
 func (m mockBucket) NewRangeReaderEtag(_ context.Context, key string, offset int64, length int64, etag string) (io.ReadCloser, string, int, error) {
 	bs, ok := m.items[key]
 	if !ok {
@@ -202,16 +205,16 @@ func isRefreshRequiredCode(code int) bool {
 	return code == http.StatusPreconditionFailed || code == http.StatusRequestedRangeNotSatisfiable
 }
 
-type BucketAdapter struct {
+type S3BucketAdapter struct {
 	Bucket *blob.Bucket
 }
 
-func (ba BucketAdapter) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+func (ba S3BucketAdapter) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
 	body, _, _, err := ba.NewRangeReaderEtag(ctx, key, offset, length, "")
 	return body, err
 }
 
-func (ba BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, int, error) {
+func (ba S3BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, int, error) {
 	reader, err := ba.Bucket.NewRangeReader(ctx, key, offset, length, &blob.ReaderOptions{
 		BeforeRead: func(asFunc func(interface{}) bool) error {
 			var req *s3.GetObjectInput
@@ -242,7 +245,59 @@ func (ba BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, offs
 	return reader, resultETag, status, nil
 }
 
-func (ba BucketAdapter) Close() error {
+func (ba S3BucketAdapter) Close() error {
+	return ba.Bucket.Close()
+}
+
+type AzureBucketAdapter struct {
+	Bucket *blob.Bucket
+}
+
+func (ba AzureBucketAdapter) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+	body, _, _, err := ba.NewRangeReaderEtag(ctx, key, offset, length, "")
+	return body, err
+}
+
+func (ba AzureBucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, int, error) {
+	reader, err := ba.Bucket.NewRangeReader(ctx, key, offset, length, &blob.ReaderOptions{
+		BeforeRead: func(asFunc func(interface{}) bool) error {
+			var req *azblobblob.DownloadStreamOptions
+			if len(etag) > 0 && asFunc(&req) {
+				etag := azcore.ETag(etag)
+				if req.AccessConditions == nil {
+					req.AccessConditions = &azblobblob.AccessConditions{}
+				}
+				if req.AccessConditions.ModifiedAccessConditions == nil {
+					req.AccessConditions.ModifiedAccessConditions = &azblobblob.ModifiedAccessConditions{}
+				}
+				req.AccessConditions.ModifiedAccessConditions.IfMatch = &etag
+			}
+			return nil
+		},
+	})
+	status := 206
+	if err != nil {
+		var resp *azcore.ResponseError
+		errors.As(err, &resp)
+		status = 404
+		if resp != nil {
+			status = resp.StatusCode
+			if isRefreshRequiredCode(resp.StatusCode) {
+				return nil, "", resp.StatusCode, &RefreshRequiredError{resp.StatusCode}
+			}
+		}
+		return nil, "", status, err
+	}
+	resultETag := ""
+	var resp azblobblob.DownloadStreamResponse
+	if reader.As(&resp) {
+		resultETag = string(*resp.ETag)
+	}
+
+	return reader, resultETag, status, nil
+}
+
+func (ba AzureBucketAdapter) Close() error {
 	return ba.Bucket.Close()
 }
 
@@ -293,6 +348,7 @@ func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Buc
 		bucket := NewFileBucket(filepath.FromSlash(path))
 		return bucket, nil
 	}
+
 	bucket, err := blob.OpenBucket(ctx, bucketURL)
 	if err != nil {
 		return nil, err
@@ -300,6 +356,10 @@ func OpenBucket(ctx context.Context, bucketURL string, bucketPrefix string) (Buc
 	if bucketPrefix != "" && bucketPrefix != "/" && bucketPrefix != "." {
 		bucket = blob.PrefixedBucket(bucket, path.Clean(bucketPrefix)+string(os.PathSeparator))
 	}
-	wrappedBucket := BucketAdapter{bucket}
+	if strings.HasPrefix(bucketURL, "azblob") {
+		bucket := AzureBucketAdapter{bucket}
+		return bucket, nil
+	}
+	wrappedBucket := S3BucketAdapter{bucket}
 	return wrappedBucket, err
 }
