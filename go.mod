@@ -1,8 +1,6 @@
 module github.com/protomaps/go-pmtiles
 
-go 1.21.0
-
-toolchain go1.21.5
+go 1.21.13
 
 require (
 	github.com/RoaringBitmap/roaring v1.5.0
