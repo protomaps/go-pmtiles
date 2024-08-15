@@ -17,7 +17,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	azblobblob "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/cespare/xxhash/v2"
 	"gocloud.dev/blob"
@@ -204,13 +203,42 @@ func isRefreshRequiredCode(code int) bool {
 	return code == http.StatusPreconditionFailed || code == http.StatusRequestedRangeNotSatisfiable
 }
 
-type S3BucketAdapter struct {
-	Bucket *blob.Bucket
+func handleReaderResponse(reader *blob.Reader, err error, getETag func(interface{}) string) (io.ReadCloser, string, int, error) {
+	status := 206
+	if err != nil {
+		status = 404
+		var statusCodeGetter interface {
+			StatusCode() int
+		}
+		if errors.As(err, &statusCodeGetter) {
+			status = statusCodeGetter.StatusCode()
+			if isRefreshRequiredCode(status) {
+				return nil, "", status, &RefreshRequiredError{status}
+			}
+		}
+		return nil, "", status, err
+	}
+
+	resultETag := ""
+	reader.As(func(resp interface{}) bool {
+		resultETag = getETag(resp)
+		return true
+	})
+
+	return reader, resultETag, status, nil
 }
 
-func (ba S3BucketAdapter) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
-	body, _, _, err := ba.NewRangeReaderEtag(ctx, key, offset, length, "")
-	return body, err
+type BaseBucketAdapter struct {
+	*blob.Bucket
+}
+
+func (ba BaseBucketAdapter) Close() error {
+	return ba.Bucket.Close()
+}
+
+// S3BucketAdapter implements the Bucket interface for S3
+type S3BucketAdapter struct {
+	*blob.Bucket
 }
 
 func (ba S3BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, int, error) {
@@ -223,25 +251,17 @@ func (ba S3BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, of
 			return nil
 		},
 	})
-	status := 206
-	if err != nil {
-		var resp awserr.RequestFailure
-		errors.As(err, &resp)
-		status = 404
-		if resp != nil {
-			status = resp.StatusCode()
-			if isRefreshRequiredCode(resp.StatusCode()) {
-				return nil, "", resp.StatusCode(), &RefreshRequiredError{resp.StatusCode()}
-			}
+	return handleReaderResponse(reader, err, func(resp interface{}) string {
+		if s3Resp, ok := resp.(*s3.GetObjectOutput); ok {
+			return *s3Resp.ETag
 		}
-		return nil, "", status, err
-	}
-	resultETag := ""
-	var resp s3.GetObjectOutput
-	if reader.As(&resp) {
-		resultETag = *resp.ETag
-	}
-	return reader, resultETag, status, nil
+		return ""
+	})
+}
+
+func (ba S3BucketAdapter) NewRangeReader(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+	body, _, _, err := ba.NewRangeReaderEtag(ctx, key, offset, length, "")
+	return body, err
 }
 
 func (ba S3BucketAdapter) Close() error {
@@ -262,38 +282,24 @@ func (ba AzureBucketAdapter) NewRangeReaderEtag(ctx context.Context, key string,
 		BeforeRead: func(asFunc func(interface{}) bool) error {
 			var req *azblobblob.DownloadStreamOptions
 			if len(etag) > 0 && asFunc(&req) {
-				etag := azcore.ETag(etag)
+				azureEtag := azcore.ETag(etag)
 				if req.AccessConditions == nil {
 					req.AccessConditions = &azblobblob.AccessConditions{}
 				}
 				if req.AccessConditions.ModifiedAccessConditions == nil {
 					req.AccessConditions.ModifiedAccessConditions = &azblobblob.ModifiedAccessConditions{}
 				}
-				req.AccessConditions.ModifiedAccessConditions.IfMatch = &etag
+				req.AccessConditions.ModifiedAccessConditions.IfMatch = &azureEtag
 			}
 			return nil
 		},
 	})
-	status := 206
-	if err != nil {
-		var resp *azcore.ResponseError
-		errors.As(err, &resp)
-		status = 404
-		if resp != nil {
-			status = resp.StatusCode
-			if isRefreshRequiredCode(resp.StatusCode) {
-				return nil, "", resp.StatusCode, &RefreshRequiredError{resp.StatusCode}
-			}
+	return handleReaderResponse(reader, err, func(resp interface{}) string {
+		if azureResp, ok := resp.(*azblobblob.DownloadStreamResponse); ok {
+			return string(*azureResp.ETag)
 		}
-		return nil, "", status, err
-	}
-	resultETag := ""
-	var resp azblobblob.DownloadStreamResponse
-	if reader.As(&resp) {
-		resultETag = string(*resp.ETag)
-	}
-
-	return reader, resultETag, status, nil
+		return ""
+	})
 }
 
 func (ba AzureBucketAdapter) Close() error {
