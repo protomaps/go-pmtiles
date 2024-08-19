@@ -17,6 +17,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	azblobblob "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/cespare/xxhash/v2"
 	"gocloud.dev/blob"
@@ -29,7 +30,7 @@ type Bucket interface {
 	NewRangeReaderEtag(ctx context.Context, key string, offset int64, length int64, etag string) (io.ReadCloser, string, int, error)
 }
 
-// RefreshRequiredError is an error that indicates the etag has chanced on the remote file
+// RefreshRequiredError is an error that indicates the etag has changed on the remote file
 type RefreshRequiredError struct {
 	StatusCode int
 }
@@ -203,19 +204,23 @@ func isRefreshRequiredCode(code int) bool {
 	return code == http.StatusPreconditionFailed || code == http.StatusRequestedRangeNotSatisfiable
 }
 
-func handleReaderResponse(reader *blob.Reader, err error, getETag func(interface{}) string) (io.ReadCloser, string, int, error) {
+// StatusCoder is used to get the actual status code out from a cloud vendor specific error
+type StatusCoder interface {
+	StatusCodeFromError(error) int
+}
+
+// handleReaderResponse is the common main logic for all cloud
+func handleReaderResponse(reader *blob.Reader, b StatusCoder, err error, getETag func(interface{}) string) (io.ReadCloser, string, int, error) {
 	status := 206
 	if err != nil {
 		status = 404
-		var statusCodeGetter interface {
-			StatusCode() int
+
+		statusCode := b.StatusCodeFromError(err)
+
+		if isRefreshRequiredCode(statusCode) {
+			return nil, "", statusCode, &RefreshRequiredError{statusCode}
 		}
-		if errors.As(err, &statusCodeGetter) {
-			status = statusCodeGetter.StatusCode()
-			if isRefreshRequiredCode(status) {
-				return nil, "", status, &RefreshRequiredError{status}
-			}
-		}
+
 		return nil, "", status, err
 	}
 
@@ -226,14 +231,6 @@ func handleReaderResponse(reader *blob.Reader, err error, getETag func(interface
 	})
 
 	return reader, resultETag, status, nil
-}
-
-type BaseBucketAdapter struct {
-	*blob.Bucket
-}
-
-func (ba BaseBucketAdapter) Close() error {
-	return ba.Bucket.Close()
 }
 
 // S3BucketAdapter implements the Bucket interface for S3
@@ -251,7 +248,7 @@ func (ba S3BucketAdapter) NewRangeReaderEtag(ctx context.Context, key string, of
 			return nil
 		},
 	})
-	return handleReaderResponse(reader, err, func(resp interface{}) string {
+	return handleReaderResponse(reader, ba, err, func(resp interface{}) string {
 		if s3Resp, ok := resp.(*s3.GetObjectOutput); ok {
 			return *s3Resp.ETag
 		}
@@ -266,6 +263,17 @@ func (ba S3BucketAdapter) NewRangeReader(ctx context.Context, key string, offset
 
 func (ba S3BucketAdapter) Close() error {
 	return ba.Bucket.Close()
+}
+
+func (ba S3BucketAdapter) StatusCodeFromError(err error) int {
+	var resp awserr.RequestFailure
+	errors.As(err, &resp)
+	status := 404
+	if resp != nil {
+		status = resp.StatusCode()
+	}
+
+	return status
 }
 
 type AzureBucketAdapter struct {
@@ -294,7 +302,7 @@ func (ba AzureBucketAdapter) NewRangeReaderEtag(ctx context.Context, key string,
 			return nil
 		},
 	})
-	return handleReaderResponse(reader, err, func(resp interface{}) string {
+	return handleReaderResponse(reader, ba, err, func(resp interface{}) string {
 		if azureResp, ok := resp.(*azblobblob.DownloadStreamResponse); ok {
 			return string(*azureResp.ETag)
 		}
@@ -304,6 +312,17 @@ func (ba AzureBucketAdapter) NewRangeReaderEtag(ctx context.Context, key string,
 
 func (ba AzureBucketAdapter) Close() error {
 	return ba.Bucket.Close()
+}
+
+func (ba AzureBucketAdapter) StatusCodeFromError(err error) int {
+	var resp *azcore.ResponseError
+	errors.As(err, &resp)
+	status := 404
+	if resp != nil {
+		return resp.StatusCode
+	}
+
+	return status
 }
 
 func NormalizeBucketKey(bucket string, prefix string, key string) (string, string, error) {
