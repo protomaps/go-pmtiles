@@ -2,6 +2,7 @@ package pmtiles
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -9,8 +10,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/stretchr/testify/assert"
 	_ "gocloud.dev/blob/fileblob"
+	"google.golang.org/api/googleapi"
 )
 
 func TestNormalizeLocalFile(t *testing.T) {
@@ -205,4 +212,55 @@ func TestFileShorterThan16K(t *testing.T) {
 	data, err := io.ReadAll(reader)
 	assert.Nil(t, err)
 	assert.Equal(t, 3, len(data))
+}
+
+func TestSetProviderEtagAws(t *testing.T) {
+	var awsV1Req s3.GetObjectInput
+	assert.Nil(t, awsV1Req.IfMatch)
+	asFunc := func(i interface{}) bool {
+		v, ok := i.(**s3.GetObjectInput)
+		if ok {
+			*v = &awsV1Req
+		}
+		return true
+	}
+	setProviderEtag(asFunc, "123")
+	assert.Equal(t, aws.String("123"), awsV1Req.IfMatch)
+}
+
+func TestSetProviderEtagAzure(t *testing.T) {
+	var azOptions azblob.DownloadStreamOptions
+	assert.Nil(t, azOptions.AccessConditions)
+	asFunc := func(i interface{}) bool {
+		v, ok := i.(**azblob.DownloadStreamOptions)
+		if ok {
+			*v = &azOptions
+		}
+		return ok
+	}
+	setProviderEtag(asFunc, "123")
+	assert.Equal(t, azcore.ETag("123"), *azOptions.AccessConditions.ModifiedAccessConditions.IfMatch)
+}
+
+func TestGetProviderErrorStatusCode(t *testing.T) {
+	awsErr := awserr.NewRequestFailure(awserr.New("", "", nil), 500, "")
+	statusCode := getProviderErrorStatusCode(awsErr)
+	assert.Equal(t, 500, statusCode)
+
+	azureErr := &azcore.ResponseError{StatusCode: 500}
+	statusCode = getProviderErrorStatusCode(azureErr)
+	assert.Equal(t, 500, statusCode)
+
+	gcpErr := &googleapi.Error{Code: 500}
+	statusCode = getProviderErrorStatusCode(gcpErr)
+	assert.Equal(t, 500, statusCode)
+
+	err := errors.New("generic error")
+	statusCode = getProviderErrorStatusCode(err)
+	assert.Equal(t, 404, statusCode)
+}
+
+func TestGenerationEtag(t *testing.T) {
+	assert.Equal(t, int64(123), etagToGeneration("123"))
+	assert.Equal(t, "123", generationToEtag(int64(123)))
 }
