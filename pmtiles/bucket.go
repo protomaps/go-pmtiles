@@ -227,11 +227,6 @@ func generationToEtag(generation int64) string {
 	return strconv.FormatInt(generation, 10)
 }
 
-func smithyErrorCode(errorCode string) int {
-	i, _ := strconv.Atoi(errorCode)
-	return i
-}
-
 func setProviderEtag(asFunc func(interface{}) bool, etag string) {
 	var awsV2Req *s3.GetObjectInput
 	var azblobReq *azblob.DownloadStreamOptions

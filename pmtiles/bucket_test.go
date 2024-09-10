@@ -245,7 +245,7 @@ func TestSetProviderEtagAzure(t *testing.T) {
 }
 
 func TestGetProviderErrorStatusCode(t *testing.T) {
-	awsV2Err := &smithyHttp.ResponseError{Response: &smithyHttp.Response{&http.Response{
+	awsV2Err := &smithyHttp.ResponseError{Response: &smithyHttp.Response{Response: &http.Response{
 		StatusCode: 500,
 		Header:     http.Header{},
 	}}}
