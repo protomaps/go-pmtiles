@@ -20,9 +20,9 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	smithyHttp "github.com/aws/smithy-go/transport/http"
 	"github.com/cespare/xxhash/v2"
 	"gocloud.dev/blob"
 	"google.golang.org/api/googleapi"
@@ -228,11 +228,11 @@ func generationToEtag(generation int64) string {
 }
 
 func setProviderEtag(asFunc func(interface{}) bool, etag string) {
-	var awsV1Req *s3.GetObjectInput
+	var awsV2Req *s3.GetObjectInput
 	var azblobReq *azblob.DownloadStreamOptions
 	var gcsHandle **storage.ObjectHandle
-	if asFunc(&awsV1Req) {
-		awsV1Req.IfMatch = aws.String(etag)
+	if asFunc(&awsV2Req) {
+		awsV2Req.IfMatch = aws.String(etag)
 	} else if asFunc(&azblobReq) {
 		azEtag := azcore.ETag(etag)
 		azblobReq.AccessConditions = &azblob.AccessConditions{
@@ -248,12 +248,12 @@ func setProviderEtag(asFunc func(interface{}) bool, etag string) {
 }
 
 func getProviderErrorStatusCode(err error) int {
-	var awsV1Err awserr.RequestFailure
+	var awsV2Err *smithyHttp.ResponseError
 	var azureErr *azcore.ResponseError
 	var gcpErr *googleapi.Error
 
-	if errors.As(err, &awsV1Err); awsV1Err != nil {
-		return awsV1Err.StatusCode()
+	if errors.As(err, &awsV2Err); awsV2Err != nil {
+		return awsV2Err.HTTPStatusCode()
 	} else if errors.As(err, &azureErr); azureErr != nil {
 		return azureErr.StatusCode
 	} else if errors.As(err, &gcpErr); gcpErr != nil {
@@ -263,12 +263,12 @@ func getProviderErrorStatusCode(err error) int {
 }
 
 func getProviderEtag(reader *blob.Reader) string {
-	var awsV1Resp s3.GetObjectOutput
+	var awsV2Resp s3.GetObjectOutput
 	var azureResp azblob.DownloadStreamResponse
 	var gcpResp *storage.Reader
 
-	if reader.As(&awsV1Resp) {
-		return *awsV1Resp.ETag
+	if reader.As(&awsV2Resp) {
+		return *awsV2Resp.ETag
 	} else if reader.As(&azureResp) {
 		return string(*azureResp.ETag)
 	} else if reader.As(&gcpResp) {

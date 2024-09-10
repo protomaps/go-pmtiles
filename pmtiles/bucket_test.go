@@ -12,9 +12,11 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/s3"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	smithyHttp "github.com/aws/smithy-go/transport/http"
+
 	"github.com/stretchr/testify/assert"
 	_ "gocloud.dev/blob/fileblob"
 	"google.golang.org/api/googleapi"
@@ -214,18 +216,18 @@ func TestFileShorterThan16K(t *testing.T) {
 	assert.Equal(t, 3, len(data))
 }
 
-func TestSetProviderEtagAws(t *testing.T) {
-	var awsV1Req s3.GetObjectInput
-	assert.Nil(t, awsV1Req.IfMatch)
+func TestSetProviderEtagAwsV2(t *testing.T) {
+	var awsV2Req s3.GetObjectInput
+	assert.Nil(t, awsV2Req.IfMatch)
 	asFunc := func(i interface{}) bool {
 		v, ok := i.(**s3.GetObjectInput)
 		if ok {
-			*v = &awsV1Req
+			*v = &awsV2Req
 		}
 		return true
 	}
 	setProviderEtag(asFunc, "123")
-	assert.Equal(t, aws.String("123"), awsV1Req.IfMatch)
+	assert.Equal(t, aws.String("123"), awsV2Req.IfMatch)
 }
 
 func TestSetProviderEtagAzure(t *testing.T) {
@@ -243,8 +245,11 @@ func TestSetProviderEtagAzure(t *testing.T) {
 }
 
 func TestGetProviderErrorStatusCode(t *testing.T) {
-	awsErr := awserr.NewRequestFailure(awserr.New("", "", nil), 500, "")
-	statusCode := getProviderErrorStatusCode(awsErr)
+	awsV2Err := &smithyHttp.ResponseError{Response: &smithyHttp.Response{Response: &http.Response{
+		StatusCode: 500,
+		Header:     http.Header{},
+	}}}
+	statusCode := getProviderErrorStatusCode(awsV2Err)
 	assert.Equal(t, 500, statusCode)
 
 	azureErr := &azcore.ResponseError{StatusCode: 500}
