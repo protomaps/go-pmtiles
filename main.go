@@ -99,7 +99,7 @@ var cli struct {
 		DownloadThreads int     `default:"4" help:"Number of download threads."`
 		DryRun          bool    `help:"Calculate new parts to download, but don't download them."`
 		Overfetch       float32 `default:"0.05" help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
-	} `cmd:"" help:"Upload a local archive to remote storage."`
+	} `cmd:"" help:"Download a local archive to remote storage." hidden:""`
 
 	Upload struct {
 		Input          string `arg:"" type:"existingfile"`
