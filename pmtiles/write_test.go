@@ -1,7 +1,6 @@
 package pmtiles
 
 import (
-	"github.com/stretchr/testify/assert"
 	"io"
 	"io/ioutil"
 	"os"
