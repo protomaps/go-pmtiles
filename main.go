@@ -53,9 +53,9 @@ var cli struct {
 	} `cmd:"" help:"Fetch one tile from a local or remote archive and output on stdout."`
 
 	Write struct {
-		Input          string `arg:"" help:"Input archive file." type:"existingfile"`
+		Input      string `arg:"" help:"Input archive file." type:"existingfile"`
 		HeaderJson string `help:"Input header JSON file (written by show --header-json)." type:"existingfile"`
-		Metadata string `help:"Input metadata JSON (written by show --metadata)." type:"existingfile"`
+		Metadata   string `help:"Input metadata JSON (written by show --metadata)." type:"existingfile"`
 	} `cmd:"" help:"Write header data or metadata to an existing archive." hidden:""`
 
 	Extract struct {
