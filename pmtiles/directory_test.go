@@ -199,10 +199,6 @@ func TestBuildRootsLeaves(t *testing.T) {
 	assert.Equal(t, 1, numLeaves)
 }
 
-func TestStringifiedCompression(t *testing.T) {
-
-}
-
 func TestStringifiedExtension(t *testing.T) {
 	assert.Equal(t, "", headerExt(HeaderV3{}))
 	assert.Equal(t, ".mvt", headerExt(HeaderV3{TileType: Mvt}))
