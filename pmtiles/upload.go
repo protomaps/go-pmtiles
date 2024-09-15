@@ -10,9 +10,18 @@ import (
 	"os"
 )
 
+// Determine the multipart block size based on the total file size.
+func partSizeBytes(totalSize int64) int {
+	if totalSize/(5*1024*1024) >= 10_000 {
+		return int(totalSize/10_000 + 1)
+	}
+	return 5 * 1024 * 1024
+}
+
 // Upload a pmtiles archive to a bucket.
 func Upload(logger *log.Logger, input string, bucket string, key string, maxConcurrency int) error {
 	ctx := context.Background()
+
 	b, err := blob.OpenBucket(ctx, bucket)
 	if err != nil {
 		return fmt.Errorf("Failed to setup bucket: %w", err)
@@ -24,17 +33,14 @@ func Upload(logger *log.Logger, input string, bucket string, key string, maxConc
 		return fmt.Errorf("Failed to open file: %w", err)
 	}
 	defer f.Close()
+
 	filestat, err := f.Stat()
 	if err != nil {
-		return fmt.Errorf("Failed to open file: %w", err)
+		return fmt.Errorf("Failed to stat file: %w", err)
 	}
-	bar := progressbar.Default(filestat.Size())
-
-	nChunks := int64(0)
-	buffer := make([]byte, 8*1024)
 
 	opts := &blob.WriterOptions{
-		BufferSize:     256 * 1024 * 1024,
+		BufferSize:     partSizeBytes(filestat.Size()),
 		MaxConcurrency: maxConcurrency,
 	}
 
@@ -43,34 +49,11 @@ func Upload(logger *log.Logger, input string, bucket string, key string, maxConc
 		return fmt.Errorf("Failed to obtain writer: %w", err)
 	}
 
-	for {
-		n, err := f.Read(buffer)
-
-		if n == 0 {
-			if err == nil {
-				continue
-			}
-			if err == io.EOF {
-				break
-			}
-			logger.Fatal(err)
-		}
-
-		nChunks++
-
-		_, err = w.Write(buffer[:n])
-		if err != nil {
-			return fmt.Errorf("Failed to write to bucket: %w", err)
-		}
-		bar.Add(n)
-
-		if err != nil && err != io.EOF {
-			return fmt.Errorf("Failed to write data, %w", err)
-		}
-	}
+	bar := progressbar.Default(filestat.Size())
+	io.Copy(io.MultiWriter(w, bar), f)
 
 	if err := w.Close(); err != nil {
-		return fmt.Errorf("Failed to close: %w", err)
+		return fmt.Errorf("Failed to complete upload: %w", err)
 	}
 
 	return nil
