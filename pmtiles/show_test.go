@@ -3,7 +3,6 @@ package pmtiles
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"github.com/stretchr/testify/assert"
 	"log"
 	"os"
