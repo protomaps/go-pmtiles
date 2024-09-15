@@ -1,6 +1,7 @@
 dist/
 go-pmtiles
-*.pmtiles
+/*.pmtiles
+/*.mbtiles
 *.json
 *.geojson
 *.tsv.gz
