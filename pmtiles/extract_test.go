@@ -1,7 +1,6 @@
 package pmtiles
 
 import (
-	"fmt"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -164,5 +163,4 @@ func TestMergeRangesMultiple(t *testing.T) {
 	assert.Equal(t, 1, result.Len())
 	assert.Equal(t, srcDstRange{0, 0, 90}, front.Rng)
 	assert.Equal(t, 3, len(front.CopyDiscards))
-	fmt.Println(result)
 }

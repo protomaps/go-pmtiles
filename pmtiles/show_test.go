@@ -1,6 +1,8 @@
 package pmtiles
 
 import (
+	"fmt"
+	"path"
 	"bytes"
 	"encoding/json"
 	"github.com/stretchr/testify/assert"
@@ -12,7 +14,9 @@ import (
 func TestShowHeader(t *testing.T) {
 	var b bytes.Buffer
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
-	err := Show(logger, &b, "", "fixtures/test_fixture_1.pmtiles", true, false, false, "", false, 0, 0, 0)
+	wd, _ := os.Getwd()
+	fmt.Println(wd)
+	err := Show(logger, &b, "", path.Join(wd, "fixtures/test_fixture_1.pmtiles"), true, false, false, "", false, 0, 0, 0)
 	assert.Nil(t, err)
 
 	var input map[string]interface{}
@@ -24,7 +28,8 @@ func TestShowHeader(t *testing.T) {
 func TestShowMetadata(t *testing.T) {
 	var b bytes.Buffer
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
-	err := Show(logger, &b, "", "fixtures/test_fixture_1.pmtiles", false, true, false, "", false, 0, 0, 0)
+	wd, _ := os.Getwd()
+	err := Show(logger, &b, "", path.Join(wd,"fixtures/test_fixture_1.pmtiles"), false, true, false, "", false, 0, 0, 0)
 	assert.Nil(t, err)
 
 	var input map[string]interface{}
