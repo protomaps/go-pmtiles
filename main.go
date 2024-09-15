@@ -56,7 +56,7 @@ var cli struct {
 		Input          string `arg:"" help:"Input archive file." type:"existingfile"`
 		HeaderJson string `help:"Input header JSON file (written by show --header-json)." type:"existingfile"`
 		Metadata string `help:"Input metadata JSON (written by show --metadata)." type:"existingfile"`
-	} `cmd:"" help:"Write header data or metadata to an existing archive."`
+	} `cmd:"" help:"Write header data or metadata to an existing archive." hidden:""`
 
 	Extract struct {
 		Input           string  `arg:"" help:"Input local or remote archive."`
@@ -169,11 +169,6 @@ func main() {
 		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Minzoom, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Bbox, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
 		if err != nil {
 			logger.Fatalf("Failed to extract, %v", err)
-		}
-	case "write <input>":
-		err := pmtiles.Write(logger, cli.Write.Input, cli.Write.HeaderJson, cli.Write.Metadata)
-		if err != nil {
-			logger.Fatalf("Failed to write, %v", err)
 		}
 	case "convert <input> <output>":
 		path := cli.Convert.Input
