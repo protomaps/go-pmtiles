@@ -152,7 +152,7 @@ func headerToJson(header HeaderV3) HeaderJson {
 }
 
 func headerToStringifiedJson(header HeaderV3) string {
-	s, _ := json.MarshalIndent(headerToJson(header),"", "    ")
+	s, _ := json.MarshalIndent(headerToJson(header), "", "    ")
 	return string(s)
 }
 

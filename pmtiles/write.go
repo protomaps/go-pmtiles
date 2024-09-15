@@ -22,7 +22,7 @@ func Write(logger *log.Logger, inputArchive string, newHeaderJsonFile string, ne
 	// write the new the metadata
 	// copy the leaf directories
 	// copy the tile data
- 	file, err := os.OpenFile(inputArchive, os.O_RDWR, 0666)
+	file, err := os.OpenFile(inputArchive, os.O_RDWR, 0666)
 
 	buf := make([]byte, 127)
 	_, err = file.Read(buf)

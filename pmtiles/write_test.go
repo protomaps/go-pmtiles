@@ -1,12 +1,12 @@
 package pmtiles
 
 import (
-	"os"
+	"github.com/stretchr/testify/assert"
 	"io"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"testing"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestWriteHeader(t *testing.T) {

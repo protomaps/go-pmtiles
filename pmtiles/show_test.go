@@ -3,10 +3,10 @@ package pmtiles
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/stretchr/testify/assert"
 	"log"
 	"os"
 	"testing"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestShowHeader(t *testing.T) {
