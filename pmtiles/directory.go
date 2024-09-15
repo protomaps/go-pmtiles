@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 )
 
@@ -63,6 +64,23 @@ type HeaderV3 struct {
 	CenterLatE7         int32
 }
 
+// HeaderJson is a human-readable representation of parts of the binary header
+// that may need to be manually edited.
+// Omitted parts are the responsibility of the generator program and not editable.
+type HeaderJson struct {
+	TileCompression string
+	TileType        string
+	MinZoom         int
+	MaxZoom         int
+	MinLon          float64
+	MinLat          float64
+	MaxLon          float64
+	MaxLat          float64
+	CenterZoom      int
+	CenterLon       float64
+	CenterLat       float64
+}
+
 func headerContentType(header HeaderV3) (string, bool) {
 	switch header.TileType {
 	case Mvt:
@@ -80,21 +98,29 @@ func headerContentType(header HeaderV3) (string, bool) {
 	}
 }
 
-func headerExt(header HeaderV3) string {
-	switch header.TileType {
+func stringifiedTileType(t TileType) string {
+	switch t {
 	case Mvt:
-		return ".mvt"
+		return "mvt"
 	case Png:
-		return ".png"
+		return "png"
 	case Jpeg:
-		return ".jpg"
+		return "jpg"
 	case Webp:
-		return ".webp"
+		return "webp"
 	case Avif:
-		return ".avif"
+		return "avif"
 	default:
 		return ""
 	}
+}
+
+func headerExt(header HeaderV3) string {
+	base := stringifiedTileType(header.TileType)
+	if base == "" {
+		return ""
+	}
+	return "." + base
 }
 
 func headerContentEncoding(compression Compression) (string, bool) {
@@ -106,6 +132,28 @@ func headerContentEncoding(compression Compression) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func headerToJson(header HeaderV3) HeaderJson {
+	compressionString, _ := headerContentEncoding(header.TileCompression)
+	return HeaderJson{
+		TileCompression: compressionString,
+		TileType:        stringifiedTileType(header.TileType),
+		MinZoom:         int(header.MinZoom),
+		MaxZoom:         int(header.MaxZoom),
+		MinLon:          float64(header.MinLonE7) / 10000000,
+		MinLat:          float64(header.MinLatE7) / 10000000,
+		MaxLon:          float64(header.MaxLonE7) / 10000000,
+		MaxLat:          float64(header.MaxLatE7) / 10000000,
+		CenterZoom:      int(header.CenterZoom),
+		CenterLon:       float64(header.CenterLonE7) / 10000000,
+		CenterLat:       float64(header.CenterLatE7) / 10000000,
+	}
+}
+
+func headerToStringifiedJson(header HeaderV3) string {
+	s, _ := json.MarshalIndent(headerToJson(header), "", "    ")
+	return string(s)
 }
 
 // EntryV3 is an entry in a PMTiles spec version 3 directory.

@@ -14,7 +14,7 @@ import (
 )
 
 // Show prints detailed information about an archive.
-func Show(_ *log.Logger, bucketURL string, key string, showMetadataOnly bool, showTilejson bool, publicURL string, showTile bool, z int, x int, y int) error {
+func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHeaderJsonOnly bool, showMetadataOnly bool, showTilejson bool, publicURL string, showTile bool, z int, x int, y int) error {
 	ctx := context.Background()
 
 	bucketURL, key, err := NormalizeBucketKey(bucketURL, "", key)
@@ -90,11 +90,13 @@ func Show(_ *log.Logger, bucketURL string, key string, showMetadataOnly bool, sh
 		metadataReader.Close()
 
 		if showMetadataOnly && showTilejson {
-			return fmt.Errorf("cannot use --metadata and --tilejson together")
+			return fmt.Errorf("cannot use more than one of --header-json, --metadata, and --tilejson together")
 		}
 
-		if showMetadataOnly {
-			fmt.Print(string(metadataBytes))
+		if showHeaderJsonOnly {
+			fmt.Fprintln(output, headerToStringifiedJson(header))
+		} else if showMetadataOnly {
+			fmt.Fprintln(output, string(metadataBytes))
 		} else if showTilejson {
 			if publicURL == "" {
 				// Using Fprintf instead of logger here, as this message should be written to Stderr in case
@@ -105,7 +107,7 @@ func Show(_ *log.Logger, bucketURL string, key string, showMetadataOnly bool, sh
 			if err != nil {
 				return fmt.Errorf("Failed to create tilejson for %s, %w", key, err)
 			}
-			fmt.Print(string(tilejsonBytes))
+			fmt.Fprintln(output, string(tilejsonBytes))
 		} else {
 			fmt.Printf("pmtiles spec version: %d\n", header.SpecVersion)
 			// fmt.Printf("total size: %s\n", humanize.Bytes(uint64(r.Size())))
@@ -164,7 +166,7 @@ func Show(_ *log.Logger, bucketURL string, key string, showMetadataOnly bool, sh
 					if err != nil {
 						return fmt.Errorf("I/O Error")
 					}
-					os.Stdout.Write(tileBytes)
+					output.Write(tileBytes)
 					break
 				}
 				dirOffset = header.LeafDirectoryOffset + entry.Offset
