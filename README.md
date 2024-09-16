@@ -8,7 +8,9 @@ See [Releases](https://github.com/protomaps/go-pmtiles/releases) for your OS and
 
 ## Docs
 
-See [docs.protomaps.com/pmtiles/cli](https://docs.protomaps.com/pmtiles/cli).
+See [docs.protomaps.com/pmtiles/cli](https://docs.protomaps.com/pmtiles/cli) for usage.
+
+See [Go package docs](https://pkg.go.dev/github.com/protomaps/go-pmtiles/pmtiles) for API usage.
 
 ## Development
 
