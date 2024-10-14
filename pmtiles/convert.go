@@ -28,15 +28,16 @@ type offsetLen struct {
 }
 
 type resolver struct {
-	deduplicate    bool
-	compress       bool
-	Entries        []EntryV3
-	Offset         uint64
-	OffsetMap      map[string]offsetLen
-	AddressedTiles uint64 // none of them can be empty
-	compressor     *gzip.Writer
-	compressTmp    *bytes.Buffer
-	hashfunc       hash.Hash
+	deduplicate     bool
+	compress        bool
+	tileCompression Compression
+	Entries         []EntryV3
+	Offset          uint64
+	OffsetMap       map[string]offsetLen
+	AddressedTiles  uint64 // none of them can be empty
+	compressor      *gzip.Writer
+	compressTmp     *bytes.Buffer
+	hashfunc        hash.Hash
 }
 
 func (r *resolver) NumContents() uint64 {
@@ -75,8 +76,8 @@ func (r *resolver) AddTileIsNew(tileID uint64, data []byte) (bool, []byte) {
 		return false, nil
 	}
 	var newData []byte
-	if !r.compress || (len(data) >= 2 && data[0] == 31 && data[1] == 139) {
-		// the tile is already compressed
+	if !r.compress || (len(data) >= 2 && data[0] == 31 && data[1] == 139) || r.tileCompression != Gzip {
+		// the tile is already compressed or we leave compression unchanged
 		newData = data
 	} else {
 		r.compressTmp.Reset()
@@ -94,19 +95,22 @@ func (r *resolver) AddTileIsNew(tileID uint64, data []byte) (bool, []byte) {
 	return true, newData
 }
 
-func newResolver(deduplicate bool, compress bool) *resolver {
+func newResolver(deduplicate bool, compress bool, tileCompression Compression) *resolver {
 	b := new(bytes.Buffer)
 	compressor, _ := gzip.NewWriterLevel(b, gzip.BestCompression)
-	r := resolver{deduplicate, compress, make([]EntryV3, 0), 0, make(map[string]offsetLen), 0, compressor, b, fnv.New128a()}
+
+	r := resolver{deduplicate, compress,
+		tileCompression,
+		make([]EntryV3, 0), 0, make(map[string]offsetLen), 0, compressor, b, fnv.New128a()}
 	return &r
 }
 
 // Convert an existing archive on disk to a new PMTiles specification version 3 archive.
-func Convert(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
+func Convert(logger *log.Logger, input string, output string, deduplicate bool, tileCompression Compression, tmpfile *os.File) error {
 	if strings.HasSuffix(input, ".pmtiles") {
 		return convertPmtilesV2(logger, input, output, deduplicate, tmpfile)
 	}
-	return convertMbtiles(logger, input, output, deduplicate, tmpfile)
+	return convertMbtiles(logger, input, output, deduplicate, tileCompression, tmpfile)
 }
 
 func addDirectoryV2Entries(dir directoryV2, entries *[]EntryV3, f *os.File) {
@@ -186,7 +190,7 @@ func convertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 	})
 
 	// re-use resolve, because even if archives are de-duplicated we may need to recompress.
-	resolve := newResolver(deduplicate, header.TileType == Mvt)
+	resolve := newResolver(deduplicate, header.TileType == Mvt, header.TileCompression)
 
 	bar := progressbar.Default(int64(len(entries)))
 	for _, entry := range entries {
@@ -223,7 +227,7 @@ func convertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 	return nil
 }
 
-func convertMbtiles(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
+func convertMbtiles(logger *log.Logger, input string, output string, deduplicate bool, tileCompression Compression, tmpfile *os.File) error {
 	start := time.Now()
 	conn, err := sqlite.OpenConn(input, sqlite.OpenReadOnly)
 	if err != nil {
@@ -293,8 +297,12 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 		return fmt.Errorf("no tiles in MBTiles archive")
 	}
 
+	if header.TileType != Mvt {
+		tileCompression = NoCompression
+	}
+
 	logger.Println("Pass 2: writing tiles")
-	resolve := newResolver(deduplicate, header.TileType == Mvt)
+	resolve := newResolver(deduplicate, header.TileType == Mvt, tileCompression)
 	{
 		bar := progressbar.Default(int64(tileset.GetCardinality()))
 		i := tileset.Iterator()
@@ -393,7 +401,7 @@ func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *o
 	header.Clustered = true
 	header.InternalCompression = Gzip
 	if header.TileType == Mvt {
-		header.TileCompression = Gzip
+		header.TileCompression = resolve.tileCompression
 	}
 
 	header.RootOffset = HeaderV3LenBytes

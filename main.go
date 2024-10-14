@@ -32,6 +32,7 @@ var cli struct {
 		Output          string `arg:"" help:"Output PMTiles archive." type:"path"`
 		Force           bool   `help:"Force removal."`
 		NoDeduplication bool   `help:"Don't attempt to deduplicate tiles."`
+		TileCompression string `default:"none" enum:"none,gzip,brotli,zstd" help:"Compression used for tile data (only gzip will be compressed if the source is not compressed; other compressions are assumed to be already compressed)."`
 		Tmpdir          string `help:"An optional path to a folder for tmp data." type:"existingdir"`
 	} `cmd:"" help:"Convert an MBTiles or older spec version to PMTiles."`
 
@@ -197,8 +198,22 @@ func main() {
 			}
 		}
 
+		var tileCompression pmtiles.Compression
+		switch cli.Convert.TileCompression {
+		case "gzip":
+			tileCompression = pmtiles.Gzip
+		case "brotli":
+			tileCompression = pmtiles.Brotli
+		case "zstd":
+			tileCompression = pmtiles.Zstd
+		case "none":
+			tileCompression = pmtiles.NoCompression
+		default:
+			logger.Fatalf("Unknown tile compression: %s", cli.Convert.TileCompression)
+		}
+
 		defer os.Remove(tmpfile.Name())
-		err := pmtiles.Convert(logger, path, output, !cli.Convert.NoDeduplication, tmpfile)
+		err := pmtiles.Convert(logger, path, output, !cli.Convert.NoDeduplication, tileCompression, tmpfile)
 
 		if err != nil {
 			logger.Fatalf("Failed to convert %s, %v", path, err)
