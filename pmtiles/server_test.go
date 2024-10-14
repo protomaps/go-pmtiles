@@ -56,7 +56,7 @@ func fakeArchive(t *testing.T, header HeaderV3, metadata map[string]interface{},
 		keys = append(keys, id)
 	}
 	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
-	resolver := newResolver(false, false)
+	resolver := newResolver(false, false, Gzip)
 	tileDataBytes := make([]byte, 0)
 	for _, id := range keys {
 		tileBytes := byTileID[id]
