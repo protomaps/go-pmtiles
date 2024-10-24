@@ -19,7 +19,7 @@ require (
 	github.com/schollz/progressbar/v3 v3.13.1
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.27.0
-	gocloud.dev v0.39.0
+	gocloud.dev v0.40.0
 	golang.org/x/sync v0.8.0
 	google.golang.org/api v0.191.0
 	zombiezen.com/go/sqlite v1.1.2
@@ -158,6 +158,7 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.53.0 // indirect
 	go.opentelemetry.io/otel v1.28.0 // indirect
 	go.opentelemetry.io/otel/metric v1.28.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.28.0 // indirect
 	go.opentelemetry.io/otel/trace v1.28.0 // indirect
 	go.step.sm/cli-utils v0.9.0 // indirect
 	go.step.sm/crypto v0.45.0 // indirect
