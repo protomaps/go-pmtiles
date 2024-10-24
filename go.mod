@@ -19,7 +19,7 @@ require (
 	github.com/schollz/progressbar/v3 v3.13.1
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.27.0
-	gocloud.dev v0.39.0
+	gocloud.dev v0.40.0
 	golang.org/x/sync v0.8.0
 	google.golang.org/api v0.191.0
 	zombiezen.com/go/sqlite v1.1.2
