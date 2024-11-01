@@ -8,10 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/alecthomas/kong"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/rs/cors"
 
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	_ "gocloud.dev/blob/azureblob"
@@ -93,7 +95,7 @@ var cli struct {
 		Interface string `default:"0.0.0.0"`
 		Port      int    `default:"8080"`
 		AdminPort int    `default:"-1"`
-		Cors      string `help:"Value of HTTP CORS header."`
+		Cors      string `help:"Comma-separated list of of allowed HTTP CORS origins."`
 		CacheSize int    `default:"64" help:"Size of cache in Megabytes."`
 		Bucket    string `help:"Remote bucket"`
 		PublicURL string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles/"`
@@ -139,7 +141,7 @@ func main() {
 			logger.Fatalf("Failed to show tile, %v", err)
 		}
 	case "serve <path>":
-		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.Cors, cli.Serve.PublicURL)
+		server, err := pmtiles.NewServer(cli.Serve.Bucket, cli.Serve.Path, logger, cli.Serve.CacheSize, cli.Serve.PublicURL)
 
 		if err != nil {
 			logger.Fatalf("Failed to create new server, %v", err)
@@ -148,7 +150,9 @@ func main() {
 		pmtiles.SetBuildInfo(version, commit, date)
 		server.Start()
 
-		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		mux := http.NewServeMux()
+
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			statusCode := server.ServeHTTP(w, r)
 			logger.Printf("served %d %s in %s", statusCode, url.PathEscape(r.URL.Path), time.Since(start))
@@ -164,7 +168,16 @@ func main() {
 				logger.Fatal(startHTTPServer(cli.Serve.Interface+":"+adminPort, adminMux))
 			}()
 		}
-		logger.Fatal(startHTTPServer(cli.Serve.Interface+":"+strconv.Itoa(cli.Serve.Port), nil))
+
+		if cli.Serve.Cors != "" {
+			c := cors.New(cors.Options{
+				AllowedOrigins: strings.Split(cli.Serve.Cors, ","),
+			})
+			muxWithCors := c.Handler(mux)
+			logger.Fatal(startHTTPServer(cli.Serve.Interface+":"+strconv.Itoa(cli.Serve.Port), muxWithCors))
+		} else {
+			logger.Fatal(startHTTPServer(cli.Serve.Interface+":"+strconv.Itoa(cli.Serve.Port), mux))
+		}
 	case "extract <input> <output>":
 		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Minzoom, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Bbox, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
 		if err != nil {

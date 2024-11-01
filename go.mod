@@ -16,6 +16,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/paulmach/orb v0.10.0
 	github.com/prometheus/client_golang v1.19.1
+	github.com/rs/cors v1.11.1
 	github.com/schollz/progressbar/v3 v3.13.1
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.27.0

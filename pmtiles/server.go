@@ -49,13 +49,12 @@ type Server struct {
 	bucket    Bucket
 	logger    *log.Logger
 	cacheSize int
-	cors      string
 	publicURL string
 	metrics   *metrics
 }
 
 // NewServer creates a new pmtiles HTTP server.
-func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
+func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize int, publicURL string) (*Server, error) {
 
 	ctx := context.Background()
 
@@ -71,11 +70,11 @@ func NewServer(bucketURL string, prefix string, logger *log.Logger, cacheSize in
 		return nil, err
 	}
 
-	return NewServerWithBucket(bucket, prefix, logger, cacheSize, cors, publicURL)
+	return NewServerWithBucket(bucket, prefix, logger, cacheSize, publicURL)
 }
 
 // NewServerWithBucket creates a new HTTP server for a gocloud Bucket.
-func NewServerWithBucket(bucket Bucket, _ string, logger *log.Logger, cacheSize int, cors string, publicURL string) (*Server, error) {
+func NewServerWithBucket(bucket Bucket, _ string, logger *log.Logger, cacheSize int, publicURL string) (*Server, error) {
 
 	reqs := make(chan request, 8)
 
@@ -84,7 +83,6 @@ func NewServerWithBucket(bucket Bucket, _ string, logger *log.Logger, cacheSize 
 		bucket:    bucket,
 		logger:    logger,
 		cacheSize: cacheSize,
-		cors:      cors,
 		publicURL: publicURL,
 		metrics:   createMetrics("", logger), // change scope string if there are multiple servers running in one process
 	}
@@ -474,9 +472,6 @@ func (server *Server) get(ctx context.Context, unsanitizedPath string) (archive,
 	handler = ""
 	archive = ""
 	headers = make(map[string]string)
-	if len(server.cors) > 0 {
-		headers["Access-Control-Allow-Origin"] = server.cors
-	}
 
 	if ok, key, z, x, y, ext := parseTilePath(unsanitizedPath); ok {
 		archive, handler = key, "tile"
@@ -518,18 +513,7 @@ func (lrw *loggingResponseWriter) WriteHeader(code int) {
 // Serve an HTTP response from the archive
 func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) int {
 	tracker := server.metrics.startRequest()
-	if r.Method == http.MethodOptions {
-		if len(server.cors) > 0 {
-			w.Header().Set("Access-Control-Allow-Origin", server.cors)
-		}
-		w.WriteHeader(204)
-		tracker.finish(r.Context(), "", r.Method, 204, 0, false)
-		return 204
-	} else if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.WriteHeader(405)
-		tracker.finish(r.Context(), "", r.Method, 405, 0, false)
-		return 405
-	}
+
 	archive, handler, statusCode, headers, body := server.get(r.Context(), r.URL.Path)
 	for k, v := range headers {
 		w.Header().Set(k, v)
