@@ -19,7 +19,7 @@ func partSizeBytes(totalSize int64) int {
 }
 
 // Upload a pmtiles archive to a bucket.
-func Upload(logger *log.Logger, inputpmtiles string, bucket string, remotepmtiles string, maxConcurrency int) error {
+func Upload(logger *log.Logger, InputPMTiles string, bucket string, RemotePMTiles string, maxConcurrency int) error {
 	ctx := context.Background()
 
 	b, err := blob.OpenBucket(ctx, bucket)
@@ -28,7 +28,7 @@ func Upload(logger *log.Logger, inputpmtiles string, bucket string, remotepmtile
 	}
 	defer b.Close()
 
-	f, err := os.Open(inputpmtiles)
+	f, err := os.Open(InputPMTiles)
 	if err != nil {
 		return fmt.Errorf("Failed to open file: %w", err)
 	}
@@ -44,7 +44,7 @@ func Upload(logger *log.Logger, inputpmtiles string, bucket string, remotepmtile
 		MaxConcurrency: maxConcurrency,
 	}
 
-	w, err := b.NewWriter(ctx, remotepmtiles, opts)
+	w, err := b.NewWriter(ctx, RemotePMTiles, opts)
 	if err != nil {
 		return fmt.Errorf("Failed to obtain writer: %w", err)
 	}
