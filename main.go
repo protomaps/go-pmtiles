@@ -109,8 +109,8 @@ var cli struct {
 	} `cmd:"" help:"Download a local archive to remote storage." hidden:""`
 
 	Upload struct {
-		InputPMTiles   string `arg:"" type:"existingfile" help:"The local PMTiles file"`
-		RemotePMTiles  string `arg:""  help:"The name for the remote PMTiles source"`
+		InputPmtiles   string `arg:"" type:"existingfile" help:"The local PMTiles file"`
+		RemotePmtiles  string `arg:""  help:"The name for the remote PMTiles source"`
 		MaxConcurrency int    `default:"2" help:"# of upload threads"`
 		Bucket         string `required:"" help:"Bucket to upload to."`
 	} `cmd:"" help:"Upload a local archive to remote storage."`
@@ -204,7 +204,7 @@ func main() {
 			logger.Fatalf("Failed to convert %s, %v", path, err)
 		}
 	case "upload <inputpmtiles> <remotepmtiles>":
-		err := pmtiles.Upload(logger, cli.Upload.InputPMTiles, cli.Upload.Bucket, cli.Upload.RemotePMTiles, cli.Upload.MaxConcurrency)
+		err := pmtiles.Upload(logger, cli.Upload.InputPmtiles, cli.Upload.Bucket, cli.Upload.RemotePmtiles, cli.Upload.MaxConcurrency)
 
 		if err != nil {
 			logger.Fatalf("Failed to upload file, %v", err)
