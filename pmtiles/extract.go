@@ -441,6 +441,7 @@ func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom 
 	header.TileContentsCount = tileContents
 
 	header.MaxZoom = uint8(maxzoom)
+	header.MinZoom = uint8(minzoom)
 
 	headerBytes := serializeHeader(header)
 
