@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"os"
 	"time"
 )
 
@@ -42,6 +43,18 @@ func Verify(_ *log.Logger, file string) error {
 	r.Close()
 
 	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
+
+	if err != nil {
+		return fmt.Errorf("Failed to read %s, %w", key, err)
+	}
+
+	fileInfo, _ := os.Stat(file)
+
+	lengthFromHeader := int64(HeaderV3LenBytes + header.RootLength + header.MetadataLength + header.LeafDirectoryLength + header.TileDataLength)
+
+	if fileInfo.Size() != lengthFromHeader {
+		return fmt.Errorf("Total length of archive %v does not match header %v:", fileInfo.Size(), lengthFromHeader)
+	}
 
 	var CollectEntries func(uint64, uint64, func(EntryV3))
 
@@ -102,27 +115,31 @@ func Verify(_ *log.Logger, file string) error {
 	})
 
 	if uint64(addressedTiles) != header.AddressedTilesCount {
-		fmt.Printf("Invalid: header AddressedTilesCount=%v but %v tiles addressed.", header.AddressedTilesCount, addressedTiles)
+		return fmt.Errorf("Invalid: header AddressedTilesCount=%v but %v tiles addressed.", header.AddressedTilesCount, addressedTiles)
 	}
 
 	if uint64(tileEntries) != header.TileEntriesCount {
-		fmt.Printf("Invalid: header TileEntriesCount=%v but %v tile entries.", header.TileEntriesCount, tileEntries)
+		return fmt.Errorf("Invalid: header TileEntriesCount=%v but %v tile entries.", header.TileEntriesCount, tileEntries)
 	}
 
 	if offsets.GetCardinality() != header.TileContentsCount {
-		fmt.Printf("Invalid: header TileContentsCount=%v but %v tile contents.", header.TileContentsCount, offsets.GetCardinality())
+		return fmt.Errorf("Invalid: header TileContentsCount=%v but %v tile contents.", header.TileContentsCount, offsets.GetCardinality())
 	}
 
 	if z, _, _ := IDToZxy(minTileID); z != header.MinZoom {
-		fmt.Printf("Invalid: header MinZoom=%v does not match min tile z %v", header.MinZoom, z)
+		return fmt.Errorf("Invalid: header MinZoom=%v does not match min tile z %v", header.MinZoom, z)
 	}
 
 	if z, _, _ := IDToZxy(maxTileID); z != header.MaxZoom {
-		fmt.Printf("Invalid: header MaxZoom=%v does not match max tile z %v", header.MaxZoom, z)
+		return fmt.Errorf("Invalid: header MaxZoom=%v does not match max tile z %v", header.MaxZoom, z)
 	}
 
 	if !(header.CenterZoom >= header.MinZoom && header.CenterZoom <= header.MaxZoom) {
-		fmt.Printf("Invalid: header CenterZoom=%v not within MinZoom/MaxZoom.", header.CenterZoom)
+		return fmt.Errorf("Invalid: header CenterZoom=%v not within MinZoom/MaxZoom.", header.CenterZoom)
+	}
+
+	if header.MinLonE7 >= header.MaxLonE7 || header.MinLatE7 >= header.MaxLatE7 {
+		return fmt.Errorf("Invalid: bounds has area <= 0: clients may not display tiles correctly.")
 	}
 
 	fmt.Printf("Completed verify in %v.\n", time.Since(start))
