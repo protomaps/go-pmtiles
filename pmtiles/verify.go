@@ -51,9 +51,10 @@ func Verify(_ *log.Logger, file string) error {
 	fileInfo, _ := os.Stat(file)
 
 	lengthFromHeader := int64(HeaderV3LenBytes + header.RootLength + header.MetadataLength + header.LeafDirectoryLength + header.TileDataLength)
+	lengthFromHeaderWithPadding := int64(16384 + header.MetadataLength + header.LeafDirectoryLength + header.TileDataLength)
 
-	if fileInfo.Size() != lengthFromHeader {
-		return fmt.Errorf("Total length of archive %v does not match header %v", fileInfo.Size(), lengthFromHeader)
+	if fileInfo.Size() != lengthFromHeader && fileInfo.Size() != lengthFromHeaderWithPadding {
+		return fmt.Errorf("Total length of archive %v does not match header %v or %v (padded)", fileInfo.Size(), lengthFromHeader, lengthFromHeaderWithPadding)
 	}
 
 	var CollectEntries func(uint64, uint64, func(EntryV3))
