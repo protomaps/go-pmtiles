@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/md5"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -33,14 +32,14 @@ type syncBlock struct {
 	Hash   uint64 // the hash of the block
 }
 
-type syncMetadata struct {
-	Version      string
-	BlockSize    uint64
-	HashType     string
-	HashSize     uint8
-	ChecksumType string
-	Checksum     string
-	NumBlocks    int
+type syncHeader struct {
+	Version   string
+	BlockSize uint64
+	HashType  string
+	HashSize  uint8
+	B3Sum     string `json:"b3sum,omitempty"`
+	MD5Sum    string `json:"md5sum,omitempty"`
+	NumBlocks int
 }
 
 type syncTask struct {
@@ -85,7 +84,7 @@ func deserializeSyncBlocks(numBlocks int, reader *bufio.Reader) []syncBlock {
 	return blocks
 }
 
-func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb int, checksum string) error {
+func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb int, b3sum string) error {
 	ctx := context.Background()
 	start := time.Now()
 
@@ -148,22 +147,6 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 		panic(err)
 	}
 	defer output.Close()
-
-	if checksum == "md5" {
-		localfile, err := os.Open(file)
-		if err != nil {
-			panic(err)
-		}
-		defer localfile.Close()
-		reader := bufio.NewReaderSize(localfile, 64*1024*1024)
-		md5hasher := md5.New()
-		if _, err := io.Copy(md5hasher, reader); err != nil {
-			panic(err)
-		}
-		md5checksum := md5hasher.Sum(nil)
-		fmt.Printf("Completed md5 in %v.\n", time.Since(start))
-		fmt.Printf("md5=%x\n", md5checksum)
-	}
 
 	bar := progressbar.Default(
 		int64(header.TileEntriesCount),
@@ -240,15 +223,21 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 
 	sort.Slice(blocks, func(i, j int) bool { return blocks[i].Start < blocks[j].Start })
 
-	metadataBytes, err := json.Marshal(syncMetadata{
+	sh := syncHeader{
 		Version:   cliVersion,
 		HashSize:  8,
 		BlockSize: blockSizeBytes,
 		HashType:  "xxh64",
 		NumBlocks: len(blocks),
-	})
+	}
 
-	output.Write(metadataBytes)
+	if len(b3sum) > 0 {
+		sh.B3Sum = b3sum
+	}
+
+	syncHeaderBytes, err := json.Marshal(sh)
+
+	output.Write(syncHeaderBytes)
 	output.Write([]byte{'\n'})
 
 	serializeSyncBlocks(output, blocks)
@@ -281,6 +270,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 			"downloading syncfile",
 		)
 		bufferedReader = bufio.NewReader(io.TeeReader(resp.Body, bar))
+		bar.Close()
 	} else {
 		newFile, err := os.Open(newVersion + ".sync")
 		if err != nil {
@@ -290,12 +280,16 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 		bufferedReader = bufio.NewReader(newFile)
 	}
 
-	var metadata syncMetadata
+	var syncHeader syncHeader
 	jsonBytes, _ := bufferedReader.ReadSlice('\n')
 
-	json.Unmarshal(jsonBytes, &metadata)
+	json.Unmarshal(jsonBytes, &syncHeader)
 
-	blocks := deserializeSyncBlocks(metadata.NumBlocks, bufferedReader)
+	if len(syncHeader.B3Sum) > 0 {
+		fmt.Println("b3sum", syncHeader.B3Sum)
+	}
+
+	blocks := deserializeSyncBlocks(syncHeader.NumBlocks, bufferedReader)
 
 	ctx := context.Background()
 
@@ -508,7 +502,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 
 		fmt.Println(len(have), "local chunks")
 		bar := progressbar.DefaultBytes(
-			int64(totalRemoteBytes - toTransfer),
+			int64(totalRemoteBytes-toTransfer),
 			"copying local chunks",
 		)
 
