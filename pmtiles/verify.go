@@ -105,11 +105,7 @@ func Verify(_ *log.Logger, file string) error {
 				return nil, err
 			}
 			defer reader.Close()
-			b, err = io.ReadAll(reader)
-			if err != nil {
-				return nil, err
-			}
-			return b, nil
+			return io.ReadAll(reader)
 		},
 		func(e EntryV3) {
 			offsets.Add(e.Offset)

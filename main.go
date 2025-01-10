@@ -88,15 +88,14 @@ var cli struct {
 	Makesync struct {
 		Input        string `arg:"" type:"existingfile"`
 		BlockSizeKb  int    `default:"20" help:"The approximate block size, in kilobytes; 0 means 1 tile = 1 block"`
-		HashFunction string `default:"xxh64" help:"The hash function"`
-		Checksum     string `help:"Store a checksum in the syncfile"`
 	} `cmd:"" help:"" hidden:""`
 
 	Sync struct {
 		Existing string `arg:"" type:"existingfile"`
-		New      string `arg:"" help:"Remote archive"`
+		New      string `arg:"" help:"Local or remote archive, with .sync sidecar file"`
 		DryRun   bool   `help:"Calculate new parts to download, but don't download them"`
-	} `cmd:"" help:"" hidden:""`
+		RangesPerRequest int `default:"100" help:"Number of ranges in a single HTTP request (limit depends on server)"`
+	} `cmd:"" help:"Sync a local file with a remote one by only downloading changed parts" hidden:""`
 
 	Serve struct {
 		Path      string `arg:"" help:"Local path or bucket prefix"`
@@ -234,7 +233,7 @@ func main() {
 			logger.Fatalf("Failed to edit archive, %v", err)
 		}
 	case "makesync <input>":
-		err := pmtiles.Makesync(logger, version, cli.Makesync.Input, cli.Makesync.BlockSizeKb, cli.Makesync.Checksum)
+		err := pmtiles.Makesync(logger, version, cli.Makesync.Input, cli.Makesync.BlockSizeKb)
 		if err != nil {
 			logger.Fatalf("Failed to makesync archive, %v", err)
 		}
