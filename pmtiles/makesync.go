@@ -454,7 +454,18 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 			ranges = append(ranges, srcDstRange{SrcOffset: v.Offset, DstOffset: v.Offset, Length: v.Length})
 		}
 	}
-	fmt.Printf("need %d chunks.\n", len(ranges))
+
+	batchedRanges := make([][]srcDstRange, 0)
+	rangesPerRequest := 100
+	for i := 0; i < len(ranges); i += rangesPerRequest {
+		end := i + rangesPerRequest
+		if end > len(ranges) {
+			end = len(ranges)
+		}
+		batchedRanges = append(batchedRanges, ranges[i:end])
+	}
+
+	fmt.Printf("need %d chunks, using %d http requests.\n", len(ranges), len(batchedRanges))
 
 	if !dryRun {
 		req, err := http.NewRequest("HEAD", newVersion, nil)
@@ -507,33 +518,35 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 		}
 
 		// write the tile data (from remote)
-		req, err = http.NewRequest("GET", newVersion, nil)
 
-		var rangeParts []string
-		for _, r := range ranges {
-			rangeParts = append(rangeParts, fmt.Sprintf("%d-%d", newHeader.TileDataOffset+r.SrcOffset, newHeader.TileDataOffset+r.SrcOffset+r.Length-1))
-		}
+		for _, br := range batchedRanges {
+			req, err = http.NewRequest("GET", newVersion, nil)
 
-		headerVal := strings.Join(rangeParts, ",")
-		req.Header.Set("Range", fmt.Sprintf("bytes=%s", headerVal))
-		fmt.Println("Making one request with header size of", len(headerVal))
-		resp, err = client.Do(req)
-		if resp.StatusCode != http.StatusPartialContent {
-			return fmt.Errorf("non-OK multirange request")
-		}
+			var rangeParts []string
+			for _, r := range br {
+				rangeParts = append(rangeParts, fmt.Sprintf("%d-%d", newHeader.TileDataOffset+r.SrcOffset, newHeader.TileDataOffset+r.SrcOffset+r.Length-1))
+			}
+			headerVal := strings.Join(rangeParts, ",")
+			req.Header.Set("Range", fmt.Sprintf("bytes=%s", headerVal))
+			fmt.Println("Making request with header size of", len(headerVal))
+			resp, err = client.Do(req)
+			if resp.StatusCode != http.StatusPartialContent {
+				return fmt.Errorf("non-OK multirange request")
+			}
 
-		_, params, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-		if err != nil {
-			return err
-		}
+			_, params, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+			if err != nil {
+				return err
+			}
 
-		mr := multipart.NewReader(resp.Body, params["boundary"])
+			mr := multipart.NewReader(resp.Body, params["boundary"])
 
-		for _, r := range ranges {
-			part, _ := mr.NextPart()
-			_ = part.Header.Get("Content-Range")
-			chunkWriter := io.NewOffsetWriter(outfile, int64(newHeader.TileDataOffset+r.DstOffset))
-			io.Copy(chunkWriter, part)
+			for _, r := range br {
+				part, _ := mr.NextPart()
+				_ = part.Header.Get("Content-Range")
+				chunkWriter := io.NewOffsetWriter(outfile, int64(newHeader.TileDataOffset+r.DstOffset))
+				io.Copy(chunkWriter, part)
+			}
 		}
 	}
 
