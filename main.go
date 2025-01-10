@@ -85,6 +85,7 @@ var cli struct {
 	Sync struct {
 		Existing string `arg:"" type:"existingfile"`
 		New      string `arg:"" help:"Local or remote archive, with .sync sidecar file."`
+		NewFile  string `arg:"" help:"New file to create."`
 		DryRun   bool   `help:"Calculate new parts to download, but don't download them."`
 	} `cmd:"" hidden:""`
 
@@ -232,8 +233,8 @@ func main() {
 		if err != nil {
 			logger.Fatalf("Failed to makesync archive, %v", err)
 		}
-	case "sync <existing> <new>":
-		err := pmtiles.Sync(logger, cli.Sync.Existing, cli.Sync.New, cli.Sync.DryRun)
+	case "sync <existing> <new> <new-file>":
+		err := pmtiles.Sync(logger, cli.Sync.Existing, cli.Sync.New, cli.Sync.NewFile, cli.Sync.DryRun)
 		if err != nil {
 			logger.Fatalf("Failed to sync archive, %v", err)
 		}
