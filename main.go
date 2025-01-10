@@ -79,15 +79,15 @@ var cli struct {
 		Input        string `arg:"" type:"existingfile"`
 		BlockSizeKb  int    `default:"20" help:"The approximate block size, in kilobytes. 0 means 1 tile = 1 block."`
 		HashFunction string `default:"xxh64" help:"The hash function."`
-		Checksum     string `help:"Store a checksum in the syncfile."`
+		Checksum     string `help:"Store a BLAKE3 checksum in the syncfile."`
 	} `cmd:"" hidden:""`
 
 	Sync struct {
-		Existing string `arg:"" type:"existingfile"`
-		New      string `arg:"" help:"Local or remote archive, with .sync sidecar file."`
-		NewFile  string `arg:"" help:"New file to create."`
-		RangesPerRequest int `default:"100" help:"Number of ranges in a single HTTP request (limit depends on server)"`
-		DryRun   bool   `help:"Calculate new parts to download, but don't download them."`
+		Existing         string `arg:"" type:"existingfile"`
+		New              string `arg:"" help:"Local or remote archive, with .sync sidecar file."`
+		NewFile          string `arg:"" help:"New file to create."`
+		RangesPerRequest int    `default:"100" help:"Number of ranges in a single HTTP request (limit depends on server)"`
+		DryRun           bool   `help:"Calculate new parts to download, but don't download them."`
 	} `cmd:"" hidden:""`
 
 	Serve struct {
