@@ -258,7 +258,7 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 	return nil
 }
 
-func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile string, dryRun bool) error {
+func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile string, rangesPerRequest int, dryRun bool) error {
 	start := time.Now()
 
 	client := &http.Client{}
@@ -456,7 +456,6 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 	}
 
 	batchedRanges := make([][]srcDstRange, 0)
-	rangesPerRequest := 100
 	for i := 0; i < len(ranges); i += rangesPerRequest {
 		end := i + rangesPerRequest
 		if end > len(ranges) {
@@ -507,6 +506,12 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 		resp, err = client.Do(req)
 		io.Copy(leafWriter, resp.Body)
 
+		fmt.Println(len(have), "local chunks")
+		bar := progressbar.DefaultBytes(
+			int64(totalRemoteBytes - toTransfer),
+			"copying local chunks",
+		)
+
 		// write the tile data (from local)
 		for _, h := range have {
 			chunkWriter := io.NewOffsetWriter(outfile, int64(newHeader.TileDataOffset+h.DstOffset))
@@ -514,10 +519,15 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 			if err != nil {
 				return err
 			}
-			io.Copy(chunkWriter, r)
+			io.Copy(io.MultiWriter(chunkWriter, bar), r)
 		}
 
 		// write the tile data (from remote)
+
+		bar = progressbar.DefaultBytes(
+			int64(toTransfer),
+			"fetching remote chunks",
+		)
 
 		for _, br := range batchedRanges {
 			req, err = http.NewRequest("GET", newVersion, nil)
@@ -528,7 +538,6 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 			}
 			headerVal := strings.Join(rangeParts, ",")
 			req.Header.Set("Range", fmt.Sprintf("bytes=%s", headerVal))
-			fmt.Println("Making request with header size of", len(headerVal))
 			resp, err = client.Do(req)
 			if resp.StatusCode != http.StatusPartialContent {
 				return fmt.Errorf("non-OK multirange request")
@@ -545,7 +554,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 				part, _ := mr.NextPart()
 				_ = part.Header.Get("Content-Range")
 				chunkWriter := io.NewOffsetWriter(outfile, int64(newHeader.TileDataOffset+r.DstOffset))
-				io.Copy(chunkWriter, part)
+				io.Copy(io.MultiWriter(chunkWriter, bar), part)
 			}
 		}
 	}
