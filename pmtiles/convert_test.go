@@ -6,7 +6,7 @@ import (
 )
 
 func TestResolver(t *testing.T) {
-	resolver := newResolver(true, true)
+	resolver := newResolver(true, true, Gzip)
 	resolver.AddTileIsNew(1, []byte{0x1, 0x2})
 	assert.Equal(t, 1, len(resolver.Entries))
 	resolver.AddTileIsNew(2, []byte{0x1, 0x3})
