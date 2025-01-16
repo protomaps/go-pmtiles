@@ -247,7 +247,7 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 	return nil
 }
 
-func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile string, rangesPerRequest int, dryRun bool) error {
+func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile string, dryRun bool) error {
 	start := time.Now()
 
 	client := &http.Client{}
@@ -421,6 +421,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 	wg.Wait()
 
 	sort.Slice(wanted, func(i, j int) bool { return wanted[i].Start < wanted[j].Start })
+	sort.Slice(have, func(i, j int) bool { return have[i].SrcOffset < have[j].SrcOffset })
 
 	toTransfer := uint64(0)
 	totalRemoteBytes := uint64(0)
@@ -449,9 +450,20 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 		}
 	}
 
+	haveRanges := make([]srcDstRange, 0)
+	for _, v := range have {
+		l := len(haveRanges)
+		// combine contiguous ranges
+		if l > 0 && (haveRanges[l-1].SrcOffset+haveRanges[l-1].Length) == v.SrcOffset {
+			haveRanges[l-1].Length = haveRanges[l-1].Length + v.Length
+		} else {
+			haveRanges = append(haveRanges, v)
+		}
+	}
+
 	batchedRanges := make([][]srcDstRange, 0)
-	for i := 0; i < len(ranges); i += rangesPerRequest {
-		end := i + rangesPerRequest
+	for i := 0; i < len(ranges); i += 100 {
+		end := i + 100
 		if end > len(ranges) {
 			end = len(ranges)
 		}
@@ -507,7 +519,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 		)
 
 		// write the tile data (from local)
-		for _, h := range have {
+		for _, h := range haveRanges {
 			chunkWriter := io.NewOffsetWriter(outfile, int64(newHeader.TileDataOffset+h.DstOffset))
 			r, err := bucket.NewRangeReader(ctx, key, int64(oldHeader.TileDataOffset+h.SrcOffset), int64(h.Length))
 			if err != nil {
@@ -523,16 +535,17 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 			"fetching remote chunks",
 		)
 
-		for _, br := range batchedRanges {
-			req, err = http.NewRequest("GET", newVersion, nil)
+
+		downloadPart := func(task []srcDstRange) error {
+			req, err := http.NewRequest("GET", newVersion, nil)
 
 			var rangeParts []string
-			for _, r := range br {
+			for _, r := range task {
 				rangeParts = append(rangeParts, fmt.Sprintf("%d-%d", newHeader.TileDataOffset+r.SrcOffset, newHeader.TileDataOffset+r.SrcOffset+r.Length-1))
 			}
 			headerVal := strings.Join(rangeParts, ",")
 			req.Header.Set("Range", fmt.Sprintf("bytes=%s", headerVal))
-			resp, err = client.Do(req)
+			resp, err := client.Do(req)
 			if resp.StatusCode != http.StatusPartialContent {
 				return fmt.Errorf("non-OK multirange request")
 			}
@@ -544,12 +557,46 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 
 			mr := multipart.NewReader(resp.Body, params["boundary"])
 
-			for _, r := range br {
+			for _, r := range task {
 				part, _ := mr.NextPart()
 				_ = part.Header.Get("Content-Range")
 				chunkWriter := io.NewOffsetWriter(outfile, int64(newHeader.TileDataOffset+r.DstOffset))
 				io.Copy(io.MultiWriter(chunkWriter, bar), part)
 			}
+			return nil
+		}
+
+		var mu sync.Mutex
+		downloadThreads := 4
+
+		errs, _ := errgroup.WithContext(ctx)
+
+		for i := 0; i < downloadThreads; i++ {
+			errs.Go(func() error {
+				done := false
+				var head []srcDstRange
+				for {
+					mu.Lock()
+					if len(batchedRanges) == 0 {
+						done = true
+					} else {
+						head, batchedRanges = batchedRanges[0], batchedRanges[1:]
+					}
+					mu.Unlock()
+					if done {
+						return nil
+					}
+					err := downloadPart(head)
+					if err != nil {
+						return err
+					}
+				}
+			})
+		}
+
+		err = errs.Wait()
+		if err != nil {
+			return err
 		}
 	}
 

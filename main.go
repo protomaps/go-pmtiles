@@ -240,7 +240,7 @@ func main() {
 			logger.Fatalf("Failed to makesync archive, %v", err)
 		}
 	case "sync <existing> <new> <new-file>":
-		err := pmtiles.Sync(logger, cli.Sync.Existing, cli.Sync.New, cli.Sync.NewFile, cli.Sync.RangesPerRequest, cli.Sync.DryRun)
+		err := pmtiles.Sync(logger, cli.Sync.Existing, cli.Sync.New, cli.Sync.NewFile, cli.Sync.DryRun)
 		if err != nil {
 			logger.Fatalf("Failed to sync archive, %v", err)
 		}
