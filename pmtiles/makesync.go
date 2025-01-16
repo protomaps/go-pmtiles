@@ -293,31 +293,22 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 
 	ctx := context.Background()
 
-	bucketURL, key, err := NormalizeBucketKey("", "", oldVersion)
+	oldFile, err := os.OpenFile(oldVersion, os.O_RDONLY, 0666)
+	defer oldFile.Close()
 
 	if err != nil {
 		return err
 	}
 
-	bucket, err := OpenBucket(ctx, bucketURL, "")
-
+	buf := make([]byte, HeaderV3LenBytes)
+	_, err = oldFile.Read(buf)
 	if err != nil {
-		return fmt.Errorf("Failed to open bucket for %s, %w", bucketURL, err)
+		return err
 	}
-	defer bucket.Close()
-
-	r, err := bucket.NewRangeReader(ctx, key, 0, 16384)
-
+	oldHeader, err := deserializeHeader(buf)
 	if err != nil {
-		return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
+		return err
 	}
-	b, err := io.ReadAll(r)
-	if err != nil {
-		return fmt.Errorf("Failed to read %s, %w", key, err)
-	}
-	r.Close()
-
-	oldHeader, err := deserializeHeader(b[0:HeaderV3LenBytes])
 
 	if !oldHeader.Clustered {
 		return fmt.Errorf("archive must be clustered for sync")
@@ -326,12 +317,9 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 	var CollectEntries func(uint64, uint64, func(EntryV3))
 
 	CollectEntries = func(dir_offset uint64, dir_length uint64, f func(EntryV3)) {
-		dirbytes, err := bucket.NewRangeReader(ctx, key, int64(dir_offset), int64(dir_length))
-		if err != nil {
-			panic(fmt.Errorf("I/O error"))
-		}
-		defer dirbytes.Close()
-		b, err = io.ReadAll(dirbytes)
+		dirbytes := io.NewSectionReader(oldFile, int64(dir_offset), int64(dir_length))
+
+		b, err := io.ReadAll(dirbytes)
 		if err != nil {
 			panic(fmt.Errorf("I/O Error"))
 		}
@@ -367,15 +355,11 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 			wg.Add(1)
 			for task := range tasks {
 				hasher := xxhash.New()
-				r, err := bucket.NewRangeReader(ctx, key, int64(oldHeader.TileDataOffset+task.OldOffset), int64(task.NewBlock.Length))
-				if err != nil {
-					log.Fatal(err)
-				}
+				r := io.NewSectionReader(oldFile, int64(oldHeader.TileDataOffset + task.OldOffset), int64(task.NewBlock.Length))
 
 				if _, err := io.Copy(hasher, r); err != nil {
 					log.Fatal(err)
 				}
-				r.Close()
 
 				mu.Lock()
 				if task.NewBlock.Hash == hasher.Sum64() {
@@ -521,10 +505,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 		// write the tile data (from local)
 		for _, h := range haveRanges {
 			chunkWriter := io.NewOffsetWriter(outfile, int64(newHeader.TileDataOffset+h.DstOffset))
-			r, err := bucket.NewRangeReader(ctx, key, int64(oldHeader.TileDataOffset+h.SrcOffset), int64(h.Length))
-			if err != nil {
-				return err
-			}
+			r := io.NewSectionReader(oldFile, int64(oldHeader.TileDataOffset + h.SrcOffset), int64(h.Length))
 			io.Copy(io.MultiWriter(chunkWriter, bar), r)
 		}
 
