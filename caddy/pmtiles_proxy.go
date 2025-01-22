@@ -46,7 +46,7 @@ func (m *Middleware) Provision(ctx caddy.Context) error {
 	m.logger = ctx.Logger()
 	logger := log.New(io.Discard, "", log.Ldate)
 	prefix := "." // serve only the root of the bucket for now, at the root route of Caddyfile
-	server, err := pmtiles.NewServer(m.Bucket, prefix, logger, m.CacheSize, "", m.PublicURL)
+	server, err := pmtiles.NewServer(m.Bucket, prefix, logger, m.CacheSize, m.PublicURL)
 	if err != nil {
 		return err
 	}

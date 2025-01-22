@@ -6,12 +6,19 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"sort"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 )
+
+var testResponse = []byte("bar")
+var testHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	_, _ = w.Write(testResponse)
+})
 
 func TestRegex(t *testing.T) {
 	ok, key, z, x, y, ext := parseTilePath("/foo/0/0/0")
@@ -108,10 +115,18 @@ func fakeArchive(t *testing.T, header HeaderV3, metadata map[string]interface{},
 func newServer(t *testing.T) (mockBucket, *Server) {
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	bucket := mockBucket{make(map[string][]byte)}
-	server, err := NewServerWithBucket(bucket, "", log.Default(), 10, "", "tiles.example.com")
+	server, err := NewServerWithBucket(bucket, "", log.Default(), 10, "tiles.example.com")
 	assert.Nil(t, err)
 	server.Start()
 	return bucket, server
+}
+
+func TestPostReturns405(t *testing.T) {
+	_, server := newServer(t)
+	res := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/", nil)
+	server.ServeHTTP(res, req)
+	assert.Equal(t, 405, res.Code)
 }
 
 func TestMissingFileReturns404(t *testing.T) {
@@ -412,4 +427,45 @@ func TestEtagResponsesFromTile(t *testing.T) {
 	// all are different
 	assert.NotEqual(t, headers000v1["ETag"], headers311v1["ETag"])
 	assert.NotEqual(t, headers000v1["ETag"], headers412v1["ETag"])
+}
+
+func TestSingleCorsOrigin(t *testing.T) {
+	res := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "http://example.com/foo", nil)
+	req.Header.Add("Origin", "http://example.com")
+	c := NewCors("http://example.com")
+	c.Handler(testHandler).ServeHTTP(res, req)
+	assert.Equal(t, 200, res.Code)
+	assert.Equal(t, "http://example.com", res.Header().Get("Access-Control-Allow-Origin"))
+}
+
+func TestMultiCorsOrigin(t *testing.T) {
+	res := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "http://example2.com/foo", nil)
+	req.Header.Add("Origin", "http://example2.com")
+	c := NewCors("http://example.com,http://example2.com")
+	c.Handler(testHandler).ServeHTTP(res, req)
+	assert.Equal(t, 200, res.Code)
+	assert.Equal(t, "http://example2.com", res.Header().Get("Access-Control-Allow-Origin"))
+}
+
+func TestWildcardCors(t *testing.T) {
+	res := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "http://example.com/foo", nil)
+	req.Header.Add("Origin", "http://example.com")
+	c := NewCors("*")
+	c.Handler(testHandler).ServeHTTP(res, req)
+	assert.Equal(t, 200, res.Code)
+	assert.Equal(t, "*", res.Header().Get("Access-Control-Allow-Origin"))
+}
+
+func TestCorsOptions(t *testing.T) {
+	res := httptest.NewRecorder()
+	req, _ := http.NewRequest("OPTIONS", "http://example.com/foo", nil)
+	req.Header.Add("Origin", "http://example.com")
+	req.Header.Add("Access-Control-Request-Method", "GET")
+	c := NewCors("*")
+	c.Handler(testHandler).ServeHTTP(res, req)
+	assert.Equal(t, 204, res.Code)
+	assert.Equal(t, "*", res.Header().Get("Access-Control-Allow-Origin"))
 }
