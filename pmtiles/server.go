@@ -7,11 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/rs/cors"
 	"io"
 	"log"
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -514,6 +516,12 @@ func (lrw *loggingResponseWriter) WriteHeader(code int) {
 func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) int {
 	tracker := server.metrics.startRequest()
 
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.WriteHeader(405)
+		tracker.finish(r.Context(), "", r.Method, 405, 0, false)
+		return 405
+	}
+
 	archive, handler, statusCode, headers, body := server.get(r.Context(), r.URL.Path)
 	for k, v := range headers {
 		w.Header().Set(k, v)
@@ -535,4 +543,11 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) int {
 	tracker.finish(r.Context(), archive, handler, statusCode, len(body), true)
 
 	return statusCode
+}
+
+func NewCors(corsOrigins string) *cors.Cors {
+	return cors.New(cors.Options{
+		AllowedMethods: []string{http.MethodGet, http.MethodHead},
+		AllowedOrigins: strings.Split(corsOrigins, ","),
+	})
 }

@@ -8,12 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/alecthomas/kong"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rs/cors"
 
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	_ "gocloud.dev/blob/azureblob"
@@ -170,10 +168,7 @@ func main() {
 		}
 
 		if cli.Serve.Cors != "" {
-			c := cors.New(cors.Options{
-				AllowedOrigins: strings.Split(cli.Serve.Cors, ","),
-			})
-			muxWithCors := c.Handler(mux)
+			muxWithCors := pmtiles.NewCors(cli.Serve.Cors).Handler(mux)
 			logger.Fatal(startHTTPServer(cli.Serve.Interface+":"+strconv.Itoa(cli.Serve.Port), muxWithCors))
 		} else {
 			logger.Fatal(startHTTPServer(cli.Serve.Interface+":"+strconv.Itoa(cli.Serve.Port), mux))
