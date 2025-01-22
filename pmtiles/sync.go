@@ -24,9 +24,8 @@ import (
 	"time"
 )
 
-
 type multiRange struct {
-	str string
+	str    string
 	ranges []srcDstRange
 }
 
@@ -69,38 +68,29 @@ func makeMultiRanges(ranges []srcDstRange, baseOffset int64, maxHeaderBytes int)
 	return result
 }
 
-func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile string, dryRun bool) error {
+func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool) error {
 	start := time.Now()
 
 	client := &http.Client{}
 
 	var bufferedReader *bufio.Reader
-	if strings.HasPrefix(newVersion, "http") {
-		req, err := http.NewRequest("GET", newVersion+".sync", nil)
-		if err != nil {
-			return err
-		}
-		resp, err := client.Do(req)
-		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf(".sync file not found")
-		}
-		if err != nil {
-			return err
-		}
-		bar := progressbar.DefaultBytes(
-			resp.ContentLength,
-			"downloading syncfile",
-		)
-		bufferedReader = bufio.NewReader(io.TeeReader(resp.Body, bar))
-		bar.Close()
-	} else {
-		newFile, err := os.Open(newVersion + ".sync")
-		if err != nil {
-			return fmt.Errorf("error opening syncfile: %v", err)
-		}
-		defer newFile.Close()
-		bufferedReader = bufio.NewReader(newFile)
+	req, err := http.NewRequest("GET", newVersion+".sync", nil)
+	if err != nil {
+		return err
 	}
+	resp, err := client.Do(req)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf(".sync file not found")
+	}
+	if err != nil {
+		return err
+	}
+	bar := progressbar.DefaultBytes(
+		resp.ContentLength,
+		"downloading syncfile",
+	)
+	bufferedReader = bufio.NewReader(io.TeeReader(resp.Body, bar))
+	bar.Close()
 
 	var syncHeader syncHeader
 	jsonBytes, _ := bufferedReader.ReadSlice('\n')
@@ -156,7 +146,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 		}
 	}
 
-	bar := progressbar.Default(
+	bar = progressbar.Default(
 		int64(len(blocks)),
 		"calculating diff",
 	)
@@ -177,7 +167,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 			wg.Add(1)
 			for task := range tasks {
 				hasher := xxhash.New()
-				r := io.NewSectionReader(oldFile, int64(oldHeader.TileDataOffset + task.OldOffset), int64(task.NewBlock.Length))
+				r := io.NewSectionReader(oldFile, int64(oldHeader.TileDataOffset+task.OldOffset), int64(task.NewBlock.Length))
 
 				if _, err := io.Copy(hasher, r); err != nil {
 					log.Fatal(err)
@@ -274,8 +264,8 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 		resp, err := client.Do(req)
 		targetLength, _ := strconv.Atoi(resp.Header.Get("Content-Length"))
 
-		outfile, err := os.Create(newFile)
-		defer outfile.Close()
+		tmpFilename := oldVersion + ".tmp"
+		outfile, err := os.Create(tmpFilename)
 		outfile.Truncate(int64(targetLength))
 
 		// write the first 16 kb to the new file
@@ -318,14 +308,15 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 		// write the tile data (from local)
 		for _, h := range haveRanges {
 			chunkWriter := io.NewOffsetWriter(outfile, int64(newHeader.TileDataOffset+h.DstOffset))
-			r := io.NewSectionReader(oldFile, int64(oldHeader.TileDataOffset + h.SrcOffset), int64(h.Length))
+			r := io.NewSectionReader(oldFile, int64(oldHeader.TileDataOffset+h.SrcOffset), int64(h.Length))
 			io.Copy(io.MultiWriter(chunkWriter, bar), r)
 		}
 
-		// write the tile data (from remote)
-		multiRanges := makeMultiRanges(ranges, int64(newHeader.TileDataOffset), 1048576 - 200)
-		fmt.Println("Batched into http requests", len(multiRanges))
+		oldFile.Close()
 
+		// write the tile data (from remote)
+		multiRanges := makeMultiRanges(ranges, int64(newHeader.TileDataOffset), 1048576-200)
+		fmt.Println("Batched into http requests", len(multiRanges))
 
 		bar = progressbar.DefaultBytes(
 			int64(toTransfer),
@@ -385,6 +376,13 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, newFile stri
 		}
 
 		err = errs.Wait()
+		if err != nil {
+			return err
+		}
+
+		// atomically rename the old file to the new file.
+		outfile.Close()
+		err = os.Rename(tmpFilename, oldVersion)
 		if err != nil {
 			return err
 		}
