@@ -108,7 +108,7 @@ func fakeArchive(t *testing.T, header HeaderV3, metadata map[string]interface{},
 func newServer(t *testing.T) (mockBucket, *Server) {
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	bucket := mockBucket{make(map[string][]byte)}
-	server, err := NewServerWithBucket(bucket, "", log.Default(), 10, "", "tiles.example.com")
+	server, err := NewServerWithBucket(bucket, "", log.Default(), 10, "tiles.example.com")
 	assert.Nil(t, err)
 	server.Start()
 	return bucket, server
