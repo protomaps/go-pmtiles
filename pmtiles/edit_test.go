@@ -15,7 +15,7 @@ import (
 var logger = log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 
 func makeFixtureCopy(t *testing.T, name string) string {
-	src, _ := os.Open("fixtures/test_fixture_1.pmtiles")
+	src, _ := os.OpenFile("fixtures/test_fixture_1.pmtiles", os.O_RDONLY, 0666)
 	defer src.Close()
 	fname := filepath.Join(t.TempDir(), name+".pmtiles")
 	dest, _ := os.Create(fname)
