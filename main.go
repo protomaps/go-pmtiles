@@ -211,7 +211,7 @@ func main() {
 		if err != nil {
 			logger.Fatalf("Failed to convert %s, %v", path, err)
 		}
-	case "upload <inputpmtiles> <remotepmtiles>":
+	case "upload <input-pmtiles> <remote-pmtiles>":
 		err := pmtiles.Upload(logger, cli.Upload.InputPmtiles, cli.Upload.Bucket, cli.Upload.RemotePmtiles, cli.Upload.MaxConcurrency)
 
 		if err != nil {
