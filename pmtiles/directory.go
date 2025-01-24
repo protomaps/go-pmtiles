@@ -67,18 +67,14 @@ type HeaderV3 struct {
 // HeaderJson is a human-readable representation of parts of the binary header
 // that may need to be manually edited.
 // Omitted parts are the responsibility of the generator program and not editable.
+// The formatting is aligned with the TileJSON / MBTiles specification.
 type HeaderJson struct {
-	TileCompression string
-	TileType        string
-	MinZoom         int
-	MaxZoom         int
-	MinLon          float64
-	MinLat          float64
-	MaxLon          float64
-	MaxLat          float64
-	CenterZoom      int
-	CenterLon       float64
-	CenterLat       float64
+	TileCompression string    `json:"tile_compression"`
+	TileType        string    `json:"tile_type"`
+	MinZoom         int       `json:"minzoom"`
+	MaxZoom         int       `json:"maxzoom"`
+	Bounds          []float64 `json:"bounds"`
+	Center          []float64 `json:"center"`
 }
 
 func headerContentType(header HeaderV3) (string, bool) {
@@ -98,7 +94,7 @@ func headerContentType(header HeaderV3) (string, bool) {
 	}
 }
 
-func stringifiedTileType(t TileType) string {
+func tileTypeToString(t TileType) string {
 	switch t {
 	case Mvt:
 		return "mvt"
@@ -115,39 +111,70 @@ func stringifiedTileType(t TileType) string {
 	}
 }
 
+func stringToTileType(t string) TileType {
+	switch t {
+	case "mvt":
+		return Mvt
+	case "png":
+		return Png
+	case "jpg":
+		return Jpeg
+	case "webp":
+		return Webp
+	case "avif":
+		return Avif
+	default:
+		return UnknownTileType
+	}
+}
+
 func headerExt(header HeaderV3) string {
-	base := stringifiedTileType(header.TileType)
+	base := tileTypeToString(header.TileType)
 	if base == "" {
 		return ""
 	}
 	return "." + base
 }
 
-func headerContentEncoding(compression Compression) (string, bool) {
+func compressionToString(compression Compression) (string, bool) {
 	switch compression {
+	case NoCompression:
+		return "none", false
 	case Gzip:
 		return "gzip", true
 	case Brotli:
 		return "br", true
+	case Zstd:
+		return "zstd", true
 	default:
-		return "", false
+		return "unknown", false
+	}
+}
+
+func stringToCompression(s string) Compression {
+	switch s {
+	case "none":
+		return NoCompression
+	case "gzip":
+		return Gzip
+	case "br":
+		return Brotli
+	case "zstd":
+		return Zstd
+	default:
+		return UnknownCompression
 	}
 }
 
 func headerToJson(header HeaderV3) HeaderJson {
-	compressionString, _ := headerContentEncoding(header.TileCompression)
+	compressionString, _ := compressionToString(header.TileCompression)
 	return HeaderJson{
 		TileCompression: compressionString,
-		TileType:        stringifiedTileType(header.TileType),
+		TileType:        tileTypeToString(header.TileType),
 		MinZoom:         int(header.MinZoom),
 		MaxZoom:         int(header.MaxZoom),
-		MinLon:          float64(header.MinLonE7) / 10000000,
-		MinLat:          float64(header.MinLatE7) / 10000000,
-		MaxLon:          float64(header.MaxLonE7) / 10000000,
-		MaxLat:          float64(header.MaxLatE7) / 10000000,
-		CenterZoom:      int(header.CenterZoom),
-		CenterLon:       float64(header.CenterLonE7) / 10000000,
-		CenterLat:       float64(header.CenterLatE7) / 10000000,
+		Bounds:          []float64{float64(header.MinLonE7) / 10000000, float64(header.MinLatE7) / 10000000, float64(header.MaxLonE7) / 10000000, float64(header.MaxLatE7) / 10000000},
+		Center:          []float64{float64(header.CenterLonE7) / 10000000, float64(header.CenterLatE7) / 10000000, float64(header.CenterZoom)},
 	}
 }
 

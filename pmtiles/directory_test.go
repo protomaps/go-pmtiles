@@ -102,13 +102,8 @@ func TestHeaderJsonRoundtrip(t *testing.T) {
 	assert.Equal(t, "mvt", j.TileType)
 	assert.Equal(t, 1, j.MinZoom)
 	assert.Equal(t, 3, j.MaxZoom)
-	assert.Equal(t, 2, j.CenterZoom)
-	assert.Equal(t, 1.1, j.MinLon)
-	assert.Equal(t, 2.1, j.MinLat)
-	assert.Equal(t, 1.2, j.MaxLon)
-	assert.Equal(t, 2.2, j.MaxLat)
-	assert.Equal(t, 3.1, j.CenterLon)
-	assert.Equal(t, 3.2, j.CenterLat)
+	assert.Equal(t, []float64{1.1, 2.1, 1.2, 2.2}, j.Bounds)
+	assert.Equal(t, []float64{3.1, 3.2, 2}, j.Center)
 }
 
 func TestOptimizeDirectories(t *testing.T) {
@@ -206,4 +201,31 @@ func TestStringifiedExtension(t *testing.T) {
 	assert.Equal(t, ".jpg", headerExt(HeaderV3{TileType: Jpeg}))
 	assert.Equal(t, ".webp", headerExt(HeaderV3{TileType: Webp}))
 	assert.Equal(t, ".avif", headerExt(HeaderV3{TileType: Avif}))
+}
+
+func TestStringToTileType(t *testing.T) {
+	assert.Equal(t, "mvt", tileTypeToString(stringToTileType("mvt")))
+	assert.Equal(t, "png", tileTypeToString(stringToTileType("png")))
+	assert.Equal(t, "jpg", tileTypeToString(stringToTileType("jpg")))
+	assert.Equal(t, "webp", tileTypeToString(stringToTileType("webp")))
+	assert.Equal(t, "avif", tileTypeToString(stringToTileType("avif")))
+	assert.Equal(t, "", tileTypeToString(stringToTileType("")))
+}
+
+func TestStringToCompression(t *testing.T) {
+	s, has := compressionToString(stringToCompression("gzip"))
+	assert.True(t, has)
+	assert.Equal(t, "gzip", s)
+	s, has = compressionToString(stringToCompression("br"))
+	assert.True(t, has)
+	assert.Equal(t, "br", s)
+	s, has = compressionToString(stringToCompression("zstd"))
+	assert.True(t, has)
+	assert.Equal(t, "zstd", s)
+	s, has = compressionToString(stringToCompression("none"))
+	assert.False(t, has)
+	assert.Equal(t, "none", s)
+	s, has = compressionToString(stringToCompression("unknown"))
+	assert.False(t, has)
+	assert.Equal(t, "unknown", s)
 }
