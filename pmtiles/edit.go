@@ -12,9 +12,11 @@ import (
 	"os"
 )
 
-func Edit(logger *log.Logger, inputArchive string, newHeaderJsonFile string, newMetadataFile string) error {
-	if newHeaderJsonFile == "" && newMetadataFile == "" {
-		return fmt.Errorf("Must supply --header-json and/or --metadata to edit.")
+// Edit parts of the header or metadata.
+// works in-place if only the header is modified.
+func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetadataFile string) error {
+	if newHeaderJSONFile == "" && newMetadataFile == "" {
+		return fmt.Errorf("must supply --header-json and/or --metadata to edit")
 	}
 
 	file, err := os.OpenFile(inputArchive, os.O_RDWR, 0666)
@@ -34,9 +36,9 @@ func Edit(logger *log.Logger, inputArchive string, newHeaderJsonFile string, new
 
 	newHeader := oldHeader
 
-	if newHeaderJsonFile != "" {
+	if newHeaderJSONFile != "" {
 		newHeaderData := HeaderJson{}
-		data, err := ioutil.ReadFile(newHeaderJsonFile)
+		data, err := ioutil.ReadFile(newHeaderJSONFile)
 		if err != nil {
 			return err
 		}
@@ -84,7 +86,7 @@ func Edit(logger *log.Logger, inputArchive string, newHeaderJsonFile string, new
 
 	var metadataBytes bytes.Buffer
 	if oldHeader.InternalCompression != Gzip {
-		return fmt.Errorf("only gzip internal compression is currently supported.")
+		return fmt.Errorf("only gzip internal compression is currently supported")
 	}
 
 	w, _ := gzip.NewWriterLevel(&metadataBytes, gzip.BestCompression)

@@ -27,25 +27,25 @@ func Verify(_ *log.Logger, file string) error {
 	bucket, err := OpenBucket(ctx, bucketURL, "")
 
 	if err != nil {
-		return fmt.Errorf("Failed to open bucket for %s, %w", bucketURL, err)
+		return fmt.Errorf("failed to open bucket for %s, %w", bucketURL, err)
 	}
 	defer bucket.Close()
 
 	r, err := bucket.NewRangeReader(ctx, key, 0, 16384)
 
 	if err != nil {
-		return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
+		return fmt.Errorf("failed to create range reader for %s, %w", key, err)
 	}
 	b, err := io.ReadAll(r)
 	if err != nil {
-		return fmt.Errorf("Failed to read %s, %w", key, err)
+		return fmt.Errorf("failed to read %s, %w", key, err)
 	}
 	r.Close()
 
 	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
 
 	if err != nil {
-		return fmt.Errorf("Failed to read %s, %w", key, err)
+		return fmt.Errorf("failed to read %s, %w", key, err)
 	}
 
 	fileInfo, _ := os.Stat(file)
@@ -54,7 +54,7 @@ func Verify(_ *log.Logger, file string) error {
 	lengthFromHeaderWithPadding := int64(16384 + header.MetadataLength + header.LeafDirectoryLength + header.TileDataLength)
 
 	if fileInfo.Size() != lengthFromHeader && fileInfo.Size() != lengthFromHeaderWithPadding {
-		return fmt.Errorf("Total length of archive %v does not match header %v or %v (padded)", fileInfo.Size(), lengthFromHeader, lengthFromHeaderWithPadding)
+		return fmt.Errorf("total length of archive %v does not match header %v or %v (padded)", fileInfo.Size(), lengthFromHeader, lengthFromHeaderWithPadding)
 	}
 
 	var CollectEntries func(uint64, uint64, func(EntryV3))
@@ -108,7 +108,7 @@ func Verify(_ *log.Logger, file string) error {
 		if header.Clustered {
 			if !offsets.Contains(e.Offset) {
 				if e.Offset != currentOffset {
-					fmt.Printf("Invalid: out-of-order entry %v in clustered archive.", e)
+					fmt.Printf("Invalid: out-of-order entry %v in clustered archive", e)
 				}
 				currentOffset += uint64(e.Length)
 			}
@@ -116,31 +116,31 @@ func Verify(_ *log.Logger, file string) error {
 	})
 
 	if uint64(addressedTiles) != header.AddressedTilesCount {
-		return fmt.Errorf("Invalid: header AddressedTilesCount=%v but %v tiles addressed.", header.AddressedTilesCount, addressedTiles)
+		return fmt.Errorf("invalid: header AddressedTilesCount=%v but %v tiles addressed", header.AddressedTilesCount, addressedTiles)
 	}
 
 	if uint64(tileEntries) != header.TileEntriesCount {
-		return fmt.Errorf("Invalid: header TileEntriesCount=%v but %v tile entries.", header.TileEntriesCount, tileEntries)
+		return fmt.Errorf("invalid: header TileEntriesCount=%v but %v tile entries", header.TileEntriesCount, tileEntries)
 	}
 
 	if offsets.GetCardinality() != header.TileContentsCount {
-		return fmt.Errorf("Invalid: header TileContentsCount=%v but %v tile contents.", header.TileContentsCount, offsets.GetCardinality())
+		return fmt.Errorf("invalid: header TileContentsCount=%v but %v tile contents", header.TileContentsCount, offsets.GetCardinality())
 	}
 
 	if z, _, _ := IDToZxy(minTileID); z != header.MinZoom {
-		return fmt.Errorf("Invalid: header MinZoom=%v does not match min tile z %v", header.MinZoom, z)
+		return fmt.Errorf("invalid: header MinZoom=%v does not match min tile z %v", header.MinZoom, z)
 	}
 
 	if z, _, _ := IDToZxy(maxTileID); z != header.MaxZoom {
-		return fmt.Errorf("Invalid: header MaxZoom=%v does not match max tile z %v", header.MaxZoom, z)
+		return fmt.Errorf("invalid: header MaxZoom=%v does not match max tile z %v", header.MaxZoom, z)
 	}
 
 	if !(header.CenterZoom >= header.MinZoom && header.CenterZoom <= header.MaxZoom) {
-		return fmt.Errorf("Invalid: header CenterZoom=%v not within MinZoom/MaxZoom.", header.CenterZoom)
+		return fmt.Errorf("invalid: header CenterZoom=%v not within MinZoom/MaxZoom", header.CenterZoom)
 	}
 
 	if header.MinLonE7 >= header.MaxLonE7 || header.MinLatE7 >= header.MaxLatE7 {
-		return fmt.Errorf("Invalid: bounds has area <= 0: clients may not display tiles correctly.")
+		return fmt.Errorf("Invalid: bounds has area <= 0: clients may not display tiles correctly")
 	}
 
 	fmt.Printf("Completed verify in %v.\n", time.Since(start))
