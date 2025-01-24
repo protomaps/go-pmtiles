@@ -20,6 +20,7 @@ func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetad
 	}
 
 	file, err := os.OpenFile(inputArchive, os.O_RDWR, 0666)
+	defer file.Close()
 	if err != nil {
 		return err
 	}
@@ -107,6 +108,7 @@ func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetad
 	if err != nil {
 		return err
 	}
+	defer outfile.Close()
 
 	newHeader.MetadataOffset = newHeader.RootOffset + newHeader.RootLength
 	newHeader.MetadataLength = uint64(len(metadataBytes.Bytes()))
@@ -140,6 +142,7 @@ func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetad
 		return err
 	}
 
+	// explicitly close in order to rename
 	file.Close()
 	outfile.Close()
 	if err := os.Rename(tempFilePath, inputArchive); err != nil {
