@@ -137,7 +137,8 @@ func TestMalformedMetadata(t *testing.T) {
 func TestTempfileExists(t *testing.T) {
 	fileToEdit := makeFixtureCopy(t, "edit_existing_tempfile")
 
-	os.Create(fileToEdit + ".tmp")
+	tmp, _ := os.Create(fileToEdit + ".tmp")
+	defer tmp.Close()
 
 	metadataPath := filepath.Join(t.TempDir(), "metadata.json")
 	metadataFile, _ := os.Create(metadataPath)
