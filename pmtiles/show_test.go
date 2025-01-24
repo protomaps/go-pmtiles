@@ -17,8 +17,8 @@ func TestShowHeader(t *testing.T) {
 
 	var input map[string]interface{}
 	json.Unmarshal(b.Bytes(), &input)
-	assert.Equal(t, "mvt", input["TileType"])
-	assert.Equal(t, "gzip", input["TileCompression"])
+	assert.Equal(t, "mvt", input["tile_type"])
+	assert.Equal(t, "gzip", input["tile_compression"])
 }
 
 func TestShowMetadata(t *testing.T) {

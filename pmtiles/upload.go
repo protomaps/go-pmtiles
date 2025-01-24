@@ -19,7 +19,7 @@ func partSizeBytes(totalSize int64) int {
 }
 
 // Upload a pmtiles archive to a bucket.
-func Upload(logger *log.Logger, InputPMTiles string, bucket string, RemotePMTiles string, maxConcurrency int) error {
+func Upload(_ *log.Logger, InputPMTiles string, bucket string, RemotePMTiles string, maxConcurrency int) error {
 	ctx := context.Background()
 
 	b, err := blob.OpenBucket(ctx, bucket)

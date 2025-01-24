@@ -418,7 +418,7 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 			if headerVal, ok := headerContentType(header); ok {
 				httpHeaders["Content-Type"] = headerVal
 			}
-			if headerVal, ok := headerContentEncoding(header.TileCompression); ok {
+			if headerVal, ok := compressionToString(header.TileCompression); ok {
 				httpHeaders["Content-Encoding"] = headerVal
 			}
 			return 200, httpHeaders, b, ""

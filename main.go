@@ -32,7 +32,7 @@ var cli struct {
 		Output          string `arg:"" help:"Output PMTiles archive." type:"path"`
 		Force           bool   `help:"Force removal."`
 		NoDeduplication bool   `help:"Don't attempt to deduplicate tiles."`
-		Tmpdir          string `help:"An optional path to a folder for tmp data." type:"existingdir"`
+		Tmpdir          string `help:"An optional path to a folder for temporary files." type:"existingdir"`
 	} `cmd:"" help:"Convert an MBTiles or older spec version to PMTiles."`
 
 	Show struct {
@@ -52,11 +52,11 @@ var cli struct {
 		Bucket string `help:"Remote bucket"`
 	} `cmd:"" help:"Fetch one tile from a local or remote archive and output on stdout."`
 
-	Write struct {
+	Edit struct {
 		Input      string `arg:"" help:"Input archive file." type:"existingfile"`
 		HeaderJson string `help:"Input header JSON file (written by show --header-json)." type:"existingfile"`
 		Metadata   string `help:"Input metadata JSON (written by show --metadata)." type:"existingfile"`
-	} `cmd:"" help:"Write header data or metadata to an existing archive." hidden:""`
+	} `cmd:"" help:"Edit JSON metadata or parts of the header in-place." hidden:""`
 
 	Extract struct {
 		Input           string  `arg:"" help:"Input local or remote archive."`
@@ -211,7 +211,7 @@ func main() {
 		if err != nil {
 			logger.Fatalf("Failed to convert %s, %v", path, err)
 		}
-	case "upload <inputpmtiles> <remotepmtiles>":
+	case "upload <input-pmtiles> <remote-pmtiles>":
 		err := pmtiles.Upload(logger, cli.Upload.InputPmtiles, cli.Upload.Bucket, cli.Upload.RemotePmtiles, cli.Upload.MaxConcurrency)
 
 		if err != nil {
@@ -221,6 +221,11 @@ func main() {
 		err := pmtiles.Verify(logger, cli.Verify.Input)
 		if err != nil {
 			logger.Fatalf("Failed to verify archive, %v", err)
+		}
+	case "edit <input>":
+		err := pmtiles.Edit(logger, cli.Edit.Input, cli.Edit.HeaderJson, cli.Edit.Metadata)
+		if err != nil {
+			logger.Fatalf("Failed to edit archive, %v", err)
 		}
 	case "makesync <input>":
 		err := pmtiles.Makesync(logger, version, cli.Makesync.Input, cli.Makesync.BlockSizeKb, cli.Makesync.Checksum)
