@@ -27,22 +27,14 @@ var (
 )
 
 var cli struct {
-	Convert struct {
-		Input           string `arg:"" help:"Input archive." type:"existingfile"`
-		Output          string `arg:"" help:"Output PMTiles archive." type:"path"`
-		Force           bool   `help:"Force removal."`
-		NoDeduplication bool   `help:"Don't attempt to deduplicate tiles."`
-		Tmpdir          string `help:"An optional path to a folder for temporary files." type:"existingdir"`
-	} `cmd:"" help:"Convert an MBTiles or older spec version to PMTiles."`
-
 	Show struct {
 		Path       string `arg:""`
 		Bucket     string `help:"Remote bucket"`
-		Metadata   bool   `help:"Print only the JSON metadata."`
-		HeaderJson bool   `help:"Print a JSON representation of the header information."`
-		Tilejson   bool   `help:"Print the TileJSON."`
+		Metadata   bool   `help:"Print only the JSON metadata"`
+		HeaderJson bool   `help:"Print a JSON representation of the header information"`
+		Tilejson   bool   `help:"Print the TileJSON"`
 		PublicURL  string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles"`
-	} `cmd:"" help:"Inspect a local or remote archive."`
+	} `cmd:"" help:"Inspect a local or remote archive"`
 
 	Tile struct {
 		Path   string `arg:""`
@@ -50,73 +42,81 @@ var cli struct {
 		X      int    `arg:""`
 		Y      int    `arg:""`
 		Bucket string `help:"Remote bucket"`
-	} `cmd:"" help:"Fetch one tile from a local or remote archive and output on stdout."`
+	} `cmd:"" help:"Fetch one tile from a local or remote archive and output on stdout"`
+
+	Cluster struct {
+		Input string `arg:"" help:"Input archive" type:"existingfile"`
+	} `cmd:"" help:"Cluster an unclustered local archive" hidden:""`
 
 	Edit struct {
-		Input      string `arg:"" help:"Input archive file." type:"existingfile"`
-		HeaderJson string `help:"Input header JSON file (written by show --header-json)." type:"existingfile"`
-		Metadata   string `help:"Input metadata JSON (written by show --metadata)." type:"existingfile"`
-	} `cmd:"" help:"Edit JSON metadata or parts of the header in-place." hidden:""`
+		Input      string `arg:"" help:"Input archive" type:"existingfile"`
+		HeaderJson string `help:"Input header JSON file (written by show --header-json)" type:"existingfile"`
+		Metadata   string `help:"Input metadata JSON (written by show --metadata)" type:"existingfile"`
+	} `cmd:"" help:"Edit JSON metadata or parts of the header"`
 
 	Extract struct {
-		Input           string  `arg:"" help:"Input local or remote archive."`
-		Output          string  `arg:"" help:"Output archive." type:"path"`
-		Bucket          string  `help:"Remote bucket of input archive."`
-		Region          string  `help:"local GeoJSON Polygon or MultiPolygon file for area of interest." type:"existingfile"`
+		Input           string  `arg:"" help:"Input local or remote archive"`
+		Output          string  `arg:"" help:"Output archive" type:"path"`
+		Bucket          string  `help:"Remote bucket of input archive"`
+		Region          string  `help:"local GeoJSON Polygon or MultiPolygon file for area of interest" type:"existingfile"`
 		Bbox            string  `help:"bbox area of interest: min_lon,min_lat,max_lon,max_lat" type:"string"`
-		Minzoom         int8    `default:"-1" help:"Minimum zoom level, inclusive."`
-		Maxzoom         int8    `default:"-1" help:"Maximum zoom level, inclusive."`
-		DownloadThreads int     `default:"4" help:"Number of download threads."`
-		DryRun          bool    `help:"Calculate tiles to extract, but don't download them."`
+		Minzoom         int8    `default:"-1" help:"Minimum zoom level, inclusive"`
+		Maxzoom         int8    `default:"-1" help:"Maximum zoom level, inclusive"`
+		DownloadThreads int     `default:"4" help:"Number of download threads"`
+		DryRun          bool    `help:"Calculate tiles to extract, but don't download them"`
 		Overfetch       float32 `default:"0.05" help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
-	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region."`
+	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region"`
+
+	Merge struct {
+		Output string   `arg:"" help:"Output archive" type:"path"`
+		Input  []string `arg:"" help:"Input archives"`
+	} `cmd:"" help:"Merge multiple archives into a single archive"`
+
+	Convert struct {
+		Input           string `arg:"" help:"Input archive" type:"existingfile"`
+		Output          string `arg:"" help:"Output archive" type:"path"`
+		Force           bool   `help:"Force removal"`
+		NoDeduplication bool   `help:"Don't attempt to deduplicate tiles"`
+		Tmpdir          string `help:"An optional path to a folder for temporary files" type:"existingdir"`
+	} `cmd:"" help:"Convert an MBTiles or older spec version to PMTiles"`
 
 	Verify struct {
-		Input string `arg:"" help:"Input archive." type:"existingfile"`
-	} `cmd:"" help:"Verify the correctness of an archive structure, without verifying individual tile contents."`
+		Input string `arg:"" help:"Input archive" type:"existingfile"`
+	} `cmd:"" help:"Verify the correctness of an archive structure, without verifying individual tile contents"`
 
 	Makesync struct {
 		Input        string `arg:"" type:"existingfile"`
-		BlockSizeKb  int    `default:"20" help:"The approximate block size, in kilobytes. 0 means 1 tile = 1 block."`
-		HashFunction string `default:"xxh64" help:"The hash function."`
-		Checksum     string `help:"Store a checksum in the syncfile."`
-	} `cmd:"" hidden:""`
+		BlockSizeKb  int    `default:"20" help:"The approximate block size, in kilobytes; 0 means 1 tile = 1 block"`
+		HashFunction string `default:"xxh64" help:"The hash function"`
+		Checksum     string `help:"Store a checksum in the syncfile"`
+	} `cmd:"" help:"" hidden:""`
 
 	Sync struct {
 		Existing string `arg:"" type:"existingfile"`
-		New      string `arg:"" help:"Local or remote archive, with .sync sidecar file."`
-		DryRun   bool   `help:"Calculate new parts to download, but don't download them."`
-	} `cmd:"" hidden:""`
+		New      string `arg:"" help:"Remote archive"`
+		DryRun   bool   `help:"Calculate new parts to download, but don't download them"`
+	} `cmd:"" help:"" hidden:""`
 
 	Serve struct {
 		Path      string `arg:"" help:"Local path or bucket prefix"`
 		Interface string `default:"0.0.0.0"`
 		Port      int    `default:"8080"`
 		AdminPort int    `default:"-1"`
-		Cors      string `help:"Comma-separated list of of allowed HTTP CORS origins."`
-		CacheSize int    `default:"64" help:"Size of cache in Megabytes."`
+		Cors      string `help:"Comma-separated list of of allowed HTTP CORS origins"`
+		CacheSize int    `default:"64" help:"Size of cache in megabytes"`
 		Bucket    string `help:"Remote bucket"`
 		PublicURL string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles/"`
-	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles."`
-
-	Download struct {
-		OldFile         string  `type:"existingfile" help:"The old archive on disk. Providing this will check the new archive for a .sync file"`
-		NewFile         string  `arg:"The remote file."`
-		Bucket          string  `required:"" help:"Bucket of file to download."`
-		DownloadThreads int     `default:"4" help:"Number of download threads."`
-		DryRun          bool    `help:"Calculate new parts to download, but don't download them."`
-		Overfetch       float32 `default:"0.05" help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
-	} `cmd:"" help:"Download a local archive to remote storage." hidden:""`
+	} `cmd:"" help:"Run an HTTP proxy server for Z/X/Y tiles"`
 
 	Upload struct {
 		InputPmtiles   string `arg:"" type:"existingfile" help:"The local PMTiles file"`
 		RemotePmtiles  string `arg:""  help:"The name for the remote PMTiles source"`
 		MaxConcurrency int    `default:"2" help:"# of upload threads"`
-		Bucket         string `required:"" help:"Bucket to upload to."`
-	} `cmd:"" help:"Upload a local archive to remote storage."`
+		Bucket         string `required:"" help:"Bucket to upload to"`
+	} `cmd:"" help:"Upload a local archive to remote storage"`
 
 	Version struct {
-	} `cmd:"" help:"Show the program version."`
+	} `cmd:"" help:"Show the program version"`
 }
 
 func main() {
