@@ -53,7 +53,13 @@ func Verify(_ *log.Logger, file string) error {
 	lengthFromHeader := int64(HeaderV3LenBytes + header.RootLength + header.MetadataLength + header.LeafDirectoryLength + header.TileDataLength)
 	lengthFromHeaderWithPadding := int64(16384 + header.MetadataLength + header.LeafDirectoryLength + header.TileDataLength)
 
-	if fileInfo.Size() != lengthFromHeader && fileInfo.Size() != lengthFromHeaderWithPadding {
+	fmt.Println(int32(header.LeafDirectoryLength))
+	fmt.Println(int32(header.TileDataLength))
+	fmt.Println(fileInfo.Size())
+	fmt.Println(lengthFromHeader)
+	fmt.Println(lengthFromHeaderWithPadding)
+
+	if !(fileInfo.Size() == lengthFromHeader || fileInfo.Size() == lengthFromHeaderWithPadding) {
 		return fmt.Errorf("total length of archive %v does not match header %v or %v (padded)", fileInfo.Size(), lengthFromHeader, lengthFromHeaderWithPadding)
 	}
 
