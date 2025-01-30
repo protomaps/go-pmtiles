@@ -48,12 +48,45 @@ func Verify(_ *log.Logger, file string) error {
 		return fmt.Errorf("failed to read %s, %w", key, err)
 	}
 
+	if (header.RootOffset == 0) {
+		return fmt.Errorf("Root directory offset=%v must not be 0", header.RootOffset);
+	}
+
+	if (header.MetadataOffset == 0) {
+		return fmt.Errorf("Metadata offset=%v must not be 0", header.MetadataOffset);
+	}
+
+	if (header.LeafDirectoryOffset == 0) {
+		return fmt.Errorf("Leaf directories offset=%v must not be 0", header.LeafDirectoryOffset);
+	}
+
+	if (header.TileDataOffset == 0) {
+		return fmt.Errorf("Tile data offset=%v must not be 0", header.TileDataOffset);
+	}
+
 	fileInfo, _ := os.Stat(file)
+
+	if (header.RootLength > uint64(fileInfo.Size())) {
+		return fmt.Errorf("Root directory offset=%v length=%v out of bounds", header.RootOffset, header.RootLength);
+	}
+
+	if (header.MetadataLength > uint64(fileInfo.Size())) {
+		return fmt.Errorf("Metadata offset=%v length=%v out of bounds", header.MetadataOffset, header.MetadataLength);
+	}
+
+	if (header.LeafDirectoryLength > uint64(fileInfo.Size())) {
+		return fmt.Errorf("Leaf directories offset=%v length=%v out of bounds", header.LeafDirectoryOffset, header.LeafDirectoryLength);
+	}
+
+	if (header.TileDataLength > uint64(fileInfo.Size())) {
+		return fmt.Errorf("Tile data offset=%v length=%v out of bounds", header.TileDataOffset, header.TileDataLength);
+	}
+
 
 	lengthFromHeader := int64(HeaderV3LenBytes + header.RootLength + header.MetadataLength + header.LeafDirectoryLength + header.TileDataLength)
 	lengthFromHeaderWithPadding := int64(16384 + header.MetadataLength + header.LeafDirectoryLength + header.TileDataLength)
 
-	if fileInfo.Size() != lengthFromHeader && fileInfo.Size() != lengthFromHeaderWithPadding {
+	if !(fileInfo.Size() == lengthFromHeader || fileInfo.Size() == lengthFromHeaderWithPadding) {
 		return fmt.Errorf("total length of archive %v does not match header %v or %v (padded)", fileInfo.Size(), lengthFromHeader, lengthFromHeaderWithPadding)
 	}
 
