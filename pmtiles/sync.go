@@ -90,7 +90,6 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 		"downloading syncfile",
 	)
 	bufferedReader = bufio.NewReader(io.TeeReader(resp.Body, bar))
-	bar.Close()
 
 	var syncHeader syncHeader
 	jsonBytes, _ := bufferedReader.ReadSlice('\n')
@@ -102,6 +101,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 	}
 
 	blocks := deserializeSyncBlocks(syncHeader.NumBlocks, bufferedReader)
+	bar.Close()
 
 	ctx := context.Background()
 
@@ -292,12 +292,19 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 		resp, err = client.Do(req)
 		io.Copy(metadataWriter, resp.Body)
 
-		// write the leaf directories, if any, to the new file
+		// write the leaf directories, if any, to the new file (show progress)
 		leafWriter := io.NewOffsetWriter(outfile, int64(newHeader.LeafDirectoryOffset))
 		req, err = http.NewRequest("GET", newVersion, nil)
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", newHeader.LeafDirectoryOffset, newHeader.LeafDirectoryOffset+newHeader.LeafDirectoryLength-1))
 		resp, err = client.Do(req)
-		io.Copy(leafWriter, resp.Body)
+
+
+		leafBar := progressbar.DefaultBytes(
+			int64(newHeader.LeafDirectoryLength),
+			"downloading leaf directories",
+		)
+		io.Copy(leafWriter, io.TeeReader(resp.Body, leafBar))
+		leafBar.Close()
 
 		fmt.Println(len(have), "local chunks")
 		bar := progressbar.DefaultBytes(
