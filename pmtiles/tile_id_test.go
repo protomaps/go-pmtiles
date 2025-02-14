@@ -1,8 +1,9 @@
 package pmtiles
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestZxyToId(t *testing.T) {
@@ -49,8 +50,7 @@ func TestManyTileIds(t *testing.T) {
 func TestExtremes(t *testing.T) {
 	var tz uint8
 	for tz = 0; tz < 32; tz++ {
-		var dim uint32
-		dim = (1 << tz) - 1
+		var dim uint32 = (1 << tz) - 1
 		z, x, y := IDToZxy(ZxyToID(tz, 0, 0))
 		assert.Equal(t, tz, z)
 		assert.Equal(t, uint32(0), x)
@@ -92,4 +92,9 @@ func TestParent(t *testing.T) {
 	assert.Equal(t, ZxyToID(1, 1, 1), ParentID(ZxyToID(2, 2, 3)))
 	assert.Equal(t, ZxyToID(1, 1, 1), ParentID(ZxyToID(2, 3, 2)))
 	assert.Equal(t, ZxyToID(1, 1, 1), ParentID(ZxyToID(2, 3, 3)))
+
+	assert.Equal(t, ZxyToID(18, 500, 1), ParentID(ZxyToID(19, 1000, 3)))
+	assert.Equal(t, ZxyToID(18, 500, 2), ParentID(ZxyToID(19, 1000, 4)))
+	assert.Equal(t, ZxyToID(18, 1, 500), ParentID(ZxyToID(19, 3, 1000)))
+	assert.Equal(t, ZxyToID(18, 2, 500), ParentID(ZxyToID(19, 4, 1000)))
 }
