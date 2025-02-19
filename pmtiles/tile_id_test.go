@@ -98,3 +98,36 @@ func TestParent(t *testing.T) {
 	assert.Equal(t, ZxyToID(18, 1, 500), ParentID(ZxyToID(19, 3, 1000)))
 	assert.Equal(t, ZxyToID(18, 2, 500), ParentID(ZxyToID(19, 4, 1000)))
 }
+
+func BenchmarkZxyToId(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		for z := uint8(0); z < 15; z += 1 {
+			s := uint32(1 << z)
+			for x := uint32(0); x < s; x += 13 {
+				for y := uint32(0); y < s; y += 13 {
+					_ = ZxyToID(z, x, y)
+				}
+			}
+		}
+	}
+}
+
+func BenchmarkIdToZxy(b *testing.B) {
+	end := ZxyToID(15, 0, 0)
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		for i := uint64(0); i < end; i += 13 {
+			_, _, _ = IDToZxy(i)
+		}
+	}
+}
+
+func BenchmarkParentId(b *testing.B) {
+	end := ZxyToID(15, 0, 0)
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		for i := uint64(1); i < end; i += 13 {
+			_ = ParentID(i)
+		}
+	}
+}
