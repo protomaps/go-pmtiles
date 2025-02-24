@@ -526,19 +526,19 @@ func v2ToHeaderJSON(v2JsonMetadata map[string]interface{}, first4 []byte) (Heade
 func parseBounds(bounds string) (int32, int32, int32, int32, error) {
 	parts := strings.Split(bounds, ",")
 	E7 := 10000000.0
-	minLon, err := strconv.ParseFloat(parts[0], 64)
+	minLon, err := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-	minLat, err := strconv.ParseFloat(parts[1], 64)
+	minLat, err := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-	maxLon, err := strconv.ParseFloat(parts[2], 64)
+	maxLon, err := strconv.ParseFloat(strings.TrimSpace(parts[2]), 64)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-	maxLat, err := strconv.ParseFloat(parts[3], 64)
+	maxLat, err := strconv.ParseFloat(strings.TrimSpace(parts[3]), 64)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
@@ -548,15 +548,15 @@ func parseBounds(bounds string) (int32, int32, int32, int32, error) {
 func parseCenter(center string) (int32, int32, uint8, error) {
 	parts := strings.Split(center, ",")
 	E7 := 10000000.0
-	centerLon, err := strconv.ParseFloat(parts[0], 64)
+	centerLon, err := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	centerLat, err := strconv.ParseFloat(parts[1], 64)
+	centerLat, err := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	centerZoom, err := strconv.ParseInt(parts[2], 10, 8)
+	centerZoom, err := strconv.ParseInt(strings.TrimSpace(parts[2]), 10, 8)
 	if err != nil {
 		return 0, 0, 0, err
 	}

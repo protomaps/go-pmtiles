@@ -215,3 +215,24 @@ func TestMbtilesDegenerateBounds(t *testing.T) {
 	})
 	assert.NotNil(t, err)
 }
+
+func TestMbtilesCoordinatesHasSpace(t *testing.T) {
+	header, _, err := mbtilesToHeaderJSON([]string{
+		"name", "test_name",
+		"format", "pbf",
+		"bounds", " -180.0, -85, 180, 85",
+		"center", " -122.1906, 37.7599, 11",
+		"attribution", "<div>abc</div>",
+		"description", "a description",
+		"type", "overlay",
+		"version", "1",
+		"compression", "gzip",
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, int32(-180*10000000), header.MinLonE7)
+	assert.Equal(t, int32(-85*10000000), header.MinLatE7)
+	assert.Equal(t, int32(180*10000000), header.MaxLonE7)
+	assert.Equal(t, int32(85*10000000), header.MaxLatE7)
+	assert.Equal(t, int32(-122.1906*10000000), header.CenterLonE7)
+	assert.Equal(t, int32(37.7599*10000000), header.CenterLatE7)
+}
