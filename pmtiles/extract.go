@@ -455,6 +455,10 @@ func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom 
 		outfile, err := os.Create(output)
 		defer outfile.Close()
 
+		if err != nil {
+			return err
+		}
+
 		outfile.Truncate(127 + int64(len(newRootBytes)) + int64(header.MetadataLength) + int64(len(newLeavesBytes)) + int64(totalActualBytes))
 
 		_, err = outfile.Write(headerBytes)
