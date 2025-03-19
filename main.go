@@ -47,7 +47,7 @@ var cli struct {
 	Cluster struct {
 		Input           string `arg:"" help:"Input archive" type:"existingfile"`
 		NoDeduplication bool   `help:"Don't attempt to deduplicate tiles"`
-	} `cmd:"" help:"Cluster an unclustered local archive" hidden:""`
+	} `cmd:"" help:"Cluster an unclustered local archive, optimizing the size and layout"`
 
 	Edit struct {
 		Input      string `arg:"" help:"Input archive" type:"existingfile"`
