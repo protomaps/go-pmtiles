@@ -45,7 +45,8 @@ var cli struct {
 	} `cmd:"" help:"Fetch one tile from a local or remote archive and output on stdout"`
 
 	Cluster struct {
-		Input string `arg:"" help:"Input archive" type:"existingfile"`
+		Input           string `arg:"" help:"Input archive" type:"existingfile"`
+		NoDeduplication bool   `help:"Don't attempt to deduplicate tiles"`
 	} `cmd:"" help:"Cluster an unclustered local archive" hidden:""`
 
 	Edit struct {
@@ -177,6 +178,11 @@ func main() {
 		err := pmtiles.Extract(logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Minzoom, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Bbox, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
 		if err != nil {
 			logger.Fatalf("Failed to extract, %v", err)
+		}
+	case "cluster <input>":
+		err := pmtiles.Cluster(logger, cli.Cluster.Input, !cli.Cluster.NoDeduplication)
+		if err != nil {
+			logger.Fatalf("Failed to cluster, %v", err)
 		}
 	case "convert <input> <output>":
 		path := cli.Convert.Input
