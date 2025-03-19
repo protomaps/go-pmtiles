@@ -47,7 +47,7 @@ func (r *resolver) NumContents() uint64 {
 }
 
 // must be called in increasing tile_id order, uniquely
-func (r *resolver) AddTileIsNew(tileID uint64, data []byte) (bool, []byte) {
+func (r *resolver) AddTileIsNew(tileID uint64, data []byte, runLength uint32) (bool, []byte) {
 	r.AddressedTiles++
 	var found offsetLen
 	var ok bool
@@ -64,12 +64,12 @@ func (r *resolver) AddTileIsNew(tileID uint64, data []byte) (bool, []byte) {
 		lastEntry := r.Entries[len(r.Entries)-1]
 		if tileID == lastEntry.TileID+uint64(lastEntry.RunLength) && lastEntry.Offset == found.Offset {
 			// RLE
-			if lastEntry.RunLength+1 > math.MaxUint32 {
+			if lastEntry.RunLength+runLength > math.MaxUint32 {
 				panic("Maximum 32-bit run length exceeded")
 			}
-			r.Entries[len(r.Entries)-1].RunLength++
+			r.Entries[len(r.Entries)-1].RunLength += runLength
 		} else {
-			r.Entries = append(r.Entries, EntryV3{tileID, found.Offset, found.Length, 1})
+			r.Entries = append(r.Entries, EntryV3{tileID, found.Offset, found.Length, runLength})
 		}
 
 		return false, nil
@@ -89,7 +89,7 @@ func (r *resolver) AddTileIsNew(tileID uint64, data []byte) (bool, []byte) {
 	if r.deduplicate {
 		r.OffsetMap[sumString] = offsetLen{r.Offset, uint32(len(newData))}
 	}
-	r.Entries = append(r.Entries, EntryV3{tileID, r.Offset, uint32(len(newData)), 1})
+	r.Entries = append(r.Entries, EntryV3{tileID, r.Offset, uint32(len(newData)), runLength})
 	r.Offset += uint64(len(newData))
 	return true, newData
 }
@@ -205,7 +205,7 @@ func convertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 			}
 		}
 		// TODO: enforce sorted order
-		if isNew, newData := resolve.AddTileIsNew(entry.TileID, buf); isNew {
+		if isNew, newData := resolve.AddTileIsNew(entry.TileID, buf, 1); isNew {
 			_, err = tmpfile.Write(newData)
 			if err != nil {
 				return fmt.Errorf("Failed to write to tempfile, %w", err)
@@ -325,7 +325,7 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 			data := rawTileTmp.Bytes()
 
 			if len(data) > 0 {
-				if isNew, newData := resolve.AddTileIsNew(id, data); isNew {
+				if isNew, newData := resolve.AddTileIsNew(id, data, 1); isNew {
 					_, err := tmpfile.Write(newData)
 					if err != nil {
 						return fmt.Errorf("Failed to write to tempfile: %s", err)

@@ -7,17 +7,32 @@ import (
 
 func TestResolver(t *testing.T) {
 	resolver := newResolver(true, true)
-	resolver.AddTileIsNew(1, []byte{0x1, 0x2})
+	resolver.AddTileIsNew(1, []byte{0x1, 0x2}, 1)
 	assert.Equal(t, 1, len(resolver.Entries))
-	resolver.AddTileIsNew(2, []byte{0x1, 0x3})
+	resolver.AddTileIsNew(2, []byte{0x1, 0x3}, 1)
 	assert.Equal(t, uint64(52), resolver.Offset)
-	isNew, _ := resolver.AddTileIsNew(3, []byte{0x1, 0x2})
+	isNew, _ := resolver.AddTileIsNew(3, []byte{0x1, 0x2}, 1)
 	assert.False(t, isNew)
 	assert.Equal(t, uint64(52), resolver.Offset)
-	resolver.AddTileIsNew(4, []byte{0x1, 0x2})
+	resolver.AddTileIsNew(4, []byte{0x1, 0x2}, 1)
 	assert.Equal(t, 3, len(resolver.Entries))
-	resolver.AddTileIsNew(6, []byte{0x1, 0x2})
+	resolver.AddTileIsNew(6, []byte{0x1, 0x2}, 1)
 	assert.Equal(t, 4, len(resolver.Entries))
+}
+
+func TestResolverRunLength(t *testing.T) {
+	resolver := newResolver(true, true)
+	resolver.AddTileIsNew(1, []byte{0x1, 0x2}, 2)
+	assert.Equal(t, uint32(2), resolver.Entries[0].RunLength)
+	resolver.AddTileIsNew(3, []byte{0x1, 0x2}, 2)
+	assert.Equal(t, 1, len(resolver.Entries))
+	assert.Equal(t, uint32(4), resolver.Entries[0].RunLength)
+}
+
+func TestResolverRunLengthNoDeduplicate(t *testing.T) {
+	resolver := newResolver(false, true)
+	resolver.AddTileIsNew(1, []byte{0x1, 0x2}, 2)
+	assert.Equal(t, uint32(2), resolver.Entries[0].RunLength)
 }
 
 func TestV2UpgradeBarebones(t *testing.T) {
