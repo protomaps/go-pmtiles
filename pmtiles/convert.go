@@ -214,7 +214,7 @@ func convertPmtilesV2(logger *log.Logger, input string, output string, deduplica
 		bar.Add(1)
 	}
 
-	err = finalize(logger, resolve, header, tmpfile, output, jsonMetadata)
+	_, err = finalize(logger, resolve, header, tmpfile, output, jsonMetadata)
 	if err != nil {
 		return err
 	}
@@ -338,7 +338,7 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 			bar.Add(1)
 		}
 	}
-	err = finalize(logger, resolve, header, tmpfile, output, jsonMetadata)
+	_, err = finalize(logger, resolve, header, tmpfile, output, jsonMetadata)
 	if err != nil {
 		return err
 	}
@@ -346,7 +346,7 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 	return nil
 }
 
-func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *os.File, output string, jsonMetadata map[string]interface{}) error {
+func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *os.File, output string, jsonMetadata map[string]interface{}) (HeaderV3, error) {
 	logger.Println("# of addressed tiles: ", resolve.AddressedTiles)
 	logger.Println("# of tile entries (after RLE): ", len(resolve.Entries))
 	logger.Println("# of tile contents: ", resolve.NumContents())
@@ -358,7 +358,7 @@ func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *o
 	// assemble the final file
 	outfile, err := os.Create(output)
 	if err != nil {
-		return fmt.Errorf("Failed to create %s, %w", output, err)
+		return header, fmt.Errorf("Failed to create %s, %w", output, err)
 	}
 
 	rootBytes, leavesBytes, numLeaves := optimizeDirectories(resolve.Entries, 16384-HeaderV3LenBytes)
@@ -379,7 +379,7 @@ func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *o
 	{
 		metadataBytesUncompressed, err := json.Marshal(jsonMetadata)
 		if err != nil {
-			return fmt.Errorf("Failed to marshal metadata, %w", err)
+			return header, fmt.Errorf("Failed to marshal metadata, %w", err)
 		}
 		var b bytes.Buffer
 		w, _ := gzip.NewWriterLevel(&b, gzip.BestCompression)
@@ -409,30 +409,30 @@ func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *o
 
 	_, err = outfile.Write(headerBytes)
 	if err != nil {
-		return fmt.Errorf("Failed to write header to outfile, %w", err)
+		return header, fmt.Errorf("Failed to write header to outfile, %w", err)
 	}
 	_, err = outfile.Write(rootBytes)
 	if err != nil {
-		return fmt.Errorf("Failed to write header to outfile, %w", err)
+		return header, fmt.Errorf("Failed to write header to outfile, %w", err)
 	}
 	_, err = outfile.Write(metadataBytes)
 	if err != nil {
-		return fmt.Errorf("Failed to write header to outfile, %w", err)
+		return header, fmt.Errorf("Failed to write header to outfile, %w", err)
 	}
 	_, err = outfile.Write(leavesBytes)
 	if err != nil {
-		return fmt.Errorf("Failed to write header to outfile, %w", err)
+		return header, fmt.Errorf("Failed to write header to outfile, %w", err)
 	}
 	_, err = tmpfile.Seek(0, 0)
 	if err != nil {
-		return fmt.Errorf("Failed to seek to start of tempfile, %w", err)
+		return header, fmt.Errorf("Failed to seek to start of tempfile, %w", err)
 	}
 	_, err = io.Copy(outfile, tmpfile)
 	if err != nil {
-		return fmt.Errorf("Failed to copy data to outfile, %w", err)
+		return header, fmt.Errorf("Failed to copy data to outfile, %w", err)
 	}
 
-	return nil
+	return header, nil
 }
 
 func v2ToHeaderJSON(v2JsonMetadata map[string]interface{}, first4 []byte) (HeaderV3, map[string]interface{}, error) {
