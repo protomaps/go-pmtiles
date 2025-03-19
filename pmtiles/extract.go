@@ -282,7 +282,7 @@ func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom 
 	}
 	r.Close()
 
-	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
+	header, err := DeserializeHeader(b[0:HeaderV3LenBytes])
 
 	if !header.Clustered {
 		return fmt.Errorf("source archive must be clustered for extracts")
@@ -359,7 +359,7 @@ func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom 
 		return err
 	}
 
-	rootDir := deserializeEntries(bytes.NewBuffer(rootBytes))
+	rootDir := DeserializeEntries(bytes.NewBuffer(rootBytes), header.InternalCompression)
 
 	tileEntries, leaves := RelevantEntries(relevantSet, uint8(maxzoom), rootDir)
 
@@ -392,7 +392,7 @@ func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom 
 			if err != nil {
 				return err
 			}
-			leafdir := deserializeEntries(bytes.NewBuffer(leafBytes))
+			leafdir := DeserializeEntries(bytes.NewBuffer(leafBytes), header.InternalCompression)
 			newEntries, newLeaves := RelevantEntries(relevantSet, uint8(maxzoom), leafdir)
 
 			if len(newLeaves) > 0 {
@@ -425,7 +425,7 @@ func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom 
 
 	// TODO: takes up too much RAM
 	// construct the directories
-	newRootBytes, newLeavesBytes, _ := optimizeDirectories(reencoded, 16384-HeaderV3LenBytes)
+	newRootBytes, newLeavesBytes, _ := optimizeDirectories(reencoded, 16384-HeaderV3LenBytes, Gzip)
 
 	// 7. write the modified header
 	header.RootOffset = HeaderV3LenBytes
@@ -443,7 +443,7 @@ func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom 
 	header.MaxZoom = uint8(maxzoom)
 	header.MinZoom = uint8(minzoom)
 
-	headerBytes := serializeHeader(header)
+	headerBytes := SerializeHeader(header)
 
 	totalActualBytes := uint64(0)
 	for _, x := range tileParts {

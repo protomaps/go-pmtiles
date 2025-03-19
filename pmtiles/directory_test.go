@@ -13,8 +13,31 @@ func TestDirectoryRoundtrip(t *testing.T) {
 	entries = append(entries, EntryV3{1, 1, 1, 1})
 	entries = append(entries, EntryV3{2, 2, 2, 2})
 
-	serialized := serializeEntries(entries)
-	result := deserializeEntries(bytes.NewBuffer(serialized))
+	serialized := SerializeEntries(entries, Gzip)
+	result := DeserializeEntries(bytes.NewBuffer(serialized), Gzip)
+	assert.Equal(t, 3, len(result))
+	assert.Equal(t, uint64(0), result[0].TileID)
+	assert.Equal(t, uint64(0), result[0].Offset)
+	assert.Equal(t, uint32(0), result[0].Length)
+	assert.Equal(t, uint32(0), result[0].RunLength)
+	assert.Equal(t, uint64(1), result[1].TileID)
+	assert.Equal(t, uint64(1), result[1].Offset)
+	assert.Equal(t, uint32(1), result[1].Length)
+	assert.Equal(t, uint32(1), result[1].RunLength)
+	assert.Equal(t, uint64(2), result[2].TileID)
+	assert.Equal(t, uint64(2), result[2].Offset)
+	assert.Equal(t, uint32(2), result[2].Length)
+	assert.Equal(t, uint32(2), result[2].RunLength)
+}
+
+func TestDirectoryRoundtripNoCompress(t *testing.T) {
+	entries := make([]EntryV3, 0)
+	entries = append(entries, EntryV3{0, 0, 0, 0})
+	entries = append(entries, EntryV3{1, 1, 1, 1})
+	entries = append(entries, EntryV3{2, 2, 2, 2})
+
+	serialized := SerializeEntries(entries, NoCompression)
+	result := DeserializeEntries(bytes.NewBuffer(serialized), NoCompression)
 	assert.Equal(t, 3, len(result))
 	assert.Equal(t, uint64(0), result[0].TileID)
 	assert.Equal(t, uint64(0), result[0].Offset)
@@ -56,8 +79,8 @@ func TestHeaderRoundtrip(t *testing.T) {
 	header.CenterZoom = 3
 	header.CenterLonE7 = 3.1 * 10000000
 	header.CenterLatE7 = 3.2 * 10000000
-	b := serializeHeader(header)
-	result, _ := deserializeHeader(b)
+	b := SerializeHeader(header)
+	result, _ := DeserializeHeader(b)
 	assert.Equal(t, uint64(1), result.RootOffset)
 	assert.Equal(t, uint64(2), result.RootLength)
 	assert.Equal(t, uint64(3), result.MetadataOffset)
@@ -110,7 +133,7 @@ func TestOptimizeDirectories(t *testing.T) {
 	rand.Seed(3857)
 	entries := make([]EntryV3, 0)
 	entries = append(entries, EntryV3{0, 0, 100, 1})
-	_, leavesBytes, numLeaves := optimizeDirectories(entries, 100)
+	_, leavesBytes, numLeaves := optimizeDirectories(entries, 100, Gzip)
 	assert.False(t, len(leavesBytes) > 0)
 	assert.Equal(t, 0, numLeaves)
 
@@ -123,7 +146,7 @@ func TestOptimizeDirectories(t *testing.T) {
 		offset += uint64(randtilesize)
 	}
 
-	rootBytes, leavesBytes, numLeaves := optimizeDirectories(entries, 1024)
+	rootBytes, leavesBytes, numLeaves := optimizeDirectories(entries, 1024, Gzip)
 
 	assert.False(t, len(rootBytes) > 1024)
 
@@ -190,7 +213,7 @@ func TestBuildRootsLeaves(t *testing.T) {
 	entries := []EntryV3{
 		{TileID: 100, Offset: 1, Length: 1, RunLength: 0},
 	}
-	_, _, numLeaves := buildRootsLeaves(entries, 1)
+	_, _, numLeaves := buildRootsLeaves(entries, 1, Gzip)
 	assert.Equal(t, 1, numLeaves)
 }
 

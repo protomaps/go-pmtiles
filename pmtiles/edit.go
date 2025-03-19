@@ -30,7 +30,7 @@ func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetad
 	if err != nil {
 		return err
 	}
-	oldHeader, err := deserializeHeader(buf)
+	oldHeader, err := DeserializeHeader(buf)
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetad
 	}
 
 	if newMetadataFile == "" {
-		buf = serializeHeader(newHeader)
+		buf = SerializeHeader(newHeader)
 		_, err = file.WriteAt(buf, 0)
 		if err != nil {
 			return err
@@ -120,7 +120,7 @@ func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetad
 		"writing file",
 	)
 
-	buf = serializeHeader(newHeader)
+	buf = SerializeHeader(newHeader)
 	io.Copy(io.MultiWriter(outfile, bar), bytes.NewReader(buf))
 
 	rootSection := io.NewSectionReader(file, int64(oldHeader.RootOffset), int64(oldHeader.RootLength))

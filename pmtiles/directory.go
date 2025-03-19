@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 )
 
 // Compression is the compression algorithm applied to individual tiles (or none)
@@ -191,10 +192,24 @@ type EntryV3 struct {
 	RunLength uint32
 }
 
-func serializeEntries(entries []EntryV3) []byte {
+type nopWriteCloser struct {
+	*bytes.Buffer
+}
+
+func (w *nopWriteCloser) Close() error { return nil }
+
+func SerializeEntries(entries []EntryV3, compression Compression) []byte {
 	var b bytes.Buffer
+	var w io.WriteCloser
+
 	tmp := make([]byte, binary.MaxVarintLen64)
-	w, _ := gzip.NewWriterLevel(&b, gzip.BestCompression)
+	if compression == NoCompression {
+		w = &nopWriteCloser{&b}
+	} else if compression == Gzip {
+		w, _ = gzip.NewWriterLevel(&b, gzip.BestCompression)
+	} else {
+		panic("Compression not supported")
+	}
 
 	var n int
 	n = binary.PutUvarint(tmp, uint64(len(entries)))
@@ -229,13 +244,22 @@ func serializeEntries(entries []EntryV3) []byte {
 	}
 
 	w.Close()
+
 	return b.Bytes()
 }
 
-func deserializeEntries(data *bytes.Buffer) []EntryV3 {
+func DeserializeEntries(data *bytes.Buffer, compression Compression) []EntryV3 {
 	entries := make([]EntryV3, 0)
 
-	reader, _ := gzip.NewReader(data)
+	var reader io.Reader
+
+	if compression == NoCompression {
+		reader = data
+	} else if compression == Gzip {
+		reader, _ = gzip.NewReader(data)
+	} else {
+		panic("Compression not supported")
+	}
 	byteReader := bufio.NewReader(reader)
 
 	numEntries, _ := binary.ReadUvarint(byteReader)
@@ -296,7 +320,7 @@ func findTile(entries []EntryV3, tileID uint64) (EntryV3, bool) {
 	return EntryV3{}, false
 }
 
-func serializeHeader(header HeaderV3) []byte {
+func SerializeHeader(header HeaderV3) []byte {
 	b := make([]byte, HeaderV3LenBytes)
 	copy(b[0:7], "PMTiles")
 
@@ -330,7 +354,7 @@ func serializeHeader(header HeaderV3) []byte {
 	return b
 }
 
-func deserializeHeader(d []byte) (HeaderV3, error) {
+func DeserializeHeader(d []byte) (HeaderV3, error) {
 	h := HeaderV3{}
 	magicNumber := d[0:7]
 	if string(magicNumber) != "PMTiles" {
@@ -371,7 +395,7 @@ func deserializeHeader(d []byte) (HeaderV3, error) {
 	return h, nil
 }
 
-func buildRootsLeaves(entries []EntryV3, leafSize int) ([]byte, []byte, int) {
+func buildRootsLeaves(entries []EntryV3, leafSize int, compression Compression) ([]byte, []byte, int) {
 	rootEntries := make([]EntryV3, 0)
 	leavesBytes := make([]byte, 0)
 	numLeaves := 0
@@ -382,19 +406,19 @@ func buildRootsLeaves(entries []EntryV3, leafSize int) ([]byte, []byte, int) {
 		if idx+leafSize > len(entries) {
 			end = len(entries)
 		}
-		serialized := serializeEntries(entries[idx:end])
+		serialized := SerializeEntries(entries[idx:end], compression)
 
 		rootEntries = append(rootEntries, EntryV3{entries[idx].TileID, uint64(len(leavesBytes)), uint32(len(serialized)), 0})
 		leavesBytes = append(leavesBytes, serialized...)
 	}
 
-	rootBytes := serializeEntries(rootEntries)
+	rootBytes := SerializeEntries(rootEntries, compression)
 	return rootBytes, leavesBytes, numLeaves
 }
 
-func optimizeDirectories(entries []EntryV3, targetRootLen int) ([]byte, []byte, int) {
+func optimizeDirectories(entries []EntryV3, targetRootLen int, compression Compression) ([]byte, []byte, int) {
 	if len(entries) < 16384 {
-		testRootBytes := serializeEntries(entries)
+		testRootBytes := SerializeEntries(entries, compression)
 		// Case1: the entire directory fits into the target len
 		if len(testRootBytes) <= targetRootLen {
 			return testRootBytes, make([]byte, 0), 0
@@ -414,7 +438,7 @@ func optimizeDirectories(entries []EntryV3, targetRootLen int) ([]byte, []byte, 
 	}
 
 	for {
-		rootBytes, leavesBytes, numLeaves := buildRootsLeaves(entries, int(leafSize))
+		rootBytes, leavesBytes, numLeaves := buildRootsLeaves(entries, int(leafSize), compression)
 		if len(rootBytes) <= targetRootLen {
 			return rootBytes, leavesBytes, numLeaves
 		}

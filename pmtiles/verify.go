@@ -42,7 +42,7 @@ func Verify(_ *log.Logger, file string) error {
 	}
 	r.Close()
 
-	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
+	header, err := DeserializeHeader(b[0:HeaderV3LenBytes])
 
 	if err != nil {
 		return fmt.Errorf("failed to read %s, %w", key, err)
@@ -102,7 +102,7 @@ func Verify(_ *log.Logger, file string) error {
 			panic(fmt.Errorf("I/O Error"))
 		}
 
-		directory := deserializeEntries(bytes.NewBuffer(b))
+		directory := DeserializeEntries(bytes.NewBuffer(b), header.InternalCompression)
 		for _, entry := range directory {
 			if entry.RunLength > 0 {
 				f(entry)

@@ -361,7 +361,7 @@ func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *o
 		return header, fmt.Errorf("Failed to create %s, %w", output, err)
 	}
 
-	rootBytes, leavesBytes, numLeaves := optimizeDirectories(resolve.Entries, 16384-HeaderV3LenBytes)
+	rootBytes, leavesBytes, numLeaves := optimizeDirectories(resolve.Entries, 16384-HeaderV3LenBytes, Gzip)
 
 	if numLeaves > 0 {
 		logger.Println("Root dir bytes: ", len(rootBytes))
@@ -405,7 +405,7 @@ func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *o
 	header.TileDataOffset = header.LeafDirectoryOffset + header.LeafDirectoryLength
 	header.TileDataLength = resolve.Offset
 
-	headerBytes := serializeHeader(header)
+	headerBytes := SerializeHeader(header)
 
 	_, err = outfile.Write(headerBytes)
 	if err != nil {

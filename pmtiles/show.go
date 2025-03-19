@@ -41,7 +41,7 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 	}
 	r.Close()
 
-	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
+	header, err := DeserializeHeader(b[0:HeaderV3LenBytes])
 	if err != nil {
 		// check to see if it's a V2 file
 		if string(b[0:2]) == "PM" {
@@ -153,7 +153,7 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 			if err != nil {
 				return fmt.Errorf("I/O Error")
 			}
-			directory := deserializeEntries(bytes.NewBuffer(b))
+			directory := DeserializeEntries(bytes.NewBuffer(b), header.InternalCompression)
 			entry, ok := findTile(directory, tileID)
 			if ok {
 				if entry.RunLength > 0 {
