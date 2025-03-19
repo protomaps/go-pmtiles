@@ -113,7 +113,7 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 	}
 	r.Close()
 
-	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
+	header, err := DeserializeHeader(b[0:HeaderV3LenBytes])
 
 	if !header.Clustered {
 		return fmt.Errorf("archive must be clustered for makesync")
@@ -132,7 +132,7 @@ func Makesync(logger *log.Logger, cliVersion string, file string, blockSizeKb in
 			panic(fmt.Errorf("I/O Error"))
 		}
 
-		directory := deserializeEntries(bytes.NewBuffer(b))
+		directory := DeserializeEntries(bytes.NewBuffer(b), header.InternalCompression)
 		for _, entry := range directory {
 			if entry.RunLength > 0 {
 				f(entry)
@@ -322,7 +322,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 	}
 	r.Close()
 
-	header, err := deserializeHeader(b[0:HeaderV3LenBytes])
+	header, err := DeserializeHeader(b[0:HeaderV3LenBytes])
 
 	if !header.Clustered {
 		return fmt.Errorf("archive must be clustered for makesync")
@@ -341,7 +341,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 			panic(fmt.Errorf("I/O Error"))
 		}
 
-		directory := deserializeEntries(bytes.NewBuffer(b))
+		directory := DeserializeEntries(bytes.NewBuffer(b), header.InternalCompression)
 		for _, entry := range directory {
 			if entry.RunLength > 0 {
 				f(entry)

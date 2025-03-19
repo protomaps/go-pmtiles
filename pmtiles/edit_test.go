@@ -14,10 +14,10 @@ import (
 
 var logger = log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 
-func makeFixtureCopy(t *testing.T, name string) string {
-	src, _ := os.OpenFile("fixtures/test_fixture_1.pmtiles", os.O_RDONLY, 0666)
+func makeFixtureCopy(t *testing.T, srcName string, dstName string) string {
+	src, _ := os.OpenFile("fixtures/"+srcName+".pmtiles", os.O_RDONLY, 0666)
 	defer src.Close()
-	fname := filepath.Join(t.TempDir(), name+".pmtiles")
+	fname := filepath.Join(t.TempDir(), dstName+".pmtiles")
 	dest, _ := os.Create(fname)
 	_, _ = io.Copy(dest, src)
 	dest.Close()
@@ -25,7 +25,7 @@ func makeFixtureCopy(t *testing.T, name string) string {
 }
 
 func TestEditHeader(t *testing.T) {
-	fileToEdit := makeFixtureCopy(t, "edit_header")
+	fileToEdit := makeFixtureCopy(t, "test_fixture_1", "edit_header")
 
 	headerPath := filepath.Join(t.TempDir(), "header.json")
 	headerFile, _ := os.Create(headerPath)
@@ -46,7 +46,7 @@ func TestEditHeader(t *testing.T) {
 }
 
 func TestEditMetadata(t *testing.T) {
-	fileToEdit := makeFixtureCopy(t, "edit_metadata")
+	fileToEdit := makeFixtureCopy(t, "test_fixture_1", "edit_metadata")
 
 	metadataPath := filepath.Join(t.TempDir(), "metadata.json")
 	metadataFile, _ := os.Create(metadataPath)
@@ -66,7 +66,7 @@ func TestEditMetadata(t *testing.T) {
 }
 
 func TestMalformedHeader(t *testing.T) {
-	fileToEdit := makeFixtureCopy(t, "edit_header_malformed")
+	fileToEdit := makeFixtureCopy(t, "test_fixture_1", "edit_header_malformed")
 
 	headerPath := filepath.Join(t.TempDir(), "header_malformed.json")
 	headerFile, _ := os.Create(headerPath)
@@ -78,7 +78,7 @@ func TestMalformedHeader(t *testing.T) {
 }
 
 func TestMalformedHeaderBounds(t *testing.T) {
-	fileToEdit := makeFixtureCopy(t, "edit_header_bad_bounds")
+	fileToEdit := makeFixtureCopy(t, "test_fixture_1", "edit_header_bad_bounds")
 
 	headerPath := filepath.Join(t.TempDir(), "header_bad_bounds.json")
 	headerFile, _ := os.Create(headerPath)
@@ -90,7 +90,7 @@ func TestMalformedHeaderBounds(t *testing.T) {
 }
 
 func TestHeaderUnknownEnum(t *testing.T) {
-	fileToEdit := makeFixtureCopy(t, "edit_header_unknown")
+	fileToEdit := makeFixtureCopy(t, "test_fixture_1", "edit_header_unknown")
 
 	headerPath := filepath.Join(t.TempDir(), "header_unknown.json")
 	headerFile, _ := os.Create(headerPath)
@@ -111,7 +111,7 @@ func TestHeaderUnknownEnum(t *testing.T) {
 }
 
 func TestMalformedHeaderCenter(t *testing.T) {
-	fileToEdit := makeFixtureCopy(t, "edit_header_bad_center")
+	fileToEdit := makeFixtureCopy(t, "test_fixture_1", "edit_header_bad_center")
 
 	headerPath := filepath.Join(t.TempDir(), "header_bad_center.json")
 	headerFile, _ := os.Create(headerPath)
@@ -123,7 +123,7 @@ func TestMalformedHeaderCenter(t *testing.T) {
 }
 
 func TestMalformedMetadata(t *testing.T) {
-	fileToEdit := makeFixtureCopy(t, "edit_metadata_malformed")
+	fileToEdit := makeFixtureCopy(t, "test_fixture_1", "edit_metadata_malformed")
 
 	metadataPath := filepath.Join(t.TempDir(), "metadata_malformed.json")
 	metadataFile, _ := os.Create(metadataPath)
@@ -135,7 +135,7 @@ func TestMalformedMetadata(t *testing.T) {
 }
 
 func TestTempfileExists(t *testing.T) {
-	fileToEdit := makeFixtureCopy(t, "edit_existing_tempfile")
+	fileToEdit := makeFixtureCopy(t, "test_fixture_1", "edit_existing_tempfile")
 
 	tmp, _ := os.Create(fileToEdit + ".tmp")
 	defer tmp.Close()

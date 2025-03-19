@@ -25,9 +25,10 @@ type cacheKey struct {
 }
 
 type request struct {
-	key       cacheKey
-	value     chan cachedValue
-	purgeEtag string
+	key         cacheKey
+	value       chan cachedValue
+	purgeEtag   string
+	compression Compression
 }
 
 type cachedValue struct {
@@ -175,7 +176,7 @@ func (server *Server) Start() {
 						}
 
 						if isRoot {
-							header, err := deserializeHeader(b[0:HeaderV3LenBytes])
+							header, err := DeserializeHeader(b[0:HeaderV3LenBytes])
 							if err != nil {
 								status = "error"
 								server.logger.Printf("parsing header failed: %v", err)
@@ -183,7 +184,7 @@ func (server *Server) Start() {
 							}
 
 							// populate the root first before header
-							rootEntries := deserializeEntries(bytes.NewBuffer(b[header.RootOffset : header.RootOffset+header.RootLength]))
+							rootEntries := DeserializeEntries(bytes.NewBuffer(b[header.RootOffset:header.RootOffset+header.RootLength]), header.InternalCompression)
 							result2 := cachedValue{directory: rootEntries, ok: true, etag: etag}
 
 							rootKey := cacheKey{name: key.name, offset: header.RootOffset, length: header.RootLength}
@@ -192,7 +193,7 @@ func (server *Server) Start() {
 							result = cachedValue{header: header, ok: true, etag: etag}
 							resps <- response{key: key, value: result, size: 127, ok: true}
 						} else {
-							directory := deserializeEntries(bytes.NewBuffer(b))
+							directory := DeserializeEntries(bytes.NewBuffer(b), req.compression)
 							result = cachedValue{directory: directory, ok: true, etag: etag}
 							resps <- response{key: key, value: result, size: 24 * len(directory), ok: true}
 						}
@@ -242,7 +243,7 @@ func (server *Server) getHeaderMetadata(ctx context.Context, name string) (bool,
 }
 
 func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeEtag string) (bool, HeaderV3, []byte, string, error) {
-	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag}
+	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag, compression: UnknownCompression}
 	server.reqs <- rootReq
 	rootValue := <-rootReq.value
 	header := rootValue.header
@@ -333,7 +334,7 @@ func (server *Server) getTile(ctx context.Context, httpHeaders map[string]string
 }
 
 func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string]string, name string, z uint8, x uint32, y uint32, ext string, purgeEtag string) (int, map[string]string, []byte, string) {
-	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag}
+	rootReq := request{key: cacheKey{name: name, offset: 0, length: 0}, value: make(chan cachedValue, 1), purgeEtag: purgeEtag, compression: UnknownCompression}
 	server.reqs <- rootReq
 
 	// https://golang.org/doc/faq#atomic_maps
@@ -375,7 +376,7 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 	dirOffset, dirLen := header.RootOffset, header.RootLength
 
 	for depth := 0; depth <= 3; depth++ {
-		dirReq := request{key: cacheKey{name: name, offset: dirOffset, length: dirLen, etag: rootValue.etag}, value: make(chan cachedValue, 1)}
+		dirReq := request{key: cacheKey{name: name, offset: dirOffset, length: dirLen, etag: rootValue.etag}, value: make(chan cachedValue, 1), compression: header.InternalCompression}
 		server.reqs <- dirReq
 		dirValue := <-dirReq.value
 		if dirValue.badEtag {
