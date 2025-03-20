@@ -375,17 +375,10 @@ func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *o
 		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(rootBytes))/float64(resolve.AddressedTiles))
 	}
 
-	var metadataBytes []byte
-	{
-		metadataBytesUncompressed, err := json.Marshal(jsonMetadata)
-		if err != nil {
-			return header, fmt.Errorf("Failed to marshal metadata, %w", err)
-		}
-		var b bytes.Buffer
-		w, _ := gzip.NewWriterLevel(&b, gzip.BestCompression)
-		w.Write(metadataBytesUncompressed)
-		w.Close()
-		metadataBytes = b.Bytes()
+	metadataBytes, err := SerializeMetadata(jsonMetadata, Gzip)
+
+	if err != nil {
+		return header, fmt.Errorf("Failed to marshal metadata, %w", err)
 	}
 
 	setZoomCenterDefaults(&header, resolve.Entries)

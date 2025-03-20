@@ -2,7 +2,6 @@ package pmtiles
 
 import (
 	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"github.com/schollz/progressbar/v3"
@@ -78,22 +77,17 @@ func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetad
 		return nil
 	}
 
-	newMetadataUncompressed, err := ioutil.ReadFile(newMetadataFile)
-
-	var parsedMetadata map[string]interface{}
-	if err := json.Unmarshal(newMetadataUncompressed, &parsedMetadata); err != nil {
+	metadataReader, err := os.Open(newMetadataFile)
+	if err != nil {
 		return err
 	}
 
-	var metadataBytes bytes.Buffer
-	if oldHeader.InternalCompression != Gzip {
-		return fmt.Errorf("only gzip internal compression is currently supported")
+	parsedMetadata, err := DeserializeMetadata(metadataReader, NoCompression)
+	if err != nil {
+		return err
 	}
 
-	w, _ := gzip.NewWriterLevel(&metadataBytes, gzip.BestCompression)
-	w.Write(newMetadataUncompressed)
-	w.Close()
-
+	metadataBytes, err := SerializeMetadata(parsedMetadata, oldHeader.InternalCompression)
 	if err != nil {
 		return err
 	}
@@ -111,12 +105,12 @@ func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetad
 	defer outfile.Close()
 
 	newHeader.MetadataOffset = newHeader.RootOffset + newHeader.RootLength
-	newHeader.MetadataLength = uint64(len(metadataBytes.Bytes()))
+	newHeader.MetadataLength = uint64(len(metadataBytes))
 	newHeader.LeafDirectoryOffset = newHeader.MetadataOffset + newHeader.MetadataLength
 	newHeader.TileDataOffset = newHeader.LeafDirectoryOffset + newHeader.LeafDirectoryLength
 
 	bar := progressbar.DefaultBytes(
-		int64(HeaderV3LenBytes+newHeader.RootLength+uint64(len(metadataBytes.Bytes()))+newHeader.LeafDirectoryLength+newHeader.TileDataLength),
+		int64(HeaderV3LenBytes+newHeader.RootLength+uint64(len(metadataBytes))+newHeader.LeafDirectoryLength+newHeader.TileDataLength),
 		"writing file",
 	)
 
@@ -128,7 +122,7 @@ func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetad
 		return err
 	}
 
-	if _, err := io.Copy(io.MultiWriter(outfile, bar), bytes.NewReader(metadataBytes.Bytes())); err != nil {
+	if _, err := io.Copy(io.MultiWriter(outfile, bar), bytes.NewReader(metadataBytes)); err != nil {
 		return err
 	}
 

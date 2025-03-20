@@ -221,7 +221,7 @@ func SerializeMetadata(metadata map[string]interface{}, compression Compression)
 	}
 }
 
-func DeserializeMetadata(reader io.Reader, compression Compression) (map[string]interface{}, error) {
+func DeserializeMetadataBytes(reader io.Reader, compression Compression) ([]byte, error) {
 	var jsonBytes []byte
 	var err error
 
@@ -244,6 +244,11 @@ func DeserializeMetadata(reader io.Reader, compression Compression) (map[string]
 		return nil, errors.New("compression not supported")
 	}
 
+	return jsonBytes, nil
+}
+
+func DeserializeMetadata(reader io.Reader, compression Compression) (map[string]interface{}, error) {
+	jsonBytes, err := DeserializeMetadataBytes(reader, compression)
 	var metadata map[string]interface{}
 	err = json.Unmarshal(jsonBytes, &metadata)
 

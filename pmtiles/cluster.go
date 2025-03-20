@@ -2,8 +2,6 @@ package pmtiles
 
 import (
 	"bytes"
-	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"github.com/schollz/progressbar/v3"
 	"io"
@@ -28,15 +26,8 @@ func Cluster(logger *log.Logger, InputPMTiles string, deduplicate bool) error {
 	fmt.Println("total directory size", header.RootLength+header.LeafDirectoryLength)
 
 	metadataReader := io.NewSectionReader(file, int64(header.MetadataOffset), int64(header.MetadataLength))
-	var metadataBytes []byte
-	if header.InternalCompression == Gzip {
-		r, _ := gzip.NewReader(metadataReader)
-		metadataBytes, _ = io.ReadAll(r)
-	} else {
-		metadataBytes, _ = io.ReadAll(metadataReader)
-	}
-	var parsedMetadata map[string]interface{}
-	_ = json.Unmarshal(metadataBytes, &parsedMetadata)
+
+	var metadata, err = DeserializeMetadata(metadataReader, header.InternalCompression)
 
 	var CollectEntries func(uint64, uint64, func(EntryV3))
 
@@ -67,7 +58,7 @@ func Cluster(logger *log.Logger, InputPMTiles string, deduplicate bool) error {
 	})
 
 	header.Clustered = true
-	newHeader, err := finalize(logger, resolver, header, tmpfile, "output.pmtiles", parsedMetadata)
+	newHeader, err := finalize(logger, resolver, header, tmpfile, "output.pmtiles", metadata)
 	if err != nil {
 		return err
 	}

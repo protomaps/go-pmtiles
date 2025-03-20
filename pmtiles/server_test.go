@@ -1,10 +1,7 @@
 package pmtiles
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -71,20 +68,7 @@ func fakeArchive(t *testing.T, header HeaderV3, metadata map[string]interface{},
 		tileDataBytes = append(tileDataBytes, tileBytes...)
 	}
 
-	var metadataBytes []byte
-	{
-		metadataBytesUncompressed, err := json.Marshal(metadata)
-		assert.Nil(t, err)
-		var b bytes.Buffer
-		if internalCompression == Gzip {
-			w, _ := gzip.NewWriterLevel(&b, gzip.BestCompression)
-			w.Write(metadataBytesUncompressed)
-			w.Close()
-		} else {
-			b.Write(metadataBytesUncompressed)
-		}
-		metadataBytes = b.Bytes()
-	}
+	metadataBytes, _ := SerializeMetadata(metadata, internalCompression)
 	var rootBytes []byte
 	var leavesBytes []byte
 	if leaves {
