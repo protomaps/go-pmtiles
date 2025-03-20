@@ -16,7 +16,6 @@ func main() {
 	// A solid purple PNG with 50% opacity.
 	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mM0NLxTDwADmAG/Djok1gAAAABJRU5ErkJggg==")
 
-
 	// Create an entry with TileID=0 (z=0, x=0, y=0), Offset=0, Length=len(png), and RunLength=1.
 	entries := []pmtiles.EntryV3{{0, 0, uint32(len(png)), 1}}
 
