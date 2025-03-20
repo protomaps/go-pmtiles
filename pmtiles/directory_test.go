@@ -252,3 +252,20 @@ func TestStringToCompression(t *testing.T) {
 	assert.False(t, has)
 	assert.Equal(t, "unknown", s)
 }
+
+func TestMetadataRoundtrip(t *testing.T) {
+	data := map[string]interface{}{
+	    "foo": "bar",
+	}
+	b, err := SerializeMetadata(data, NoCompression)
+	assert.Nil(t, err)
+	newData, err := DeserializeMetadata(bytes.NewReader(b), NoCompression)
+	assert.Nil(t, err)
+	assert.Equal(t, "bar", newData["foo"])
+
+	b, err = SerializeMetadata(data, Gzip)
+	assert.Nil(t, err)
+	newData, err = DeserializeMetadata(bytes.NewReader(b), Gzip)
+	assert.Nil(t, err)
+	assert.Equal(t, "bar", newData["foo"])
+}

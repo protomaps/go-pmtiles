@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -197,6 +198,61 @@ type nopWriteCloser struct {
 }
 
 func (w *nopWriteCloser) Close() error { return nil }
+
+func SerializeMetadata(metadata map[string]interface{}, compression Compression) ([]byte, error) {
+	jsonBytes, err := json.Marshal(metadata)
+	if err != nil {
+		return nil, err
+	}
+
+	if compression == NoCompression {
+		return jsonBytes, nil
+	} else if compression == Gzip {
+		var b bytes.Buffer
+		w, err := gzip.NewWriterLevel(&b, gzip.BestCompression)
+		if err != nil {
+			return nil, err
+		}
+		w.Write(jsonBytes)
+		w.Close()
+		return b.Bytes(), nil
+	} else {
+		return nil, errors.New("compression not supported")
+	}
+}
+
+func DeserializeMetadata(reader io.Reader, compression Compression) (map[string]interface{}, error) {
+	var jsonBytes []byte
+	var err error
+
+	if compression == NoCompression {
+		jsonBytes, err = io.ReadAll(reader)
+		if err != nil {
+			return nil, err
+		}
+	} else if compression == Gzip {
+		gzipReader, err := gzip.NewReader(reader)
+		if err != nil {
+			return nil, err
+		}
+		jsonBytes, err = io.ReadAll(gzipReader)
+		if err != nil {
+			return nil, err
+		}
+		gzipReader.Close()
+	} else {
+		return nil, errors.New("compression not supported")
+	}
+
+	var metadata map[string]interface{}
+	err = json.Unmarshal(jsonBytes, &metadata)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return metadata, nil
+}
 
 func SerializeEntries(entries []EntryV3, compression Compression) []byte {
 	var b bytes.Buffer
