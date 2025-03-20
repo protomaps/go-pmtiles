@@ -52,22 +52,6 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 	}
 
 	if !showTile {
-		var tileType string
-		switch header.TileType {
-		case Mvt:
-			tileType = "Vector Protobuf (MVT)"
-		case Png:
-			tileType = "Raster PNG"
-		case Jpeg:
-			tileType = "Raster Jpeg"
-		case Webp:
-			tileType = "Raster WebP"
-		case Avif:
-			tileType = "Raster AVIF"
-		default:
-			tileType = "Unknown"
-		}
-
 		metadataReader, err := bucket.NewRangeReader(ctx, key, int64(header.MetadataOffset), int64(header.MetadataLength))
 		if err != nil {
 			return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
@@ -100,7 +84,7 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 		} else {
 			fmt.Printf("pmtiles spec version: %d\n", header.SpecVersion)
 			// fmt.Printf("total size: %s\n", humanize.Bytes(uint64(r.Size())))
-			fmt.Printf("tile type: %s\n", tileType)
+			fmt.Printf("tile type: %s\n", tileTypeToString(header.TileType))
 			fmt.Printf("bounds: (long: %f, lat: %f) (long: %f, lat: %f)\n", float64(header.MinLonE7)/10000000, float64(header.MinLatE7)/10000000, float64(header.MaxLonE7)/10000000, float64(header.MaxLatE7)/10000000)
 			fmt.Printf("min zoom: %d\n", header.MinZoom)
 			fmt.Printf("max zoom: %d\n", header.MaxZoom)
@@ -110,8 +94,10 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 			fmt.Printf("tile entries count: %d\n", header.TileEntriesCount)
 			fmt.Printf("tile contents count: %d\n", header.TileContentsCount)
 			fmt.Printf("clustered: %t\n", header.Clustered)
-			fmt.Printf("internal compression: %d\n", header.InternalCompression)
-			fmt.Printf("tile compression: %d\n", header.TileCompression)
+			internalCompression, _ := compressionToString(header.InternalCompression)
+			fmt.Printf("internal compression: %s\n", internalCompression)
+			tileCompression, _ := compressionToString(header.TileCompression)
+			fmt.Printf("tile compression: %s\n", tileCompression)
 
 			var metadataMap map[string]interface{}
 			json.Unmarshal(metadataBytes, &metadataMap)
