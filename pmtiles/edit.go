@@ -81,6 +81,7 @@ func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetad
 	if err != nil {
 		return err
 	}
+	defer metadataReader.Close()
 
 	parsedMetadata, err := DeserializeMetadata(metadataReader, NoCompression)
 	if err != nil {
