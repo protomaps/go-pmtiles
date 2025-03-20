@@ -2,7 +2,6 @@ package pmtiles
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -74,20 +73,10 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 			return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
 		}
 
-		var metadataBytes []byte
-		if header.InternalCompression == Gzip {
-			r, _ := gzip.NewReader(metadataReader)
-			metadataBytes, err = io.ReadAll(r)
-			if err != nil {
-				return fmt.Errorf("Failed to read %s, %w", key, err)
-			}
-		} else {
-			metadataBytes, err = io.ReadAll(metadataReader)
-			if err != nil {
-				return fmt.Errorf("Failed to read %s, %w", key, err)
-			}
+		metadataBytes, err := DeserializeMetadataBytes(metadataReader, header.InternalCompression)
+		if err != nil {
+			return fmt.Errorf("Failed to read %s, %w", key, err)
 		}
-		metadataReader.Close()
 
 		if showMetadataOnly && showTilejson {
 			return fmt.Errorf("cannot use more than one of --header-json, --metadata, and --tilejson together")

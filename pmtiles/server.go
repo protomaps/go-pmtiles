@@ -2,7 +2,6 @@ package pmtiles
 
 import (
 	"bytes"
-	"compress/gzip"
 	"container/list"
 	"context"
 	"encoding/json"
@@ -265,14 +264,9 @@ func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeE
 	}
 	defer r.Close()
 
-	var metadataBytes []byte
-	if header.InternalCompression == Gzip {
-		metadataReader, _ := gzip.NewReader(r)
-		defer metadataReader.Close()
-		metadataBytes, err = io.ReadAll(metadataReader)
-	} else if header.InternalCompression == NoCompression {
-		metadataBytes, err = io.ReadAll(r)
-	} else {
+	metadataBytes, err := DeserializeMetadataBytes(r, header.InternalCompression)
+
+	if err != nil {
 		status = "error"
 		return true, HeaderV3{}, nil, "", errors.New("unknown compression")
 	}
