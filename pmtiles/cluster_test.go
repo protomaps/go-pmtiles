@@ -13,6 +13,7 @@ func TestCluster(t *testing.T) {
 	assert.Nil(t, err)
 
 	file, err := os.OpenFile(fileToCluster, os.O_RDONLY, 0666)
+	defer file.Close()
 	assert.Nil(t, err)
 
 	buf := make([]byte, 127)
