@@ -255,7 +255,7 @@ func TestStringToCompression(t *testing.T) {
 
 func TestMetadataRoundtrip(t *testing.T) {
 	data := map[string]interface{}{
-	    "foo": "bar",
+		"foo": "bar",
 	}
 	b, err := SerializeMetadata(data, NoCompression)
 	assert.Nil(t, err)
