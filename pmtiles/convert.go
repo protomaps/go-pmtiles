@@ -360,6 +360,7 @@ func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *o
 	if err != nil {
 		return header, fmt.Errorf("Failed to create %s, %w", output, err)
 	}
+	defer outfile.Close()
 
 	rootBytes, leavesBytes, numLeaves := optimizeDirectories(resolve.Entries, 16384-HeaderV3LenBytes, Gzip)
 
