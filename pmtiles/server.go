@@ -267,6 +267,7 @@ func (server *Server) getHeaderMetadataAttempt(ctx context.Context, name, purgeE
 	metadataBytes, err := DeserializeMetadataBytes(r, header.InternalCompression)
 
 	if err != nil {
+		status = "error"
 		return true, HeaderV3{}, nil, "", errors.New("unknown compression")
 	}
 
