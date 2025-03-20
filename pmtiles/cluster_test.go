@@ -1,10 +1,7 @@
 package pmtiles
 
 import (
-	"bytes"
-	"encoding/base64"
 	"github.com/stretchr/testify/assert"
-	"log"
 	"os"
 	"testing"
 )
@@ -15,11 +12,12 @@ func TestCluster(t *testing.T) {
 	err := Cluster(logger, fileToCluster, true)
 	assert.Nil(t, err)
 
-	var b bytes.Buffer
-	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
-	err = Show(logger, &b, "", fileToCluster, false, false, false, "", true, 1, 0, 0)
+	file, err := os.OpenFile(fileToCluster, os.O_RDONLY, 0666)
+	defer file.Close()
 	assert.Nil(t, err)
 
-	PINK := "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z/D/PwAHAwL/qGeMxAAAAABJRU5ErkJggg=="
-	assert.Equal(t, PINK, base64.StdEncoding.EncodeToString(b.Bytes()))
+	buf := make([]byte, 127)
+	_, _ = file.Read(buf)
+	header, _ := DeserializeHeader(buf)
+	assert.True(t, header.Clustered)
 }

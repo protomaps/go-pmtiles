@@ -10,24 +10,31 @@ import (
 )
 
 func Cluster(logger *log.Logger, InputPMTiles string, deduplicate bool) error {
-
-	file, _ := os.OpenFile(InputPMTiles, os.O_RDONLY, 0666)
-	defer file.Close()
+	file, err := os.OpenFile(InputPMTiles, os.O_RDONLY, 0666)
+	if err != nil {
+		return err
+	}
 
 	buf := make([]byte, 127)
-	_, _ = file.Read(buf)
+	_, err = file.Read(buf)
+	if err != nil {
+		return err
+	}
 
-	header, _ := DeserializeHeader(buf)
+	header, err := DeserializeHeader(buf)
+	if err != nil {
+		return err
+	}
 
 	if header.Clustered {
-		return fmt.Errorf("Archive is already clustered.")
+		return fmt.Errorf("archive is already clustered")
 	}
 
 	fmt.Println("total directory size", header.RootLength+header.LeafDirectoryLength)
 
 	metadataReader := io.NewSectionReader(file, int64(header.MetadataOffset), int64(header.MetadataLength))
 
-	var metadata, err = DeserializeMetadata(metadataReader, header.InternalCompression)
+	metadata, err := DeserializeMetadata(metadataReader, header.InternalCompression)
 
 	var CollectEntries func(uint64, uint64, func(EntryV3))
 
@@ -45,7 +52,10 @@ func Cluster(logger *log.Logger, InputPMTiles string, deduplicate bool) error {
 	}
 
 	resolver := newResolver(deduplicate, false)
-	tmpfile, _ := os.CreateTemp("", "pmtiles")
+	tmpfile, err := os.CreateTemp("", "pmtiles")
+	if err != nil {
+		return err
+	}
 
 	bar := progressbar.Default(int64(header.TileEntriesCount))
 
@@ -56,9 +66,10 @@ func Cluster(logger *log.Logger, InputPMTiles string, deduplicate bool) error {
 		}
 		bar.Add(1)
 	})
+	file.Close()
 
 	header.Clustered = true
-	newHeader, err := finalize(logger, resolver, header, tmpfile, "output.pmtiles", metadata)
+	newHeader, err := finalize(logger, resolver, header, tmpfile, InputPMTiles, metadata)
 	if err != nil {
 		return err
 	}
