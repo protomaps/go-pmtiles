@@ -27,7 +27,7 @@ func Cluster(logger *log.Logger, InputPMTiles string, deduplicate bool) error {
 	}
 
 	if header.Clustered {
-		return fmt.Errorf("Archive is already clustered.")
+		return fmt.Errorf("archive is already clustered")
 	}
 
 	fmt.Println("total directory size", header.RootLength+header.LeafDirectoryLength)
