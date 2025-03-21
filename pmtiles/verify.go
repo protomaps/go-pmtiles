@@ -100,7 +100,7 @@ func Verify(_ *log.Logger, file string) error {
 
 	err = IterateEntries(header,
 		func(offset uint64, length uint64) ([]byte, error) {
-			reader , err := bucket.NewRangeReader(ctx, key, int64(offset), int64(length))
+			reader, err := bucket.NewRangeReader(ctx, key, int64(offset), int64(length))
 			if err != nil {
 				return nil, err
 			}
