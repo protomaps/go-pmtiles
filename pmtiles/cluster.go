@@ -1,7 +1,6 @@
 package pmtiles
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/schollz/progressbar/v3"
 	"io"
@@ -36,21 +35,6 @@ func Cluster(logger *log.Logger, InputPMTiles string, deduplicate bool) error {
 
 	metadata, err := DeserializeMetadata(metadataReader, header.InternalCompression)
 
-	var CollectEntries func(uint64, uint64, func(EntryV3))
-
-	CollectEntries = func(dir_offset uint64, dir_length uint64, f func(EntryV3)) {
-		data, _ := io.ReadAll(io.NewSectionReader(file, int64(dir_offset), int64(dir_length)))
-
-		directory := DeserializeEntries(bytes.NewBuffer(data), header.InternalCompression)
-		for _, entry := range directory {
-			if entry.RunLength > 0 {
-				f(entry)
-			} else {
-				CollectEntries(header.LeafDirectoryOffset+entry.Offset, uint64(entry.Length), f)
-			}
-		}
-	}
-
 	resolver := newResolver(deduplicate, false)
 	tmpfile, err := os.CreateTemp("", "pmtiles")
 	if err != nil {
@@ -59,13 +43,22 @@ func Cluster(logger *log.Logger, InputPMTiles string, deduplicate bool) error {
 
 	bar := progressbar.Default(int64(header.TileEntriesCount))
 
-	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
-		data, _ := io.ReadAll(io.NewSectionReader(file, int64(header.TileDataOffset+e.Offset), int64(e.Length)))
-		if isNew, newData := resolver.AddTileIsNew(e.TileID, data, e.RunLength); isNew {
-			tmpfile.Write(newData)
-		}
-		bar.Add(1)
-	})
+	err = IterateEntries(header,
+		func(offset uint64, length uint64) ([]byte, error) {
+			return io.ReadAll(io.NewSectionReader(file, int64(offset), int64(length)))
+		},
+		func(e EntryV3) {
+			data, _ := io.ReadAll(io.NewSectionReader(file, int64(header.TileDataOffset+e.Offset), int64(e.Length)))
+			if isNew, newData := resolver.AddTileIsNew(e.TileID, data, e.RunLength); isNew {
+				tmpfile.Write(newData)
+			}
+			bar.Add(1)
+		})
+
+	if err != nil {
+		return err
+	}
+
 	file.Close()
 
 	header.Clustered = true
