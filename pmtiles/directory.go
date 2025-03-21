@@ -506,3 +506,26 @@ func optimizeDirectories(entries []EntryV3, targetRootLen int, compression Compr
 		leafSize *= 1.2
 	}
 }
+
+func IterateEntries(header HeaderV3, fetch func(uint64, uint64) ([]byte, error), operation func(EntryV3)) error {
+	var CollectEntries func(uint64, uint64) error
+
+	CollectEntries = func(dir_offset uint64, dir_length uint64) error {
+		data, err := fetch(dir_offset, dir_length)
+		if err != nil {
+			return err
+		}
+
+		directory := DeserializeEntries(bytes.NewBuffer(data), header.InternalCompression)
+		for _, entry := range directory {
+			if entry.RunLength > 0 {
+				operation(entry)
+			} else {
+				CollectEntries(header.LeafDirectoryOffset+entry.Offset, uint64(entry.Length))
+			}
+		}
+		return nil
+	}
+
+	return CollectEntries(header.RootOffset, header.RootLength)
+}

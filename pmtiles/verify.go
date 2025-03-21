@@ -1,7 +1,6 @@
 package pmtiles
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"github.com/RoaringBitmap/roaring/roaring64"
@@ -89,29 +88,6 @@ func Verify(_ *log.Logger, file string) error {
 		return fmt.Errorf("total length of archive %v does not match header %v or %v (padded)", fileInfo.Size(), lengthFromHeader, lengthFromHeaderWithPadding)
 	}
 
-	var CollectEntries func(uint64, uint64, func(EntryV3))
-
-	CollectEntries = func(dir_offset uint64, dir_length uint64, f func(EntryV3)) {
-		dirbytes, err := bucket.NewRangeReader(ctx, key, int64(dir_offset), int64(dir_length))
-		if err != nil {
-			panic(fmt.Errorf("I/O error"))
-		}
-		defer dirbytes.Close()
-		b, err = io.ReadAll(dirbytes)
-		if err != nil {
-			panic(fmt.Errorf("I/O Error"))
-		}
-
-		directory := DeserializeEntries(bytes.NewBuffer(b), header.InternalCompression)
-		for _, entry := range directory {
-			if entry.RunLength > 0 {
-				f(entry)
-			} else {
-				CollectEntries(header.LeafDirectoryOffset+entry.Offset, uint64(entry.Length), f)
-			}
-		}
-	}
-
 	var minTileID uint64
 	var maxTileID uint64
 	minTileID = math.MaxUint64
@@ -121,31 +97,49 @@ func Verify(_ *log.Logger, file string) error {
 	tileEntries := 0
 	offsets := roaring64.New()
 	var currentOffset uint64
-	CollectEntries(header.RootOffset, header.RootLength, func(e EntryV3) {
-		offsets.Add(e.Offset)
-		addressedTiles += int(e.RunLength)
-		tileEntries++
 
-		if e.TileID < minTileID {
-			minTileID = e.TileID
-		}
-		if e.TileID > maxTileID {
-			maxTileID = e.TileID
-		}
-
-		if e.Offset+uint64(e.Length) > header.TileDataLength {
-			fmt.Printf("Invalid: %v outside of tile data section", e)
-		}
-
-		if header.Clustered {
-			if !offsets.Contains(e.Offset) {
-				if e.Offset != currentOffset {
-					fmt.Printf("Invalid: out-of-order entry %v in clustered archive", e)
-				}
-				currentOffset += uint64(e.Length)
+	err = IterateEntries(header,
+		func(offset uint64, length uint64) ([]byte, error) {
+			reader , err := bucket.NewRangeReader(ctx, key, int64(offset), int64(length))
+			if err != nil {
+				return nil, err
 			}
-		}
-	})
+			defer reader.Close()
+			b, err = io.ReadAll(reader)
+			if err != nil {
+				return nil, err
+			}
+			return b, nil
+		},
+		func(e EntryV3) {
+			offsets.Add(e.Offset)
+			addressedTiles += int(e.RunLength)
+			tileEntries++
+
+			if e.TileID < minTileID {
+				minTileID = e.TileID
+			}
+			if e.TileID > maxTileID {
+				maxTileID = e.TileID
+			}
+
+			if e.Offset+uint64(e.Length) > header.TileDataLength {
+				fmt.Printf("Invalid: %v outside of tile data section", e)
+			}
+
+			if header.Clustered {
+				if !offsets.Contains(e.Offset) {
+					if e.Offset != currentOffset {
+						fmt.Printf("Invalid: out-of-order entry %v in clustered archive", e)
+					}
+					currentOffset += uint64(e.Length)
+				}
+			}
+		})
+
+	if err != nil {
+		return err
+	}
 
 	if uint64(addressedTiles) != header.AddressedTilesCount {
 		return fmt.Errorf("invalid: header AddressedTilesCount=%v but %v tiles addressed", header.AddressedTilesCount, addressedTiles)
