@@ -86,15 +86,15 @@ var cli struct {
 	} `cmd:"" help:"Verify the correctness of an archive structure, without verifying individual tile contents"`
 
 	Makesync struct {
-		Input        string `arg:"" type:"existingfile"`
-		BlockSizeKb  int    `default:"20" help:"The approximate block size, in kilobytes; 0 means 1 tile = 1 block"`
+		Input       string `arg:"" type:"existingfile"`
+		BlockSizeKb int    `default:"20" help:"The approximate block size, in kilobytes; 0 means 1 tile = 1 block"`
 	} `cmd:"" help:"" hidden:""`
 
 	Sync struct {
-		Existing string `arg:"" type:"existingfile"`
-		New      string `arg:"" help:"Local or remote archive, with .sync sidecar file"`
-		DryRun   bool   `help:"Calculate new parts to download, but don't download them"`
-		RangesPerRequest int `default:"100" help:"Number of ranges in a single HTTP request (limit depends on server)"`
+		Existing         string `arg:"" type:"existingfile"`
+		New              string `arg:"" help:"Local or remote archive, with .sync sidecar file"`
+		DryRun           bool   `help:"Calculate new parts to download, but don't download them"`
+		RangesPerRequest int    `default:"100" help:"Number of ranges in a single HTTP request (limit depends on server)"`
 	} `cmd:"" help:"Sync a local file with a remote one by only downloading changed parts" hidden:""`
 
 	Serve struct {
