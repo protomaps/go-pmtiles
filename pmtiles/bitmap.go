@@ -7,11 +7,6 @@ import (
 	"github.com/paulmach/orb/maptile/tilecover"
 	"github.com/paulmach/orb/planar"
 	"github.com/paulmach/orb/project"
-	"image"
-	"image/color"
-	"image/png"
-	"log"
-	"os"
 )
 
 func bitmapMultiPolygon(zoom uint8, multipolygon orb.MultiPolygon) (*roaring64.Bitmap, *roaring64.Bitmap) {
@@ -100,61 +95,5 @@ func generalizeAnd(r *roaring64.Bitmap) {
 		toIterate = temp
 		r.Or(temp)
 		temp = roaring64.New()
-	}
-}
-
-func writeImage(interior *roaring64.Bitmap, boundary *roaring64.Bitmap, exterior *roaring64.Bitmap, filename string, zoom uint8) {
-	dim := 1 << zoom
-	img := image.NewNRGBA(image.Rect(0, 0, dim, dim))
-
-	min := ZxyToID(zoom, 0, 0)
-	max := ZxyToID(zoom+1, 0, 0)
-
-	{
-		iter := interior.Iterator()
-		fill := color.NRGBA{R: 0, G: 255, B: 255, A: 255}
-		for iter.HasNext() {
-			id := iter.Next()
-			if id >= min && id < max {
-				_, x, y := IDToZxy(id)
-				img.Set(int(x), int(y), fill)
-			}
-		}
-	}
-	{
-		iter := boundary.Iterator()
-		fill := color.NRGBA{R: 255, G: 0, B: 255, A: 255}
-		for iter.HasNext() {
-			id := iter.Next()
-			if id >= min && id < max {
-				_, x, y := IDToZxy(id)
-				img.Set(int(x), int(y), fill)
-			}
-		}
-	}
-	{
-		iter := exterior.Iterator()
-		fill := color.NRGBA{R: 255, G: 255, B: 0, A: 255}
-		for iter.HasNext() {
-			id := iter.Next()
-			if id >= min && id < max {
-				_, x, y := IDToZxy(id)
-				img.Set(int(x), int(y), fill)
-			}
-		}
-	}
-
-	f, err := os.Create(filename)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := png.Encode(f, img); err != nil {
-		f.Close()
-		log.Fatal(err)
-	}
-
-	if err := f.Close(); err != nil {
-		log.Fatal(err)
 	}
 }
