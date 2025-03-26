@@ -79,7 +79,7 @@ var cli struct {
 		Force           bool   `help:"Force removal"`
 		NoDeduplication bool   `help:"Don't attempt to deduplicate tiles"`
 		Tmpdir          string `help:"An optional path to a folder for temporary files" type:"existingdir"`
-	} `cmd:"" help:"Convert an MBTiles or older spec version to PMTiles"`
+	} `cmd:"" help:"Convert an MBTiles database to PMTiles"`
 
 	Verify struct {
 		Input string `arg:"" help:"Input archive" type:"existingfile"`

@@ -11,6 +11,12 @@ import (
 	"io"
 )
 
+type Zxy struct {
+	Z uint8
+	X uint32
+	Y uint32
+}
+
 // Compression is the compression algorithm applied to individual tiles (or none)
 type Compression uint8
 

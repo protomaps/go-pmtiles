@@ -35,43 +35,6 @@ func TestResolverRunLengthNoDeduplicate(t *testing.T) {
 	assert.Equal(t, uint32(2), resolver.Entries[0].RunLength)
 }
 
-func TestV2UpgradeBarebones(t *testing.T) {
-	header, jsonMetadata, err := v2ToHeaderJSON(map[string]interface{}{
-		"bounds":      "-180.0,-85,178,83",
-		"attribution": "abcd",
-	}, []byte{0x1f, 0x8b, 0x0, 0x0})
-	assert.Nil(t, err)
-	_, ok := jsonMetadata["attribution"]
-	assert.True(t, ok)
-	assert.Equal(t, int32(-180*10000000), header.MinLonE7)
-	assert.Equal(t, int32(-85*10000000), header.MinLatE7)
-	assert.Equal(t, int32(178*10000000), header.MaxLonE7)
-	assert.Equal(t, int32(83*10000000), header.MaxLatE7)
-	_, ok = jsonMetadata["bounds"]
-	assert.False(t, ok)
-	assert.Equal(t, Gzip, int(header.TileCompression))
-	assert.Equal(t, Mvt, int(header.TileType))
-}
-
-func TestV2UpgradeExtra(t *testing.T) {
-	// with the fields tippecanoe usually has
-	header, jsonMetadata, err := v2ToHeaderJSON(map[string]interface{}{
-		"bounds":      "-180.0,-85,180,85",
-		"center":      "-122.1906,37.7599,11",
-		"format":      "pbf",
-		"compression": "gzip",
-		"json":        "{\"abc\":\"def\"}",
-	}, []byte{0x0, 0x0, 0x0, 0x0})
-	assert.Nil(t, err)
-	assert.Equal(t, int32(-122.1906*10000000), header.CenterLonE7)
-	assert.Equal(t, int32(37.7599*10000000), header.CenterLatE7)
-	assert.Equal(t, uint8(11), header.CenterZoom)
-	_, ok := jsonMetadata["center"]
-	assert.False(t, ok)
-	_, ok = jsonMetadata["abc"]
-	assert.True(t, ok)
-}
-
 func TestZoomCenterDefaults(t *testing.T) {
 	// with no center set
 	header := HeaderV3{}
@@ -102,32 +65,6 @@ func TestZoomCenterDefaults(t *testing.T) {
 	assert.Equal(t, uint8(4), header.CenterZoom)
 	assert.Equal(t, int32(-45*10000000), header.CenterLonE7)
 	assert.Equal(t, int32(21*10000000), header.CenterLatE7)
-}
-
-func TestV2UpgradeInfer(t *testing.T) {
-	header, _, err := v2ToHeaderJSON(map[string]interface{}{
-		"bounds": "-180.0,-85,180,85",
-	}, []byte{0xff, 0xd8, 0xff, 0xe0})
-	assert.Nil(t, err)
-	assert.Equal(t, Jpeg, int(header.TileType))
-	assert.Equal(t, NoCompression, int(header.TileCompression))
-	header, _, err = v2ToHeaderJSON(map[string]interface{}{
-		"bounds": "-180.0,-85,180,85",
-	}, []byte{0x89, 0x50, 0x4e, 0x47})
-	assert.Nil(t, err)
-	assert.Equal(t, Png, int(header.TileType))
-	assert.Equal(t, NoCompression, int(header.TileCompression))
-	header, _, err = v2ToHeaderJSON(map[string]interface{}{
-		"bounds": "-180.0,-85,180,85",
-	}, []byte{0x00, 00, 00, 00})
-	assert.Equal(t, Mvt, int(header.TileType))
-	assert.Equal(t, UnknownCompression, header.TileCompression)
-	header, _, err = v2ToHeaderJSON(map[string]interface{}{
-		"bounds": "-180.0,-85,180,85",
-	}, []byte{0x1f, 0x8b, 00, 00})
-	assert.Nil(t, err)
-	assert.Equal(t, Mvt, int(header.TileType))
-	assert.Equal(t, Gzip, int(header.TileCompression))
 }
 
 func TestMbtiles(t *testing.T) {
