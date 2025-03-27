@@ -68,6 +68,7 @@ func makeMultiRanges(ranges []srcDstRange, baseOffset int64, maxHeaderBytes int)
 }
 
 func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool) error {
+	fmt.Println("WARNING: This is an experimental feature. Do not rely on this in production!")
 	start := time.Now()
 
 	client := &http.Client{}

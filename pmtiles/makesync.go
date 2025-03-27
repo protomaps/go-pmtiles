@@ -74,6 +74,7 @@ func deserializeSyncBlocks(numBlocks int, reader *bufio.Reader) []syncBlock {
 }
 
 func Makesync(logger *log.Logger, cliVersion string, fileName string, blockSizeKb int) error {
+	fmt.Println("WARNING: This is an experimental feature. Do not rely on this in production!")
 	blockSizeBytes := uint64(1000 * blockSizeKb)
 
 	file, err := os.OpenFile(fileName, os.O_RDONLY, 0666)
