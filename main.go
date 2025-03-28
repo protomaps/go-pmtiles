@@ -71,7 +71,7 @@ var cli struct {
 	Merge struct {
 		Output string   `arg:"" help:"Output archive" type:"path"`
 		Input  []string `arg:"" help:"Input archives"`
-	} `cmd:"" help:"Merge multiple archives into a single archive"`
+	} `cmd:"" help:"Merge multiple archives into a single archive" hidden:""`
 
 	Convert struct {
 		Input           string `arg:"" help:"Input archive" type:"existingfile"`
