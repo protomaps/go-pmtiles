@@ -1,6 +1,7 @@
 dist/
 go-pmtiles
 /*.pmtiles
+/*.pmtiles.sync
 /*.mbtiles
 *.json
 *.geojson
