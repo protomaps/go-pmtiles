@@ -164,3 +164,12 @@ func TestMergeRangesMultiple(t *testing.T) {
 	assert.Equal(t, srcDstRange{0, 0, 90}, front.Rng)
 	assert.Equal(t, 3, len(front.CopyDiscards))
 }
+
+func TestMergeRangesNonSrcOrdered(t *testing.T) {
+	ranges := make([]srcDstRange, 0)
+	ranges = append(ranges, srcDstRange{20, 0, 50})
+	ranges = append(ranges, srcDstRange{0, 60, 50})
+
+	result, _ := MergeRanges(ranges, 0.1)
+	assert.Equal(t, 2, result.Len())
+}
