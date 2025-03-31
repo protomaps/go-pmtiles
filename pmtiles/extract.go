@@ -145,17 +145,17 @@ type overfetchListItem struct {
 }
 
 // MergeRanges takes a slice of SrcDstRanges, that:
-// * is non-contiguous, and is sorted by NewOffset
+// * is non-contiguous, and is sorted by DstOffset
 // * an Overfetch parameter
 //   - overfetch = 0.2 means we can request an extra 20%
 //   - overfetch = 1.00 means we can double our total transfer size
 //
-// Return a slice of OverfetchRanges
+// Return a list of OverfetchRanges
 //
 //	Each OverfetchRange is one or more input ranges
 //	input ranges are merged in order of smallest byte distance to next range
 //	until the overfetch budget is consumed.
-//	The slice is sorted by Length
+//	The list is sorted by Length
 func MergeRanges(ranges []srcDstRange, overfetch float32) (*list.List, uint64) {
 	totalSize := 0
 
@@ -163,19 +163,19 @@ func MergeRanges(ranges []srcDstRange, overfetch float32) (*list.List, uint64) {
 
 	// create the heap items
 	for i, rng := range ranges {
-		var bytesToNext uint64
+		var bytesToNext int64
 		if i == len(ranges)-1 {
-			bytesToNext = math.MaxUint64
+			bytesToNext = math.MaxInt64
 		} else {
-			bytesToNext = ranges[i+1].SrcOffset - (rng.SrcOffset + rng.Length)
+			bytesToNext = int64(ranges[i+1].SrcOffset) - (int64(rng.SrcOffset) + int64(rng.Length))
 			if bytesToNext < 0 {
-				bytesToNext = math.MaxUint64
+				bytesToNext = math.MaxInt64
 			}
 		}
 
 		shortest[i] = &overfetchListItem{
 			Rng:          rng,
-			BytesToNext:  bytesToNext,
+			BytesToNext:  uint64(bytesToNext),
 			CopyDiscards: []copyDiscard{{uint64(rng.Length), 0}},
 		}
 		totalSize += int(rng.Length)
