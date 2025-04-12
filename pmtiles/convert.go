@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
-	"github.com/schollz/progressbar/v3"
 	"zombiezen.com/go/sqlite"
 )
 
@@ -190,7 +189,7 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 	logger.Println("Pass 2: writing tiles")
 	resolve := newResolver(deduplicate, header.TileType == Mvt)
 	{
-		bar := progressbar.Default(int64(tileset.GetCardinality()))
+		bar := defaultProgressbar(logger, int64(tileset.GetCardinality()))
 		i := tileset.Iterator()
 		stmt := conn.Prep("SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?")
 
