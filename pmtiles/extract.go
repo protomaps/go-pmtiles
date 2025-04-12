@@ -8,7 +8,6 @@ import (
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/dustin/go-humanize"
 	"github.com/paulmach/orb"
-	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 	"io"
 	"io/ioutil"
@@ -249,7 +248,7 @@ func MergeRanges(ranges []srcDstRange, overfetch float32) (*list.List, uint64) {
 // 9. get and write the metadata.
 // 10. write the leaf directories (if any)
 // 11. Get all tiles, and write directly to the output.
-func Extract(ctx context.Context, _ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom int8, regionFile string, bbox string, output string, downloadThreads int, overfetch float32, dryRun bool) error {
+func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key string, minzoom int8, maxzoom int8, regionFile string, bbox string, output string, downloadThreads int, overfetch float32, dryRun bool) error {
 	// 1. fetch the header
 	start := time.Now()
 
@@ -495,7 +494,8 @@ func Extract(ctx context.Context, _ *log.Logger, bucketURL string, key string, m
 			return err
 		}
 
-		bar := progressbar.DefaultBytes(
+		bar := defaultBytesProgressbar(
+			logger,
 			int64(totalBytes),
 			"fetching chunks",
 		)
