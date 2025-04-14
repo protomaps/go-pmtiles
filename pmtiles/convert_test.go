@@ -79,6 +79,7 @@ func TestMbtiles(t *testing.T) {
 		"version", "1",
 		"json", "{\"vector_layers\":[{\"abc\":123}],\"tilestats\":{\"def\":456}}",
 		"compression", "gzip",
+		"scheme", "tms",
 	})
 	assert.Nil(t, err)
 	assert.Equal(t, int32(-180*10000000), header.MinLonE7)
@@ -92,10 +93,13 @@ func TestMbtiles(t *testing.T) {
 	assert.Equal(t, Gzip, int(header.TileCompression))
 
 	// assert removal of redundant fields
-
 	_, ok := jsonMetadata["center"]
 	assert.False(t, ok)
 	_, ok = jsonMetadata["bounds"]
+	assert.False(t, ok)
+
+	// assert removal of problematic fields.
+	_, ok = jsonMetadata["scheme"]
 	assert.False(t, ok)
 
 	// assert preservation of metadata fields for roundtrip

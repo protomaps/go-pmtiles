@@ -436,6 +436,9 @@ func mbtilesToHeaderJSON(mbtilesMetadata []string) (HeaderV3, map[string]interfa
 			}
 			jsonResult["compression"] = value
 		// name, attribution, description, type, version
+		case "scheme":
+			// do nothing - the scheme "TMS" in TileJSON is meaningless in PMTiles
+			// remove it from the stored metadata
 		default:
 			jsonResult[key] = value
 		}
