@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cespare/xxhash/v2"
-	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 	"io"
 	"log"
@@ -106,7 +105,8 @@ func Makesync(logger *log.Logger, cliVersion string, fileName string, blockSizeK
 
 	defer output.Close()
 
-	bar := progressbar.Default(
+	bar := defaultProgressbar(
+		logger,
 		int64(header.TileEntriesCount),
 		"writing syncfile",
 	)
