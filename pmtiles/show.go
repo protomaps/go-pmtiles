@@ -112,7 +112,7 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 				}
 			}
 
-			if strings.HasPrefix(bucketURL, "http") {
+			if strings.HasPrefix(bucketURL, "https://") {
 				fmt.Println("web viewer: https://pmtiles.io/#url=" + url.QueryEscape(bucketURL+"/"+key))
 			}
 		}
