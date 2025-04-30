@@ -360,7 +360,7 @@ func DeserializeEntries(data *bytes.Buffer, compression Compression) []EntryV3 {
 	return entries
 }
 
-func findTile(entries []EntryV3, tileID uint64) (EntryV3, bool) {
+func FindTile(entries []EntryV3, tileID uint64) (EntryV3, bool) {
 	m := 0
 	n := len(entries) - 1
 	for m <= n {

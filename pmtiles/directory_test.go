@@ -156,17 +156,17 @@ func TestOptimizeDirectories(t *testing.T) {
 
 func TestFindTileMissing(t *testing.T) {
 	entries := make([]EntryV3, 0)
-	_, ok := findTile(entries, 0)
+	_, ok := FindTile(entries, 0)
 	assert.False(t, ok)
 }
 
 func TestFindTileFirstEntry(t *testing.T) {
 	entries := []EntryV3{{TileID: 100, Offset: 1, Length: 1, RunLength: 1}}
-	entry, ok := findTile(entries, 100)
+	entry, ok := FindTile(entries, 100)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(1), entry.Offset)
 	assert.Equal(t, uint32(1), entry.Length)
-	_, ok = findTile(entries, 101)
+	_, ok = FindTile(entries, 101)
 	assert.Equal(t, false, ok)
 }
 
@@ -174,7 +174,7 @@ func TestFindTileMultipleEntries(t *testing.T) {
 	entries := []EntryV3{
 		{TileID: 100, Offset: 1, Length: 1, RunLength: 2},
 	}
-	entry, ok := findTile(entries, 101)
+	entry, ok := FindTile(entries, 101)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(1), entry.Offset)
 	assert.Equal(t, uint32(1), entry.Length)
@@ -183,7 +183,7 @@ func TestFindTileMultipleEntries(t *testing.T) {
 		{TileID: 100, Offset: 1, Length: 1, RunLength: 1},
 		{TileID: 150, Offset: 2, Length: 2, RunLength: 2},
 	}
-	entry, ok = findTile(entries, 151)
+	entry, ok = FindTile(entries, 151)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(2), entry.Offset)
 	assert.Equal(t, uint32(2), entry.Length)
@@ -193,7 +193,7 @@ func TestFindTileMultipleEntries(t *testing.T) {
 		{TileID: 100, Offset: 2, Length: 2, RunLength: 1},
 		{TileID: 150, Offset: 3, Length: 3, RunLength: 1},
 	}
-	entry, ok = findTile(entries, 51)
+	entry, ok = FindTile(entries, 51)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(1), entry.Offset)
 	assert.Equal(t, uint32(1), entry.Length)
@@ -203,7 +203,7 @@ func TestFindTileLeafSearch(t *testing.T) {
 	entries := []EntryV3{
 		{TileID: 100, Offset: 1, Length: 1, RunLength: 0},
 	}
-	entry, ok := findTile(entries, 150)
+	entry, ok := FindTile(entries, 150)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, uint64(1), entry.Offset)
 	assert.Equal(t, uint32(1), entry.Length)
