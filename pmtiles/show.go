@@ -135,7 +135,7 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 				return fmt.Errorf("I/O Error")
 			}
 			directory := DeserializeEntries(bytes.NewBuffer(b), header.InternalCompression)
-			entry, ok := findTile(directory, tileID)
+			entry, ok := FindTile(directory, tileID)
 			if ok {
 				if entry.RunLength > 0 {
 					tileReader, err := bucket.NewRangeReader(ctx, key, int64(header.TileDataOffset+entry.Offset), int64(entry.Length))

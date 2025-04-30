@@ -377,7 +377,7 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 			return 500, httpHeaders, []byte("I/O Error"), rootValue.etag
 		}
 		directory := dirValue.directory
-		entry, ok := findTile(directory, tileID)
+		entry, ok := FindTile(directory, tileID)
 		if !ok {
 			break
 		}
