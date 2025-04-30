@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 
 	// "github.com/dustin/go-humanize"
 	"io"
@@ -108,6 +110,10 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 				default:
 					fmt.Println(k, "<object...>")
 				}
+			}
+
+			if strings.HasPrefix(bucketURL, "https://") {
+				fmt.Println("web viewer: https://pmtiles.io/#url=" + url.QueryEscape(bucketURL+"/"+key))
 			}
 		}
 	} else {
