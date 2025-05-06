@@ -13,13 +13,16 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	httptrace "github.com/DataDog/dd-trace-go/contrib/net/http/v2"
+	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
+	"github.com/DataDog/dd-trace-go/v2/profiler"
+
 	"github.com/protomaps/go-pmtiles/pmtiles"
 	_ "gocloud.dev/blob/azureblob"
 	_ "gocloud.dev/blob/fileblob"
 	_ "gocloud.dev/blob/gcsblob"
 	_ "gocloud.dev/blob/s3blob"
 )
-
 var (
 	version = "dev"
 	commit  = "none"
@@ -148,13 +151,50 @@ func main() {
 		pmtiles.SetBuildInfo(version, commit, date)
 		server.Start()
 
-		mux := http.NewServeMux()
+		var mux http.Handler
 
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-			statusCode := server.ServeHTTP(w, r)
-			logger.Printf("served %d %s in %s", statusCode, url.PathEscape(r.URL.Path), time.Since(start))
-		})
+		if os.Getenv("DD_TRACE_ENABLED") == "true" {
+			dd_service := os.Getenv("DD_SERVICE")
+			dd_env := os.Getenv("DD_ENV")
+			if dd_env == "" {
+				dd_env = "prod"
+			}
+
+			tracer.Start(
+				tracer.WithService(dd_service),
+				tracer.WithEnv(dd_env),
+				tracer.WithServiceVersion("1.0"),
+				tracer.WithRuntimeMetrics(),
+			)
+			defer tracer.Stop()
+
+			profiler.Start(
+				profiler.WithProfileTypes(
+					profiler.CPUProfile,
+					profiler.HeapProfile,
+				),
+			)
+			defer profiler.Stop()
+
+			tracedMux := httptrace.NewServeMux(
+				httptrace.WithService(dd_service),
+				httptrace.WithAnalyticsRate(1.0),
+			)
+			tracedMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				start := time.Now()
+				statusCode := server.ServeHTTP(w, r)
+				logger.Printf("served %d %s in %s", statusCode, url.PathEscape(r.URL.Path), time.Since(start))
+			})
+			mux = tracedMux
+		} else {
+			stdMux := http.NewServeMux()
+			stdMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				start := time.Now()
+				statusCode := server.ServeHTTP(w, r)
+				logger.Printf("served %d %s in %s", statusCode, url.PathEscape(r.URL.Path), time.Since(start))
+			})
+			mux = stdMux
+		}
 
 		logger.Printf("Serving %s %s on port %d and interface %s with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Interface, cli.Serve.Cors)
 		if cli.Serve.AdminPort > 0 {
