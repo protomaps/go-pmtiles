@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -152,18 +151,11 @@ func main() {
 		pmtiles.SetBuildInfo(version, commit, date)
 		server.Start()
 
-		var rootHandler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-			statusCode := server.ServeHTTP(w, r)
-			logger.Printf("served %d %s in %s", statusCode, url.PathEscape(r.URL.Path), time.Since(start))
-		})
-
 		var mux http.Handler
 
 		if os.Getenv("DD_TRACE_ENABLED") == "true" {
 			dd_service := os.Getenv("DD_SERVICE")
 			dd_env := os.Getenv("DD_ENV")
-			dd_patterns := os.Getenv("DD_TRACED_PATTERNS")
 			if dd_env == "" {
 				dd_env = "prod"
 			}
@@ -188,32 +180,20 @@ func main() {
 				httptrace.WithService(dd_service),
 				httptrace.WithAnalyticsRate(1.0),
 			)
-
-			tracedPatterns := []string{}
-			if raw := dd_patterns; raw != "" {
-				for _, p := range strings.Split(raw, ",") {
-					if p = strings.TrimSpace(p); p != "" {
-						tracedPatterns = append(tracedPatterns, p)
-					}
-				}
-			}
-
 			tracedMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 				start := time.Now()
 				statusCode := server.ServeHTTP(w, r)
 				logger.Printf("served %d %s in %s", statusCode, url.PathEscape(r.URL.Path), time.Since(start))
 			})
-			mux = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				for _, pattern := range tracedPatterns {
-					if matched, _ := filepath.Match(pattern, r.URL.Path); matched {
-						tracedMux.ServeHTTP(w, r)
-						return
-					}
-				}
-				rootHandler.ServeHTTP(w, r)
-			})
+			mux = tracedMux
 		} else {
-			mux = rootHandler
+			stdMux := http.NewServeMux()
+			stdMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				start := time.Now()
+				statusCode := server.ServeHTTP(w, r)
+				logger.Printf("served %d %s in %s", statusCode, url.PathEscape(r.URL.Path), time.Since(start))
+			})
+			mux = stdMux
 		}
 
 		logger.Printf("Serving %s %s on port %d and interface %s with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Interface, cli.Serve.Cors)
