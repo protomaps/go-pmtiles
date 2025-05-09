@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -159,6 +160,15 @@ func main() {
 			if dd_env == "" {
 				dd_env = "prod"
 			}
+			dd_resource_pattern := os.Getenv("DD_RESOURCE_PATTERN")
+			var re *regexp.Regexp
+			if dd_resource_pattern != "" {
+				var err error
+				re, err = regexp.Compile(dd_resource_pattern)
+				if err != nil {
+					log.Fatalf("Invalide Regex: %v", err)
+				}
+			}
 
 			tracer.Start(
 				tracer.WithService(dd_service),
@@ -180,6 +190,11 @@ func main() {
 				httptrace.WithService(dd_service),
 				httptrace.WithAnalyticsRate(1.0),
 				httptrace.WithResourceNamer(func(r *http.Request) string {
+					if re != nil {
+						if match := re.FindStringSubmatch(r.URL.Path); match != nil {
+							return r.Method + " " + match[1]
+						}
+					}
 					return r.Method + " " + r.URL.Path
 				}),
 			)
