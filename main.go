@@ -179,6 +179,9 @@ func main() {
 			tracedMux := httptrace.NewServeMux(
 				httptrace.WithService(dd_service),
 				httptrace.WithAnalyticsRate(1.0),
+				httptrace.WithResourceNamer(func(r *http.Request) string {
+					return r.Method + " " + r.URL.Path
+				}),
 			)
 			tracedMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 				start := time.Now()
