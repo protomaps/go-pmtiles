@@ -19,7 +19,9 @@ func CreateTileJSON(header HeaderV3, metadataBytes []byte, tileURL string) ([]by
 	}
 
 	tilejson["tiles"] = []string{tileURL + "/{z}/{x}/{y}" + headerExt(header)}
-	tilejson["vector_layers"] = metadataMap["vector_layers"]
+	if ok := header.TileType == Mvt; ok {
+		tilejson["vector_layers"] = metadataMap["vector_layers"]
+	}
 
 	if val, ok := metadataMap["attribution"]; ok {
 		tilejson["attribution"] = val
