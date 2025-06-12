@@ -11,6 +11,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -101,7 +102,16 @@ func newResolver(deduplicate bool, compress bool) *resolver {
 
 // Convert an existing archive on disk to a new PMTiles specification version 3 archive.
 func Convert(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
-	return convertMbtiles(logger, input, output, deduplicate, tmpfile)
+	info, err := os.Stat(input)
+	if err != nil {
+		return fmt.Errorf("Failed to stat input %s, %w", input, err)
+	}
+
+	if info.IsDir() {
+		return convertDir(logger, input, output, deduplicate, tmpfile)
+	} else {
+		return convertMbtiles(logger, input, output, deduplicate, tmpfile)
+	}
 }
 
 func setZoomCenterDefaults(header *HeaderV3, entries []EntryV3) {
@@ -115,6 +125,197 @@ func setZoomCenterDefaults(header *HeaderV3, entries []EntryV3) {
 		header.CenterLonE7 = (header.MinLonE7 + header.MaxLonE7) / 2
 		header.CenterLatE7 = (header.MinLatE7 + header.MaxLatE7) / 2
 	}
+}
+
+func convertDir(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
+	start := time.Now()
+
+	logger.Println("Pass 1: Assembling TileID set")
+
+	tileset := roaring64.New()
+	minZoom := uint8(255)
+	maxZoom := uint8(0)
+
+	minLat := int32(+180 * 1e7)
+	maxLat := int32(-180 * 1e7)
+	minLon := int32(+90 * 1e7)
+	maxLon := int32(-90 * 1e7)
+
+	tileFormat := ""
+
+	fileTypes := map[string]TileType{
+		"png":  Png,
+		"pbf":  Mvt,
+		"jpg":  Jpeg,
+		"webp": Webp,
+		"avif": Avif,
+	}
+
+	err := filepath.Walk(input, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		extension := strings.ToLower(filepath.Ext(info.Name()))[1:]
+
+		// skip files with unsupported extensions
+		if _, ok := fileTypes[extension]; !ok {
+			return nil
+		}
+
+		if tileFormat == "" {
+			tileFormat = extension
+		} else if tileFormat != extension {
+			return fmt.Errorf("mixed tile formats in directory: %s - enoountered both %s and %s", path, tileFormat, extension)
+		}
+
+		relPath, err := filepath.Rel(input, path)
+		if err != nil {
+			return err
+		}
+
+		parts := strings.Split(relPath, string(os.PathSeparator))
+		if len(parts) == 3 {
+			z, x, y := parts[0], parts[1], strings.TrimSuffix(parts[2], "."+extension)
+
+			zInt, err := strconv.ParseUint(z, 10, 8)
+			if err != nil {
+				return fmt.Errorf("invalid zoom level: %s", z)
+			}
+
+			if uint8(zInt) < minZoom {
+				minZoom = uint8(zInt)
+			}
+			if uint8(zInt) > maxZoom {
+				maxZoom = uint8(zInt)
+			}
+
+			xInt, err := strconv.ParseUint(x, 10, 32)
+			if err != nil {
+				return fmt.Errorf("invalid tile column: %s", x)
+			}
+
+			yInt, err := strconv.ParseUint(y, 10, 32)
+			if err != nil {
+				return fmt.Errorf("invalid tile row: %s", y)
+			}
+
+			_minLat, _minLon, _maxLat, _maxLon := TileToLatLonBounds(int(zInt), int(xInt), int(yInt))
+			minLat = min(minLat, int32(_minLat*1e7))
+			maxLat = max(maxLat, int32(_maxLat*1e7))
+
+			minLon = min(minLon, int32(_minLon*1e7))
+			maxLon = max(maxLon, int32(_maxLon*1e7))
+
+			id := ZxyToID(uint8(zInt), uint32(xInt), uint32(yInt))
+			tileset.Add(id)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		fmt.Printf("Error walking the directory: %v\n", err)
+		return err
+	}
+
+	if tileset.GetCardinality() == 0 {
+		return fmt.Errorf("no tiles found in directory")
+	}
+
+	header := HeaderV3{}
+	header.SpecVersion = 3
+
+	header.MinZoom = minZoom
+	header.MaxZoom = maxZoom
+
+	header.MinLatE7 = minLat
+	header.MaxLatE7 = maxLat
+
+	header.MinLonE7 = minLon
+	header.MaxLonE7 = maxLon
+
+	header.CenterLatE7 = (minLat + maxLat) / 2
+	header.CenterLonE7 = (minLon + maxLon) / 2
+
+	header.CenterZoom = minZoom
+
+	header.TileType = fileTypes[tileFormat]
+
+	jsonMetadata := make(map[string]interface{})
+
+	logger.Println("Pass 2: writing tiles")
+	resolve := newResolver(deduplicate, false)
+	{
+		bar := progressbar.Default(int64(tileset.GetCardinality()))
+		i := tileset.Iterator()
+
+		for i.HasNext() {
+			id := i.Next()
+			z, x, y := IDToZxy(id)
+
+			path := filepath.Join(input, fmt.Sprintf("%d", z), fmt.Sprintf("%d", x), fmt.Sprintf("%d.png", y))
+
+			data, err := readFileToBytes(path)
+			if err != nil {
+				return fmt.Errorf("Failed to read tile file %s, %w", path, err)
+			}
+
+			if len(data) > 0 {
+				if isNew, newData := resolve.AddTileIsNew(id, data, 1); isNew {
+					_, err := tmpfile.Write(newData)
+					if err != nil {
+						return fmt.Errorf("Failed to write to tempfile: %s", err)
+					}
+				}
+			}
+
+			bar.Add(1)
+		}
+	}
+	_, err = finalize(logger, resolve, header, tmpfile, output, jsonMetadata)
+	if err != nil {
+		return err
+	}
+	logger.Println("Finished in ", time.Since(start))
+
+	return nil
+}
+
+func readFileToBytes(filePath string) ([]byte, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	return data, nil
+}
+
+func TileToLatLonBounds(z, x, y int) (minLat, minLon, maxLat, maxLon float64) {
+	// Number of tiles at this zoom level
+	n := math.Pow(2, float64(z))
+
+	minLon = float64(x)/n*360.0 - 180.0
+	maxLon = float64(x+1)/n*360.0 - 180.0
+
+	minLat = radToDeg(math.Atan(math.Sinh(math.Pi * (1 - 2*float64(y+1)/n))))
+	maxLat = radToDeg(math.Atan(math.Sinh(math.Pi * (1 - 2*float64(y)/n))))
+
+	return
+}
+
+func radToDeg(rad float64) float64 {
+	return rad * 180.0 / math.Pi
 }
 
 func convertMbtiles(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
