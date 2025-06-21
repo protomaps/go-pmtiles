@@ -263,10 +263,6 @@ func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom 
 	bucket, err := OpenBucket(ctx, bucketURL, "")
 
 	if err != nil {
-		return err
-	}
-
-	if err != nil {
 		return fmt.Errorf("Failed to open bucket for %s, %w", bucketURL, err)
 	}
 	defer bucket.Close()
