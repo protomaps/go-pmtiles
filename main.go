@@ -27,6 +27,8 @@ var (
 )
 
 var cli struct {
+	Quiet bool `help:"Suppress verbose output and progress bars"`
+
 	Show struct {
 		Path       string `arg:""`
 		Bucket     string `help:"Remote bucket"`
@@ -127,6 +129,9 @@ func main() {
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 	ctx := kong.Parse(&cli)
 
+	// Set quiet mode globally based on the --quiet flag
+	pmtiles.SetQuietMode(cli.Quiet)
+
 	switch ctx.Command() {
 	case "show <path>":
 		err := pmtiles.Show(logger, os.Stdout, cli.Show.Bucket, cli.Show.Path, cli.Show.HeaderJson, cli.Show.Metadata, cli.Show.Tilejson, cli.Show.PublicURL, false, 0, 0, 0)
@@ -153,14 +158,20 @@ func main() {
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			statusCode := server.ServeHTTP(w, r)
-			logger.Printf("served %d %s in %s", statusCode, url.PathEscape(r.URL.Path), time.Since(start))
+			if !cli.Quiet {
+				logger.Printf("served %d %s in %s", statusCode, url.PathEscape(r.URL.Path), time.Since(start))
+			}
 		})
 
-		logger.Printf("Serving %s %s on port %d and interface %s with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Interface, cli.Serve.Cors)
+		if !cli.Quiet {
+			logger.Printf("Serving %s %s on port %d and interface %s with Access-Control-Allow-Origin: %s\n", cli.Serve.Bucket, cli.Serve.Path, cli.Serve.Port, cli.Serve.Interface, cli.Serve.Cors)
+		}
 		if cli.Serve.AdminPort > 0 {
 			go func() {
 				adminPort := strconv.Itoa(cli.Serve.AdminPort)
-				logger.Printf("Serving /metrics on port %s and interface %s\n", adminPort, cli.Serve.Interface)
+				if !cli.Quiet {
+					logger.Printf("Serving /metrics on port %s and interface %s\n", adminPort, cli.Serve.Interface)
+				}
 				adminMux := http.NewServeMux()
 				adminMux.Handle("/metrics", promhttp.Handler())
 				logger.Fatal(startHTTPServer(cli.Serve.Interface+":"+adminPort, adminMux))
