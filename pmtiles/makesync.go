@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cespare/xxhash/v2"
-	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 	"io"
 	"log"
@@ -106,10 +105,11 @@ func Makesync(logger *log.Logger, cliVersion string, fileName string, blockSizeK
 
 	defer output.Close()
 
-	bar := progressbar.Default(
-		int64(header.TileEntriesCount),
-		"writing syncfile",
-	)
+	var progress Progress
+	progressWriter := getProgressWriter()
+	if progressWriter != nil {
+		progress = progressWriter.NewCountProgress(int64(header.TileEntriesCount), "writing syncfile")
+	}
 
 	var current syncBlock
 
@@ -151,7 +151,9 @@ func Makesync(logger *log.Logger, cliVersion string, fileName string, blockSizeK
 			return io.ReadAll(io.NewSectionReader(file, int64(offset), int64(length)))
 		},
 		func(e EntryV3) {
-			bar.Add(1)
+			if progress != nil {
+				progress.Add(1)
+			}
 			if current.Length == 0 {
 				current.Start = e.TileID
 				current.Offset = e.Offset

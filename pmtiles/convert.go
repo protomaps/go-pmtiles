@@ -16,9 +16,10 @@ import (
 	"time"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
-	"github.com/schollz/progressbar/v3"
 	"zombiezen.com/go/sqlite"
 )
+
+var quietMode bool
 
 type offsetLen struct {
 	Offset uint64
@@ -156,7 +157,9 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 		return fmt.Errorf("Failed to convert MBTiles to header JSON, %w", err)
 	}
 
-	logger.Println("Pass 1: Assembling TileID set")
+	if !quietMode {
+		logger.Println("Pass 1: Assembling TileID set")
+	}
 	// assemble a sorted set of all TileIds
 	tileset := roaring64.New()
 	{
@@ -187,10 +190,16 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 		return fmt.Errorf("no tiles in MBTiles archive")
 	}
 
-	logger.Println("Pass 2: writing tiles")
+	if !quietMode {
+		logger.Println("Pass 2: writing tiles")
+	}
 	resolve := newResolver(deduplicate, header.TileType == Mvt)
 	{
-		bar := progressbar.Default(int64(tileset.GetCardinality()))
+		var progress Progress
+		progressWriter := getProgressWriter()
+		if progressWriter != nil {
+			progress = progressWriter.NewCountProgress(int64(tileset.GetCardinality()), "")
+		}
 		i := tileset.Iterator()
 		stmt := conn.Prep("SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?")
 
@@ -229,21 +238,27 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 
 			stmt.ClearBindings()
 			stmt.Reset()
-			bar.Add(1)
+			if progress != nil {
+				progress.Add(1)
+			}
 		}
 	}
 	_, err = finalize(logger, resolve, header, tmpfile, output, jsonMetadata)
 	if err != nil {
 		return err
 	}
-	logger.Println("Finished in ", time.Since(start))
+	if !quietMode {
+		logger.Println("Finished in ", time.Since(start))
+	}
 	return nil
 }
 
 func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *os.File, output string, jsonMetadata map[string]interface{}) (HeaderV3, error) {
-	logger.Println("# of addressed tiles: ", resolve.AddressedTiles)
-	logger.Println("# of tile entries (after RLE): ", len(resolve.Entries))
-	logger.Println("# of tile contents: ", resolve.NumContents())
+	if !quietMode {
+		logger.Println("# of addressed tiles: ", resolve.AddressedTiles)
+		logger.Println("# of tile entries (after RLE): ", len(resolve.Entries))
+		logger.Println("# of tile contents: ", resolve.NumContents())
+	}
 
 	header.AddressedTilesCount = resolve.AddressedTiles
 	header.TileEntriesCount = uint64(len(resolve.Entries))
@@ -258,16 +273,18 @@ func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *o
 
 	rootBytes, leavesBytes, numLeaves := optimizeDirectories(resolve.Entries, 16384-HeaderV3LenBytes, Gzip)
 
-	if numLeaves > 0 {
-		logger.Println("Root dir bytes: ", len(rootBytes))
-		logger.Println("Leaves dir bytes: ", len(leavesBytes))
-		logger.Println("Num leaf dirs: ", numLeaves)
-		logger.Println("Total dir bytes: ", len(rootBytes)+len(leavesBytes))
-		logger.Println("Average leaf dir bytes: ", len(leavesBytes)/numLeaves)
-		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(rootBytes)+len(leavesBytes))/float64(resolve.AddressedTiles))
-	} else {
-		logger.Println("Total dir bytes: ", len(rootBytes))
-		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(rootBytes))/float64(resolve.AddressedTiles))
+	if !quietMode {
+		if numLeaves > 0 {
+			logger.Println("Root dir bytes: ", len(rootBytes))
+			logger.Println("Leaves dir bytes: ", len(leavesBytes))
+			logger.Println("Num leaf dirs: ", numLeaves)
+			logger.Println("Total dir bytes: ", len(rootBytes)+len(leavesBytes))
+			logger.Println("Average leaf dir bytes: ", len(leavesBytes)/numLeaves)
+			logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(rootBytes)+len(leavesBytes))/float64(resolve.AddressedTiles))
+		} else {
+			logger.Println("Total dir bytes: ", len(rootBytes))
+			logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(rootBytes))/float64(resolve.AddressedTiles))
+		}
 	}
 
 	metadataBytes, err := SerializeMetadata(jsonMetadata, Gzip)

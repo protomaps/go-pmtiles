@@ -8,7 +8,6 @@ import (
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/dustin/go-humanize"
 	"github.com/paulmach/orb"
-	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 	"io"
 	"io/ioutil"
@@ -487,10 +486,11 @@ func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom 
 			return err
 		}
 
-		bar := progressbar.DefaultBytes(
-			int64(totalBytes),
-			"fetching chunks",
-		)
+		var progress Progress
+		progressWriter := getProgressWriter()
+		if progressWriter != nil {
+			progress = progressWriter.NewBytesProgress(int64(totalBytes), "fetching chunks")
+		}
 
 		var mu sync.Mutex
 
@@ -502,15 +502,26 @@ func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom 
 			offsetWriter := io.NewOffsetWriter(outfile, int64(header.TileDataOffset)+int64(or.Rng.DstOffset))
 
 			for _, cd := range or.CopyDiscards {
+				if progress != nil {
+					_, err := io.CopyN(io.MultiWriter(offsetWriter, progress), tileReader, int64(cd.Wanted))
+					if err != nil {
+						return err
+					}
 
-				_, err := io.CopyN(io.MultiWriter(offsetWriter, bar), tileReader, int64(cd.Wanted))
-				if err != nil {
-					return err
-				}
+					_, err = io.CopyN(progress, tileReader, int64(cd.Discard))
+					if err != nil {
+						return err
+					}
+				} else {
+					_, err := io.CopyN(offsetWriter, tileReader, int64(cd.Wanted))
+					if err != nil {
+						return err
+					}
 
-				_, err = io.CopyN(bar, tileReader, int64(cd.Discard))
-				if err != nil {
-					return err
+					_, err = io.CopyN(io.Discard, tileReader, int64(cd.Discard))
+					if err != nil {
+						return err
+					}
 				}
 			}
 			tileReader.Close()
