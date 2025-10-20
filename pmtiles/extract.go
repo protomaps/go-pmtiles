@@ -438,6 +438,11 @@ func Extract(_ *log.Logger, bucketURL string, key string, minzoom int8, maxzoom 
 
 	header.MaxZoom = uint8(maxzoom)
 	header.MinZoom = uint8(minzoom)
+	if header.CenterZoom < header.MinZoom {
+		header.CenterZoom = header.MinZoom
+	} else if header.CenterZoom > header.MaxZoom {
+		header.CenterZoom = header.MaxZoom
+	}
 
 	headerBytes := SerializeHeader(header)
 
