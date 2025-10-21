@@ -3,7 +3,6 @@ package pmtiles
 import (
 	"context"
 	"fmt"
-	"github.com/schollz/progressbar/v3"
 	"gocloud.dev/blob"
 	"io"
 	"log"
@@ -19,7 +18,7 @@ func partSizeBytes(totalSize int64) int {
 }
 
 // Upload a pmtiles archive to a bucket.
-func Upload(_ *log.Logger, InputPMTiles string, bucket string, RemotePMTiles string, maxConcurrency int) error {
+func Upload(logger *log.Logger, InputPMTiles string, bucket string, RemotePMTiles string, maxConcurrency int) error {
 	ctx := context.Background()
 
 	b, err := blob.OpenBucket(ctx, bucket)
@@ -49,7 +48,7 @@ func Upload(_ *log.Logger, InputPMTiles string, bucket string, RemotePMTiles str
 		return fmt.Errorf("Failed to obtain writer: %w", err)
 	}
 
-	bar := progressbar.Default(filestat.Size())
+	bar := defaultProgressbar(logger, filestat.Size())
 	io.Copy(io.MultiWriter(w, bar), f)
 
 	if err := w.Close(); err != nil {
