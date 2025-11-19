@@ -323,9 +323,6 @@ func NormalizeBucketKey(bucket string, prefix string, key string) (string, strin
 			if u.RawQuery != "" {
 				keyWithQuery = keyWithQuery + "?" + u.RawQuery
 			}
-			if u.Fragment != "" {
-				keyWithQuery = keyWithQuery + "#" + u.Fragment
-			}
 			return u.Scheme + "://" + u.Host + dir, keyWithQuery, nil
 		}
 		fileprotocol := "file://"
