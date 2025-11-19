@@ -44,6 +44,13 @@ func TestNormalizeHttp(t *testing.T) {
 	assert.Equal(t, "http://example.com/foo", bucket)
 }
 
+func TestNormalizeHttpWithQuery(t *testing.T) {
+	url := "http://example.com/foo/bar.pmtiles?X-Goog-Algorithm=GOOG4&X-Goog-Signature=abc123"
+	bucket, key, _ := NormalizeBucketKey("", "", url)
+	assert.Equal(t, "http://example.com/foo", bucket)
+	assert.Equal(t, "bar.pmtiles?X-Goog-Algorithm=GOOG4&X-Goog-Signature=abc123", key)
+}
+
 func TestNormalizePathPrefixServer(t *testing.T) {
 	bucket, key, _ := NormalizeBucketKey("", "../foo", "")
 	assert.Equal(t, "", key)
@@ -75,6 +82,27 @@ func TestHttpBucketRequestNormal(t *testing.T) {
 	assert.Equal(t, "", mock.request.Header.Get("If-Match"))
 	assert.Equal(t, "bytes=100-102", mock.request.Header.Get("Range"))
 	assert.Equal(t, "http://tiles.example.com/tiles/a/b/c", mock.request.URL.String())
+	assert.Equal(t, 200, status)
+	assert.Nil(t, err)
+	b, err := io.ReadAll(data)
+	assert.Nil(t, err)
+	assert.Equal(t, "abc", string(b))
+	assert.Equal(t, "etag", etag)
+	assert.Nil(t, err)
+}
+
+func TestHttpBucketRequestWithQuery(t *testing.T) {
+	mock := ClientMock{}
+	header := http.Header{}
+	header.Add("ETag", "etag")
+	bucket := HTTPBucket{"http://tiles.example.com/tiles", &mock}
+	mock.response = &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader("abc")),
+		Header:     header,
+	}
+	data, etag, status, err := bucket.NewRangeReaderEtag(context.Background(), "a/b/c?token=xyz", 50, 3, "")
+	assert.Equal(t, "http://tiles.example.com/tiles/a/b/c?token=xyz", mock.request.URL.String())
 	assert.Equal(t, 200, status)
 	assert.Nil(t, err)
 	b, err := io.ReadAll(data)
