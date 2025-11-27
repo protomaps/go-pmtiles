@@ -52,7 +52,7 @@ var cli struct {
 	Edit struct {
 		Input      string `arg:"" help:"Input archive" type:"existingfile"`
 		HeaderJson string `help:"Input header JSON file (written by show --header-json)" type:"existingfile"`
-		Metadata   string `help:"Input metadata JSON (written by show --metadata)" type:"existingfile"`
+		Metadata   string `help:"Input metadata JSON file (written by show --metadata)" type:"existingfile"`
 	} `cmd:"" help:"Edit JSON metadata or parts of the header"`
 
 	Extract struct {
