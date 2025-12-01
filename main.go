@@ -74,12 +74,12 @@ var cli struct {
 	} `cmd:"" help:"Merge multiple archives into a single archive" hidden:""`
 
 	Convert struct {
-		Input           string `arg:"" help:"Input archive" type:"existingfile"`
+		Input           string `arg:"" help:"Input MBtiles archive file, or directory of XYZ image files" type:"existingfile|existingdir"`
 		Output          string `arg:"" help:"Output archive" type:"path"`
 		Force           bool   `help:"Force removal"`
 		NoDeduplication bool   `help:"Don't attempt to deduplicate tiles"`
 		Tmpdir          string `help:"An optional path to a folder for temporary files" type:"existingdir"`
-	} `cmd:"" help:"Convert an MBTiles database to PMTiles"`
+	} `cmd:"" help:"Convert an MBTiles database (or directory of XYZ image tiles) to PMTiles"`
 
 	Verify struct {
 		Input string `arg:"" help:"Input archive" type:"existingfile"`
