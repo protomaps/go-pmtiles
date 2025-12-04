@@ -319,7 +319,11 @@ func NormalizeBucketKey(bucket string, prefix string, key string) (string, strin
 			if strings.HasSuffix(dir, "/") {
 				dir = dir[:len(dir)-1]
 			}
-			return u.Scheme + "://" + u.Host + dir, file, nil
+			keyWithQuery := file
+			if u.RawQuery != "" {
+				keyWithQuery = keyWithQuery + "?" + u.RawQuery
+			}
+			return u.Scheme + "://" + u.Host + dir, keyWithQuery, nil
 		}
 		fileprotocol := "file://"
 		if string(os.PathSeparator) != "/" {
