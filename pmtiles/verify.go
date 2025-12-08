@@ -153,6 +153,7 @@ func Verify(_ *log.Logger, file string) error {
 		return fmt.Errorf("invalid: header MinZoom=%v does not match min tile z %v", header.MinZoom, z)
 	}
 
+	// TODO this is technically kind of wrong
 	if z, _, _ := IDToZxy(maxTileID); z != header.MaxZoom {
 		return fmt.Errorf("invalid: header MaxZoom=%v does not match max tile z %v", header.MaxZoom, z)
 	}
