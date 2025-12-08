@@ -70,8 +70,7 @@ var cli struct {
 	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region"`
 
 	Merge struct {
-		Output string   `arg:"" help:"Output archive" type:"path"`
-		Input  []string `arg:"" help:"Input archives"`
+		Archives []string `arg:"" name:"inputs_then_output" help:"One or more input archives, followed by the output name last."`
 	} `cmd:"" help:"Merge multiple archives into a single archive" hidden:""`
 
 	Convert struct {
@@ -216,6 +215,11 @@ func main() {
 
 		if err != nil {
 			logger.Fatalf("Failed to convert %s, %v", path, err)
+		}
+	case "merge <inputs_then_output>":
+		err := pmtiles.Merge(logger, cli.Merge.Archives)
+		if err != nil {
+			logger.Fatalf("Failed to merge, %v", err)
 		}
 	case "upload <input-pmtiles> <remote-pmtiles>":
 		err := pmtiles.Upload(logger, cli.Upload.InputPmtiles, cli.Upload.Bucket, cli.Upload.RemotePmtiles, cli.Upload.MaxConcurrency)
