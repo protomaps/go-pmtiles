@@ -97,11 +97,16 @@ func Merge(logger *log.Logger, inputs []string) error {
 	acc := uint64(0)
 	addressedTiles := uint64(0)
 	tileContents := roaring64.New()
+	maxOffsets := make([]uint64, len(headers))
 	for idx := range mergedEntries {
-		// TODO: this algo is broken with any deduplication of tiles
-		// need to bookkeep on the max seen offset in each input archive
 		mergedEntries[idx].Entry.Offset = acc
-		acc += uint64(mergedEntries[idx].Entry.Length)
+
+		// skip any deduplication (backreferences)
+		if mergedEntries[idx].InputOffset >= maxOffsets[mergedEntries[idx].InputIdx] {
+			acc += uint64(mergedEntries[idx].Entry.Length)
+			maxOffsets[mergedEntries[idx].InputIdx] = mergedEntries[idx].InputOffset
+		}
+
 		addressedTiles += uint64(mergedEntries[idx].Entry.RunLength)
 		tileContents.Add(mergedEntries[idx].Entry.Offset)
 	}

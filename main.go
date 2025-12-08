@@ -71,7 +71,7 @@ var cli struct {
 
 	Merge struct {
 		Archives []string `arg:"" name:"inputs_then_output" help:"One or more input archives, followed by the output name last."`
-	} `cmd:"" help:"Merge multiple archives into a single archive" hidden:""`
+	} `cmd:"" help:"Merge multiple archives into a single archive"`
 
 	Convert struct {
 		Input           string `arg:"" help:"Input archive" type:"existingfile"`
