@@ -22,43 +22,122 @@ type MergeOp struct {
 	Length      uint64
 }
 
-func Merge(logger *log.Logger, inputs []string) error {
-	union := roaring64.New()
-	var mergedEntries []MergeEntry
+type Remapping struct {
+	SrcOffset uint64
+	DstOffset uint64
+}
 
+// load N archives, validating that they are disjoint
+// returns a sorted list of MergeEntry
+// return a detailed error if the input archives are not disjoint
+func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error) {
+	var headers []HeaderV3
+	var mergedEntries []MergeEntry
+	union := roaring64.New()
+
+	for inputIdx, input := range inputs {
+		buf := make([]byte, HeaderV3LenBytes)
+		_, _ = input.Read(buf)
+		h, _ := DeserializeHeader(buf)
+		headers = append(headers, h)
+
+		// also validate the headers so we "fail fast"
+		if !h.Clustered {
+			return nil, nil, fmt.Errorf("Archive must be clustered")
+		}
+
+		if inputIdx > 0 {
+			if h.TileType != headers[0].TileType {
+				return nil, nil, fmt.Errorf("Tile types do not match")
+			}
+			if h.TileCompression != headers[0].TileCompression {
+				return nil, nil, fmt.Errorf("Tile compressions do not match")
+			}
+			if h.InternalCompression != headers[0].InternalCompression {
+				return nil, nil, fmt.Errorf("Internal compressions do not match")
+			}
+		}
+
+		tileset := roaring64.New()
+		_ = IterateEntries(h,
+			func(offset uint64, length uint64) ([]byte, error) {
+				input.Seek(int64(offset), io.SeekStart)
+				return io.ReadAll(io.LimitReader(input, int64(length)))
+			},
+			func(e EntryV3) {
+				tileset.AddRange(e.TileID, e.TileID+uint64(e.RunLength))
+				mergedEntries = append(mergedEntries, MergeEntry{Entry: e, InputOffset: e.Offset, InputIdx: inputIdx})
+			})
+
+		if union.Intersects(tileset) {
+			return nil, nil, fmt.Errorf("Tilesets intersect")
+		}
+		union.Or(tileset)
+	}
+
+	// sort all MergeEntries
+	sort.Slice(mergedEntries, func(i, j int) bool {
+		return mergedEntries[i].Entry.TileID < mergedEntries[j].Entry.TileID
+	})
+
+	return nil, nil, nil
+}
+
+func remapMergeEntries(entries []MergeEntry) ([]MergeEntry, uint64, uint64, uint64) {
+	// store N remapping arrays
+	// renumber the offsets
+	acc := uint64(0)
+	addressedTiles := uint64(0)
+	tileContents := roaring64.New()
+
+	for idx := range entries {
+		// skip any deduplication (backreferences)
+		// this does not correctly handle backreferences
+
+		// if mergedEntries[idx].InputOffset >= remappings[idx][len(remappings[idx]) - 1].SrcOffset {
+		entries[idx].Entry.Offset = acc
+		acc += uint64(entries[idx].Entry.Length)
+		// remappings[idx] = append(remappings[idx], Remapping{SrcOffset: mergedEntries[idx].InputOffset, DstOffset: acc})
+		// } else {
+		// mergedEntries[idx].Entry.Offset = remappings[idx]
+		// find the offset in the
+
+		// }
+
+		addressedTiles += uint64(entries[idx].Entry.RunLength)
+		tileContents.Add(entries[idx].Entry.Offset)
+	}
+	return entries, addressedTiles, tileContents.GetCardinality(), acc
+}
+
+func batchMergeEntries(entries []MergeEntry) []MergeOp {
+	var mergeOps []MergeOp
+	for _, me := range entries {
+		last := len(mergeOps) - 1
+		entryLength := uint64(me.Entry.Length)
+		if last >= 0 && (mergeOps[last].InputIdx == me.InputIdx) && (me.InputOffset == mergeOps[last].InputOffset+mergeOps[last].Length) {
+			mergeOps[last].Length += entryLength
+		} else {
+			mergeOps = append(mergeOps, MergeOp{InputIdx: me.InputIdx, InputOffset: me.InputOffset, Length: entryLength})
+		}
+	}
+	return mergeOps
+}
+
+func zoomBounds(entries []MergeEntry) (uint8, uint8) {
+	firstZ, _, _ := IDToZxy(entries[0].Entry.TileID)
+	lastEntry := entries[len(entries)-1].Entry
+	lastZ, _, _ := IDToZxy(lastEntry.TileID + uint64(lastEntry.RunLength) - 1)
+	return uint8(firstZ), uint8(lastZ)
+}
+
+func bounds(headers []HeaderV3) (int32, int32, int32, int32) {
 	minLonE7 := int32(math.MaxInt32)
 	minLatE7 := int32(math.MaxInt32)
 	maxLonE7 := int32(math.MinInt32)
 	maxLatE7 := int32(math.MinInt32)
 
-	var handles []*os.File
-	var headers []HeaderV3
-
-	for archiveIdx, archive := range inputs[:len(inputs)-1] {
-		f, _ := os.OpenFile(archive, os.O_RDONLY, 0666)
-		handles = append(handles, f)
-
-		buf := make([]byte, HeaderV3LenBytes)
-		_, _ = f.Read(buf)
-		h, _ := DeserializeHeader(buf)
-		headers = append(headers, h)
-
-		if !h.Clustered {
-			return fmt.Errorf("Archive must be clustered")
-		}
-
-		if archiveIdx > 0 {
-			if h.TileType != headers[0].TileType {
-				return fmt.Errorf("Tile types do not match")
-			}
-			if h.TileCompression != headers[0].TileCompression {
-				return fmt.Errorf("Tile compressions do not match")
-			}
-			if h.InternalCompression != headers[0].InternalCompression {
-				return fmt.Errorf("Internal compressions do not match")
-			}
-		}
-
+	for _, h := range headers {
 		if h.MinLonE7 < minLonE7 {
 			minLonE7 = h.MinLonE7
 		}
@@ -71,56 +150,37 @@ func Merge(logger *log.Logger, inputs []string) error {
 		if h.MaxLatE7 > maxLatE7 {
 			maxLatE7 = h.MaxLatE7
 		}
-
-		tileset := roaring64.New()
-		_ = IterateEntries(h,
-			func(offset uint64, length uint64) ([]byte, error) {
-				return io.ReadAll(io.NewSectionReader(f, int64(offset), int64(length)))
-			},
-			func(e EntryV3) {
-				tileset.AddRange(e.TileID, e.TileID+uint64(e.RunLength))
-				mergedEntries = append(mergedEntries, MergeEntry{Entry: e, InputOffset: e.Offset, InputIdx: archiveIdx})
-			})
-
-		if union.Intersects(tileset) {
-			return fmt.Errorf("Tilesets intersect")
-		}
-		union.Or(tileset)
 	}
 
-	// sort all MergeEntries
-	sort.Slice(mergedEntries, func(i, j int) bool {
-		return mergedEntries[i].Entry.TileID < mergedEntries[j].Entry.TileID
-	})
+	return minLonE7, minLatE7, maxLonE7, maxLatE7
+	return 0, 0, 0, 0
+}
 
-	// renumber the offsets
-	acc := uint64(0)
-	addressedTiles := uint64(0)
-	tileContents := roaring64.New()
-	maxOffsets := make([]uint64, len(headers))
-	for idx := range mergedEntries {
-		mergedEntries[idx].Entry.Offset = acc
+func Merge(logger *log.Logger, inputs []string) error {
+	var handles []io.ReadSeeker
 
-		// skip any deduplication (backreferences)
-		if mergedEntries[idx].InputOffset >= maxOffsets[mergedEntries[idx].InputIdx] {
-			acc += uint64(mergedEntries[idx].Entry.Length)
-			maxOffsets[mergedEntries[idx].InputIdx] = mergedEntries[idx].InputOffset
-		}
-
-		addressedTiles += uint64(mergedEntries[idx].Entry.RunLength)
-		tileContents.Add(mergedEntries[idx].Entry.Offset)
+	for _, name := range inputs[:len(inputs)-1] {
+		f, _ := os.OpenFile(name, os.O_RDONLY, 0666)
+		handles = append(handles, f)
+		defer f.Close()
 	}
+
+	headers, mergedEntries, err := prepareInputs(handles)
+	if err != nil {
+		return err
+	}
+
+	renumberedEntries, addressedTiles, numTileContents, tileDataLength := remapMergeEntries(mergedEntries)
 
 	// construct a directory
-	tmp := make([]EntryV3, len(mergedEntries))
-	for i := range mergedEntries {
-		tmp[i] = mergedEntries[i].Entry
+	tmp := make([]EntryV3, len(renumberedEntries))
+	for i := range renumberedEntries {
+		tmp[i] = renumberedEntries[i].Entry
 	}
 
 	rootBytes, leavesBytes, _ := optimizeDirectories(tmp, 16384-HeaderV3LenBytes, Gzip)
 
 	var header HeaderV3
-
 	header.RootOffset = HeaderV3LenBytes
 	header.RootLength = uint64(len(rootBytes))
 	header.MetadataOffset = header.RootOffset + header.RootLength
@@ -130,37 +190,22 @@ func Merge(logger *log.Logger, inputs []string) error {
 	header.LeafDirectoryOffset = header.MetadataOffset + header.MetadataLength
 	header.LeafDirectoryLength = uint64(len(leavesBytes))
 	header.TileDataOffset = header.LeafDirectoryOffset + header.LeafDirectoryLength
+	header.TileDataLength = tileDataLength
+	header.AddressedTilesCount = addressedTiles
+	header.TileEntriesCount = uint64(len(renumberedEntries))
+	header.TileContentsCount = numTileContents
 
+	minZoom, maxZoom := zoomBounds(renumberedEntries)
+	header.MinZoom = minZoom
+	header.MaxZoom = maxZoom
+	minLonE7, minLatE7, maxLonE7, maxLatE7 := bounds(headers)
 	header.MinLonE7 = minLonE7
 	header.MinLatE7 = minLatE7
 	header.MaxLonE7 = maxLonE7
 	header.MaxLatE7 = maxLatE7
+	// TODO: construct a new center
 
-	// although we can rely on the input header data,
-	// it's cheap and more reliable to re-calculate these from scratch
-	firstZ, _, _ := IDToZxy(mergedEntries[0].Entry.TileID)
-	header.MinZoom = uint8(firstZ)
-	lastEntry := mergedEntries[len(mergedEntries)-1].Entry
-	lastZ, _, _ := IDToZxy(lastEntry.TileID + uint64(lastEntry.RunLength) - 1)
-	header.MaxZoom = uint8(lastZ)
-	// construct a new center
-
-	header.TileDataLength = acc
-	header.AddressedTilesCount = addressedTiles
-	header.TileEntriesCount = uint64(len(mergedEntries))
-	header.TileContentsCount = tileContents.GetCardinality()
-
-	// optimize IO by batching
-	var mergeOps []MergeOp
-	for _, me := range mergedEntries {
-		last := len(mergeOps) - 1
-		entryLength := uint64(me.Entry.Length)
-		if last >= 0 && (mergeOps[last].InputIdx == me.InputIdx) && (me.InputOffset == mergeOps[last].InputOffset+mergeOps[last].Length) {
-			mergeOps[last].Length += entryLength
-		} else {
-			mergeOps = append(mergeOps, MergeOp{InputIdx: me.InputIdx, InputOffset: me.InputOffset, Length: entryLength})
-		}
-	}
+	mergeOps := batchMergeEntries(renumberedEntries)
 
 	output, _ := os.Create(inputs[len(inputs)-1])
 	defer output.Close()
@@ -172,16 +217,13 @@ func Merge(logger *log.Logger, inputs []string) error {
 	firstHandle := handles[0]
 	firstHandle.Seek(int64(headers[0].MetadataOffset), io.SeekStart)
 	io.CopyN(output, firstHandle, int64(headers[0].MetadataLength))
+
 	_, _ = output.Write(leavesBytes)
 
 	for _, op := range mergeOps {
 		handle := handles[op.InputIdx]
 		handle.Seek(int64(headers[op.InputIdx].TileDataOffset)+int64(op.InputOffset), io.SeekStart)
 		io.CopyN(output, handle, int64(op.Length))
-	}
-
-	for _, h := range handles {
-		h.Close()
 	}
 
 	return nil
