@@ -17,9 +17,8 @@ type MergeEntry struct {
 }
 
 type MergeOp struct {
-	InputIdx    int
-	InputOffset uint64
-	Length      uint64
+	InputIdx int
+	Length   uint64
 }
 
 type Remapping struct {
@@ -110,16 +109,22 @@ func remapMergeEntries(entries []MergeEntry) ([]MergeEntry, uint64, uint64, uint
 	return entries, addressedTiles, tileContents.GetCardinality(), acc
 }
 
-func batchMergeEntries(entries []MergeEntry) []MergeOp {
+// combines contiguous I/O operations and eliminate backreferences
+func batchMergeEntries(entries []MergeEntry, numInputs int) []MergeOp {
+	lastOffset := make([]uint64, numInputs)
 	var mergeOps []MergeOp
 	for _, me := range entries {
+		if me.InputOffset < lastOffset[me.InputIdx] {
+			continue
+		}
 		last := len(mergeOps) - 1
 		entryLength := uint64(me.Entry.Length)
-		if last >= 0 && (mergeOps[last].InputIdx == me.InputIdx) && (me.InputOffset == mergeOps[last].InputOffset+mergeOps[last].Length) {
+		if last >= 0 && (mergeOps[last].InputIdx == me.InputIdx) && (me.InputOffset == lastOffset[me.InputIdx]+mergeOps[last].Length) {
 			mergeOps[last].Length += entryLength
 		} else {
-			mergeOps = append(mergeOps, MergeOp{InputIdx: me.InputIdx, InputOffset: me.InputOffset, Length: entryLength})
+			mergeOps = append(mergeOps, MergeOp{InputIdx: me.InputIdx, Length: entryLength})
 		}
+		lastOffset[me.InputIdx] = me.InputOffset
 	}
 	return mergeOps
 }
@@ -153,7 +158,6 @@ func bounds(headers []HeaderV3) (int32, int32, int32, int32) {
 	}
 
 	return minLonE7, minLatE7, maxLonE7, maxLatE7
-	return 0, 0, 0, 0
 }
 
 func Merge(logger *log.Logger, inputs []string) error {
@@ -172,12 +176,10 @@ func Merge(logger *log.Logger, inputs []string) error {
 
 	renumberedEntries, addressedTiles, numTileContents, tileDataLength := remapMergeEntries(mergedEntries)
 
-	// construct a directory
 	tmp := make([]EntryV3, len(renumberedEntries))
 	for i := range renumberedEntries {
 		tmp[i] = renumberedEntries[i].Entry
 	}
-
 	rootBytes, leavesBytes, _ := optimizeDirectories(tmp, 16384-HeaderV3LenBytes, Gzip)
 
 	var header HeaderV3
@@ -205,7 +207,7 @@ func Merge(logger *log.Logger, inputs []string) error {
 	header.MaxLatE7 = maxLatE7
 	// TODO: construct a new center
 
-	mergeOps := batchMergeEntries(renumberedEntries)
+	mergeOps := batchMergeEntries(renumberedEntries, len(headers))
 
 	output, _ := os.Create(inputs[len(inputs)-1])
 	defer output.Close()
@@ -220,9 +222,13 @@ func Merge(logger *log.Logger, inputs []string) error {
 
 	_, _ = output.Write(leavesBytes)
 
+	for _, handle := range handles {
+		handle.Seek(0, io.SeekStart)
+	}
+
 	for _, op := range mergeOps {
 		handle := handles[op.InputIdx]
-		handle.Seek(int64(headers[op.InputIdx].TileDataOffset)+int64(op.InputOffset), io.SeekStart)
+		// handle.Seek(int64(headers[op.InputIdx].TileDataOffset)+int64(op.InputOffset), io.SeekStart)
 		io.CopyN(output, handle, int64(op.Length))
 	}
 
