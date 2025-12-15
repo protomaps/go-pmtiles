@@ -50,7 +50,7 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error, int
 
 		// also validate the headers so we "fail fast"
 		if !h.Clustered {
-			return nil, nil, fmt.Errorf("is not clustered"), inputIdx
+			return nil, nil, fmt.Errorf("must be clustered"), inputIdx
 		}
 
 		if inputIdx > 0 {
@@ -88,7 +88,7 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error, int
 			tmp := union.Clone()
 			tmp.And(tileset)
 			iz, ix, iy := IDToZxy(tmp.Minimum())
-			return nil, nil, fmt.Errorf("%d overlapping tiles, starting with %d %d %d", tmp.GetCardinality(), iz, ix, iy), inputIdx
+			return nil, nil, fmt.Errorf("%d overlapping tiles, starting with %d %d %d. Inputs must be disjoint", tmp.GetCardinality(), iz, ix, iy), inputIdx
 		}
 		union.Or(tileset)
 	}
@@ -194,6 +194,10 @@ func bounds(headers []HeaderV3) (int32, int32, int32, int32) {
 func Merge(logger *log.Logger, inputs []string) error {
 	var handles []io.ReadSeeker
 
+	if len(inputs) < 2 {
+		return fmt.Errorf("Too few inputs")
+	}
+
 	for _, name := range inputs[:len(inputs)-1] {
 		f, err := os.OpenFile(name, os.O_RDONLY, 0666)
 		if err != nil {
@@ -222,10 +226,12 @@ func Merge(logger *log.Logger, inputs []string) error {
 	logger.Printf("Copying center and JSON metadata from first input %s", inputs[0])
 
 	var header HeaderV3
+	header.Clustered = true
 	header.RootOffset = HeaderV3LenBytes
 	header.RootLength = uint64(len(rootBytes))
 	header.MetadataOffset = header.RootOffset + header.RootLength
 	header.MetadataLength = headers[0].MetadataLength
+	header.TileType = headers[0].TileType
 	header.InternalCompression = headers[0].InternalCompression
 	header.TileCompression = headers[0].TileCompression
 	header.LeafDirectoryOffset = header.MetadataOffset + header.MetadataLength
@@ -274,8 +280,8 @@ func Merge(logger *log.Logger, inputs []string) error {
 		return err
 	}
 
-	for _, handle := range handles {
-		handle.Seek(0, io.SeekStart)
+	for idx, handle := range handles {
+		handle.Seek(int64(headers[idx].TileDataOffset), io.SeekStart)
 	}
 
 	for _, op := range mergeOps {

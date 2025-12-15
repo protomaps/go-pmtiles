@@ -70,8 +70,8 @@ var cli struct {
 	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region"`
 
 	Merge struct {
-		Archives []string `arg:"" name:"inputs_then_output" help:"One or more input archives, followed by the output name last."`
-	} `cmd:"" help:"Merge multiple archives into a single archive"`
+		Archives []string `arg:"" name:"inputs_then_output" help:"One or more disjoint input archives, followed by the output filename."`
+	} `cmd:"" help:"Merge multiple disjoint archives into one: INPUT1.pmtiles INPUT2.pmtiles OUTPUT.pmtiles"`
 
 	Convert struct {
 		Input           string `arg:"" help:"Input archive" type:"existingfile"`
