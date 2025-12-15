@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"slices"
 	"sort"
 )
 
@@ -82,31 +83,41 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error) {
 	return nil, nil, nil
 }
 
-func remapMergeEntries(entries []MergeEntry) ([]MergeEntry, uint64, uint64, uint64) {
-	// store N remapping arrays
-	// renumber the offsets
+func remapMergeEntries(entries []MergeEntry, numInputs int) ([]MergeEntry, uint64, uint64, uint64, error) {
 	acc := uint64(0)
 	addressedTiles := uint64(0)
-	tileContents := roaring64.New()
+	tileContents := 0
+	remappings := make([][]Remapping, numInputs)
 
-	for idx := range entries {
-		// skip any deduplication (backreferences)
-		// this does not correctly handle backreferences
-
-		// if mergedEntries[idx].InputOffset >= remappings[idx][len(remappings[idx]) - 1].SrcOffset {
-		entries[idx].Entry.Offset = acc
-		acc += uint64(entries[idx].Entry.Length)
-		// remappings[idx] = append(remappings[idx], Remapping{SrcOffset: mergedEntries[idx].InputOffset, DstOffset: acc})
-		// } else {
-		// mergedEntries[idx].Entry.Offset = remappings[idx]
-		// find the offset in the
-
-		// }
+	for idx, me := range entries {
+		remapping := remappings[me.InputIdx]
+		if len(remapping) > 0 && me.InputOffset < remappings[me.InputIdx][len(remapping)-1].SrcOffset {
+			// find the original offset in the remapping slice
+			i, ok := slices.BinarySearchFunc(remapping, me.InputOffset, func(r Remapping, k uint64) int {
+				switch {
+				case r.SrcOffset < k:
+					return -1
+				case r.SrcOffset > k:
+					return 1
+				default:
+					return 0
+				}
+			})
+			if ok {
+				entries[idx].Entry.Offset = remapping[i].DstOffset
+			} else {
+				return nil, 0, 0, 0, fmt.Errorf("Clustered archive has out-of-order entries")
+			}
+		} else {
+			entries[idx].Entry.Offset = acc
+			remappings[me.InputIdx] = append(remappings[me.InputIdx], Remapping{SrcOffset: me.InputOffset, DstOffset: acc})
+			acc += uint64(me.Entry.Length)
+			tileContents += 1
+		}
 
 		addressedTiles += uint64(entries[idx].Entry.RunLength)
-		tileContents.Add(entries[idx].Entry.Offset)
 	}
-	return entries, addressedTiles, tileContents.GetCardinality(), acc
+	return entries, addressedTiles, uint64(tileContents), acc, nil
 }
 
 // combines contiguous I/O operations and eliminate backreferences
@@ -174,7 +185,10 @@ func Merge(logger *log.Logger, inputs []string) error {
 		return err
 	}
 
-	renumberedEntries, addressedTiles, numTileContents, tileDataLength := remapMergeEntries(mergedEntries)
+	renumberedEntries, addressedTiles, numTileContents, tileDataLength, err := remapMergeEntries(mergedEntries, len(headers))
+	if err != nil {
+		return err
+	}
 
 	tmp := make([]EntryV3, len(renumberedEntries))
 	for i := range renumberedEntries {

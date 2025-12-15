@@ -60,3 +60,32 @@ func TestBounds(t *testing.T) {
 	assert.Equal(t, int32(2), maxLon)
 	assert.Equal(t, int32(2), maxLat)
 }
+
+func TestRemapMergeEntries(t *testing.T) {
+	entries := make([]MergeEntry, 0)
+	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
+	entries = append(entries, MergeEntry{EntryV3{1, 0, 100, 2}, 1, 0})
+	remapped, addressedTiles, tileContents, length, _ := remapMergeEntries(entries, 2)
+	assert.Equal(t, uint64(200), length)
+	assert.Equal(t, uint64(3), addressedTiles)
+	assert.Equal(t, uint64(2), tileContents)
+	assert.Equal(t, uint64(0), remapped[0].Entry.Offset)
+	assert.Equal(t, uint64(0), remapped[0].InputOffset)
+	assert.Equal(t, uint64(100), remapped[1].Entry.Offset)
+	assert.Equal(t, uint64(0), remapped[1].InputOffset)
+}
+
+func TestRemapMergeEntriesBackreference(t *testing.T) {
+	entries := make([]MergeEntry, 0)
+	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
+	entries = append(entries, MergeEntry{EntryV3{1, 0, 100, 1}, 1, 0})
+	entries = append(entries, MergeEntry{EntryV3{2, 100, 100, 1}, 0, 100})
+	entries = append(entries, MergeEntry{EntryV3{3, 100, 100, 1}, 1, 100})
+	entries = append(entries, MergeEntry{EntryV3{4, 0, 100, 1}, 1, 0}) // the backreference
+	remapped, addressedTiles, tileContents, length, _ := remapMergeEntries(entries, 2)
+	assert.Equal(t, uint64(400), length)
+	assert.Equal(t, uint64(5), addressedTiles)
+	assert.Equal(t, uint64(4), tileContents)
+	assert.Equal(t, uint64(100), remapped[4].Entry.Offset)
+	assert.Equal(t, uint64(0), remapped[4].InputOffset)
+}
