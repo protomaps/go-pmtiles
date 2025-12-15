@@ -1,7 +1,9 @@
 package pmtiles
 
 import (
+	"bytes"
 	"github.com/stretchr/testify/assert"
+	"io"
 	"testing"
 )
 
@@ -88,4 +90,99 @@ func TestRemapMergeEntriesBackreference(t *testing.T) {
 	assert.Equal(t, uint64(4), tileContents)
 	assert.Equal(t, uint64(100), remapped[4].Entry.Offset)
 	assert.Equal(t, uint64(0), remapped[4].InputOffset)
+}
+
+func TestValidateArchiveClustered(t *testing.T) {
+	var h1 HeaderV3
+	h1.Clustered = true
+	archive1 := fakeArchive(h1, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1, 2, 3},
+		{4, 1, 2}: {1, 2, 3}}, false, Gzip)
+	var h2 HeaderV3
+	archive2 := fakeArchive(h2, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1, 2, 3},
+		{4, 1, 2}: {1, 2, 3}}, false, Gzip)
+	_, _, err, errIdx := prepareInputs([]io.ReadSeeker{bytes.NewReader(archive1), bytes.NewReader(archive2)})
+	assert.ErrorContains(t, err, "must be clustered")
+	assert.Equal(t, 1, errIdx)
+}
+
+func TestValidateArchiveTileType(t *testing.T) {
+	var h1 HeaderV3
+	h1.Clustered = true
+	h1.TileType = Jpeg
+	archive1 := fakeArchive(h1, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1, 2, 3}}, false, Gzip)
+	var h2 HeaderV3
+	h2.Clustered = true
+	h2.TileType = Png
+	archive2 := fakeArchive(h2, map[string]interface{}{}, map[Zxy][]byte{
+		{4, 1, 2}: {1, 2, 3}}, false, Gzip)
+	_, _, err, errIdx := prepareInputs([]io.ReadSeeker{bytes.NewReader(archive1), bytes.NewReader(archive2)})
+	assert.ErrorContains(t, err, "png does not match jpg")
+	assert.Equal(t, 1, errIdx)
+}
+
+func TestValidateArchiveTileCompression(t *testing.T) {
+	var h1 HeaderV3
+	h1.Clustered = true
+	h1.TileType = UnknownTileType
+	h1.TileCompression = Gzip
+	archive1 := fakeArchive(h1, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1, 2, 3}}, false, Gzip)
+	var h2 HeaderV3
+	h2.Clustered = true
+	h2.TileType = UnknownTileType
+	h2.TileCompression = Brotli
+	archive2 := fakeArchive(h2, map[string]interface{}{}, map[Zxy][]byte{
+		{4, 1, 2}: {1, 2, 3}}, false, Gzip)
+	_, _, err, errIdx := prepareInputs([]io.ReadSeeker{bytes.NewReader(archive1), bytes.NewReader(archive2)})
+	assert.ErrorContains(t, err, "br does not match gzip")
+	assert.Equal(t, 1, errIdx)
+}
+
+func TestValidateArchiveInternalCompression(t *testing.T) {
+	var h1 HeaderV3
+	h1.Clustered = true
+	h1.TileType = UnknownTileType
+	archive1 := fakeArchive(h1, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1, 2, 3}}, false, NoCompression)
+	var h2 HeaderV3
+	h2.Clustered = true
+	h2.TileType = UnknownTileType
+	archive2 := fakeArchive(h2, map[string]interface{}{}, map[Zxy][]byte{
+		{4, 1, 2}: {1, 2, 3}}, false, Gzip)
+	_, _, err, errIdx := prepareInputs([]io.ReadSeeker{bytes.NewReader(archive1), bytes.NewReader(archive2)})
+	assert.ErrorContains(t, err, "gzip does not match none")
+	assert.Equal(t, 1, errIdx)
+}
+
+func TestValidateSuccess(t *testing.T) {
+	var h1 HeaderV3
+	h1.Clustered = true
+	archive1 := fakeArchive(h1, map[string]interface{}{}, map[Zxy][]byte{
+		{4, 1, 2}: {1, 2, 3}}, false, Gzip)
+	var h2 HeaderV3
+	h2.Clustered = true
+	archive2 := fakeArchive(h2, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1, 2, 3}}, false, Gzip)
+	_, mergeEntries, err, _ := prepareInputs([]io.ReadSeeker{bytes.NewReader(archive1), bytes.NewReader(archive2)})
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(mergeEntries))
+	assert.Equal(t, uint64(0), mergeEntries[0].Entry.TileID)
+}
+
+func TestValidateDisjoint(t *testing.T) {
+	var h1 HeaderV3
+	h1.Clustered = true
+	archive1 := fakeArchive(h1, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1, 2, 3},
+		{4, 1, 2}: {1, 2, 3}}, false, Gzip)
+	var h2 HeaderV3
+	h2.Clustered = true
+	archive2 := fakeArchive(h2, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1, 2, 3}}, false, Gzip)
+	_, _, err, errIdx := prepareInputs([]io.ReadSeeker{bytes.NewReader(archive1), bytes.NewReader(archive2)})
+	assert.ErrorContains(t, err, "1 overlapping tiles, starting with 0 0 0")
+	assert.Equal(t, 1, errIdx)
 }

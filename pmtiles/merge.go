@@ -30,7 +30,7 @@ type Remapping struct {
 // load N archives, validating that they are disjoint
 // returns a sorted list of MergeEntry
 // return a detailed error if the input archives are not disjoint
-func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error) {
+func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error, int) {
 	var headers []HeaderV3
 	var mergedEntries []MergeEntry
 	union := roaring64.New()
@@ -39,28 +39,32 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error) {
 		buf := make([]byte, HeaderV3LenBytes)
 		_, err := input.Read(buf)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, err, inputIdx
 		}
 		h, err := DeserializeHeader(buf)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, err, inputIdx
 		}
 		headers = append(headers, h)
 
 		// also validate the headers so we "fail fast"
 		if !h.Clustered {
-			return nil, nil, fmt.Errorf("Archive must be clustered")
+			return nil, nil, fmt.Errorf("must be clustered"), inputIdx
 		}
 
 		if inputIdx > 0 {
 			if h.TileType != headers[0].TileType {
-				return nil, nil, fmt.Errorf("Tile types do not match")
+				return nil, nil, fmt.Errorf("Tile type %s does not match %s", tileTypeToString(h.TileType), tileTypeToString(headers[0].TileType)), inputIdx
 			}
 			if h.TileCompression != headers[0].TileCompression {
-				return nil, nil, fmt.Errorf("Tile compressions do not match")
+				c1, _ := compressionToString(h.TileCompression)
+				c2, _ := compressionToString(headers[0].TileCompression)
+				return nil, nil, fmt.Errorf("Tile compression %s does not match %s", c1, c2), inputIdx
 			}
 			if h.InternalCompression != headers[0].InternalCompression {
-				return nil, nil, fmt.Errorf("Internal compressions do not match")
+				c1, _ := compressionToString(h.InternalCompression)
+				c2, _ := compressionToString(headers[0].InternalCompression)
+				return nil, nil, fmt.Errorf("Internal compression %s does not match %s", c1, c2), inputIdx
 			}
 		}
 
@@ -76,21 +80,23 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error) {
 			})
 
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, err, inputIdx
 		}
 
 		if union.Intersects(tileset) {
-			return nil, nil, fmt.Errorf("Tilesets intersect")
+			tmp := union.Clone()
+			tmp.And(tileset)
+			iz, ix, iy := IDToZxy(tmp.Minimum())
+			return nil, nil, fmt.Errorf("%d overlapping tiles, starting with %d %d %d", tmp.GetCardinality(), iz, ix, iy), inputIdx
 		}
 		union.Or(tileset)
 	}
 
-	// sort all MergeEntries
 	sort.Slice(mergedEntries, func(i, j int) bool {
 		return mergedEntries[i].Entry.TileID < mergedEntries[j].Entry.TileID
 	})
 
-	return nil, nil, nil
+	return headers, mergedEntries, nil, 0
 }
 
 func remapMergeEntries(entries []MergeEntry, numInputs int) ([]MergeEntry, uint64, uint64, uint64, error) {
@@ -193,9 +199,9 @@ func Merge(logger *log.Logger, inputs []string) error {
 		defer f.Close()
 	}
 
-	headers, mergedEntries, err := prepareInputs(handles)
+	headers, mergedEntries, err, errIdx := prepareInputs(handles)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s %w", inputs[errIdx], err)
 	}
 
 	renumberedEntries, addressedTiles, numTileContents, tileDataLength, err := remapMergeEntries(mergedEntries, len(headers))
@@ -208,6 +214,8 @@ func Merge(logger *log.Logger, inputs []string) error {
 		tmp[i] = renumberedEntries[i].Entry
 	}
 	rootBytes, leavesBytes, _ := optimizeDirectories(tmp, 16384-HeaderV3LenBytes, Gzip)
+
+	logger.Printf("Copying center and JSON metadata from first input %s", inputs[0])
 
 	var header HeaderV3
 	header.RootOffset = HeaderV3LenBytes
@@ -232,7 +240,9 @@ func Merge(logger *log.Logger, inputs []string) error {
 	header.MinLatE7 = minLatE7
 	header.MaxLonE7 = maxLonE7
 	header.MaxLatE7 = maxLatE7
-	// TODO: construct a new center
+	header.CenterLonE7 = headers[0].CenterLonE7
+	header.CenterLatE7 = headers[0].CenterLatE7
+	header.CenterZoom = headers[0].CenterZoom
 
 	mergeOps := batchMergeEntries(renumberedEntries, len(headers))
 
@@ -251,7 +261,6 @@ func Merge(logger *log.Logger, inputs []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Copying JSON metadata from first input archive")
 	firstHandle := handles[0]
 	firstHandle.Seek(int64(headers[0].MetadataOffset), io.SeekStart)
 	io.CopyN(output, firstHandle, int64(headers[0].MetadataLength))
