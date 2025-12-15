@@ -37,8 +37,14 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error) {
 
 	for inputIdx, input := range inputs {
 		buf := make([]byte, HeaderV3LenBytes)
-		_, _ = input.Read(buf)
-		h, _ := DeserializeHeader(buf)
+		_, err := input.Read(buf)
+		if err != nil {
+			return nil, nil, err
+		}
+		h, err := DeserializeHeader(buf)
+		if err != nil {
+			return nil, nil, err
+		}
 		headers = append(headers, h)
 
 		// also validate the headers so we "fail fast"
@@ -59,7 +65,7 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error) {
 		}
 
 		tileset := roaring64.New()
-		_ = IterateEntries(h,
+		err = IterateEntries(h,
 			func(offset uint64, length uint64) ([]byte, error) {
 				input.Seek(int64(offset), io.SeekStart)
 				return io.ReadAll(io.LimitReader(input, int64(length)))
@@ -68,6 +74,10 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error) {
 				tileset.AddRange(e.TileID, e.TileID+uint64(e.RunLength))
 				mergedEntries = append(mergedEntries, MergeEntry{Entry: e, InputOffset: e.Offset, InputIdx: inputIdx})
 			})
+
+		if err != nil {
+			return nil, nil, err
+		}
 
 		if union.Intersects(tileset) {
 			return nil, nil, fmt.Errorf("Tilesets intersect")
@@ -175,7 +185,10 @@ func Merge(logger *log.Logger, inputs []string) error {
 	var handles []io.ReadSeeker
 
 	for _, name := range inputs[:len(inputs)-1] {
-		f, _ := os.OpenFile(name, os.O_RDONLY, 0666)
+		f, err := os.OpenFile(name, os.O_RDONLY, 0666)
+		if err != nil {
+			return err
+		}
 		handles = append(handles, f)
 		defer f.Close()
 	}
@@ -223,18 +236,30 @@ func Merge(logger *log.Logger, inputs []string) error {
 
 	mergeOps := batchMergeEntries(renumberedEntries, len(headers))
 
-	output, _ := os.Create(inputs[len(inputs)-1])
+	output, err := os.Create(inputs[len(inputs)-1])
+	if err != nil {
+		return err
+	}
 	defer output.Close()
 
 	headerBytes := SerializeHeader(header)
-	_, _ = output.Write(headerBytes)
-	_, _ = output.Write(rootBytes)
-	fmt.Println("Copying JSON metadata from first input element")
+	_, err = output.Write(headerBytes)
+	if err != nil {
+		return err
+	}
+	_, err = output.Write(rootBytes)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Copying JSON metadata from first input archive")
 	firstHandle := handles[0]
 	firstHandle.Seek(int64(headers[0].MetadataOffset), io.SeekStart)
 	io.CopyN(output, firstHandle, int64(headers[0].MetadataLength))
 
-	_, _ = output.Write(leavesBytes)
+	_, err = output.Write(leavesBytes)
+	if err != nil {
+		return err
+	}
 
 	for _, handle := range handles {
 		handle.Seek(0, io.SeekStart)
@@ -242,7 +267,10 @@ func Merge(logger *log.Logger, inputs []string) error {
 
 	for _, op := range mergeOps {
 		handle := handles[op.InputIdx]
-		io.CopyN(output, handle, int64(op.Length))
+		_, err := io.CopyN(output, handle, int64(op.Length))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
