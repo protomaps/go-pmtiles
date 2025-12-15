@@ -104,6 +104,7 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error, int
 // changes each Entry to be contiguous in the new archive.
 // also handles deduplicated backreferences
 func remapMergeEntries(entries []MergeEntry, numInputs int) ([]MergeEntry, uint64, uint64, uint64, error) {
+
 	acc := uint64(0)
 	addressedTiles := uint64(0)
 	tileContents := 0
@@ -111,7 +112,7 @@ func remapMergeEntries(entries []MergeEntry, numInputs int) ([]MergeEntry, uint6
 
 	for idx, me := range entries {
 		remapping := remappings[me.InputIdx]
-		if len(remapping) > 0 && me.InputOffset < remappings[me.InputIdx][len(remapping)-1].SrcOffset {
+		if len(remapping) > 0 && me.InputOffset <= remapping[len(remapping)-1].SrcOffset {
 			// find the original offset in the remapping slice
 			i, ok := slices.BinarySearchFunc(remapping, me.InputOffset, func(r Remapping, k uint64) int {
 				switch {
@@ -137,25 +138,30 @@ func remapMergeEntries(entries []MergeEntry, numInputs int) ([]MergeEntry, uint6
 
 		addressedTiles += uint64(entries[idx].Entry.RunLength)
 	}
+
 	return entries, addressedTiles, uint64(tileContents), acc, nil
 }
 
 // combines contiguous I/O operations and eliminate backreferences from the copy operation.
 func batchMergeEntries(entries []MergeEntry, numInputs int) []MergeOp {
-	lastOffset := make([]uint64, numInputs)
+	lastOffset := make([]int64, numInputs)
+	for i := range lastOffset {
+	lastOffset[i] = -1
+}	
+	lastLength := make([]uint32, numInputs)
 	var mergeOps []MergeOp
 	for _, me := range entries {
-		if me.InputOffset < lastOffset[me.InputIdx] {
-			continue
+		if int64(me.InputOffset) > lastOffset[me.InputIdx] {
+			last := len(mergeOps) - 1
+			entryLength := uint64(me.Entry.Length)
+			if last >= 0 && (mergeOps[last].InputIdx == me.InputIdx) && (int64(me.InputOffset) == lastOffset[me.InputIdx]+int64(lastLength[me.InputIdx])) {
+				mergeOps[last].Length += entryLength
+			} else {
+				mergeOps = append(mergeOps, MergeOp{InputIdx: me.InputIdx, Length: entryLength})
+			}
+			lastOffset[me.InputIdx] = int64(me.InputOffset)
+			lastLength[me.InputIdx] = me.Entry.Length
 		}
-		last := len(mergeOps) - 1
-		entryLength := uint64(me.Entry.Length)
-		if last >= 0 && (mergeOps[last].InputIdx == me.InputIdx) && (me.InputOffset == lastOffset[me.InputIdx]+mergeOps[last].Length) {
-			mergeOps[last].Length += entryLength
-		} else {
-			mergeOps = append(mergeOps, MergeOp{InputIdx: me.InputIdx, Length: entryLength})
-		}
-		lastOffset[me.InputIdx] = me.InputOffset
 	}
 	return mergeOps
 }
