@@ -27,9 +27,10 @@ type Remapping struct {
 	DstOffset uint64
 }
 
-// load N archives, validating that they are disjoint
-// returns a sorted list of MergeEntry
-// return a detailed error if the input archives are not disjoint
+// load N archives, validating that they are mergeable and disjoint.
+// returns a formatted error and index of the mismatched archive if not.
+// if valid, retruns a sorted list of MergeEntry records, each containing a directory Entry
+// but with offset values referring to the original input archive.
 func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error, int) {
 	var headers []HeaderV3
 	var mergedEntries []MergeEntry
@@ -49,22 +50,22 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error, int
 
 		// also validate the headers so we "fail fast"
 		if !h.Clustered {
-			return nil, nil, fmt.Errorf("must be clustered"), inputIdx
+			return nil, nil, fmt.Errorf("is not clustered"), inputIdx
 		}
 
 		if inputIdx > 0 {
 			if h.TileType != headers[0].TileType {
-				return nil, nil, fmt.Errorf("Tile type %s does not match %s", tileTypeToString(h.TileType), tileTypeToString(headers[0].TileType)), inputIdx
+				return nil, nil, fmt.Errorf("tile type %s does not match %s", tileTypeToString(h.TileType), tileTypeToString(headers[0].TileType)), inputIdx
 			}
 			if h.TileCompression != headers[0].TileCompression {
 				c1, _ := compressionToString(h.TileCompression)
 				c2, _ := compressionToString(headers[0].TileCompression)
-				return nil, nil, fmt.Errorf("Tile compression %s does not match %s", c1, c2), inputIdx
+				return nil, nil, fmt.Errorf("tile compression %s does not match %s", c1, c2), inputIdx
 			}
 			if h.InternalCompression != headers[0].InternalCompression {
 				c1, _ := compressionToString(h.InternalCompression)
 				c2, _ := compressionToString(headers[0].InternalCompression)
-				return nil, nil, fmt.Errorf("Internal compression %s does not match %s", c1, c2), inputIdx
+				return nil, nil, fmt.Errorf("internal compression %s does not match %s", c1, c2), inputIdx
 			}
 		}
 
@@ -99,6 +100,9 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error, int
 	return headers, mergedEntries, nil, 0
 }
 
+// remaps a sorted slice of MergeEntry
+// changes each Entry to be contiguous in the new archive.
+// also handles deduplicated backreferences
 func remapMergeEntries(entries []MergeEntry, numInputs int) ([]MergeEntry, uint64, uint64, uint64, error) {
 	acc := uint64(0)
 	addressedTiles := uint64(0)
@@ -122,7 +126,7 @@ func remapMergeEntries(entries []MergeEntry, numInputs int) ([]MergeEntry, uint6
 			if ok {
 				entries[idx].Entry.Offset = remapping[i].DstOffset
 			} else {
-				return nil, 0, 0, 0, fmt.Errorf("Clustered archive has out-of-order entries")
+				return nil, 0, 0, 0, fmt.Errorf("clustered archive has out-of-order entries")
 			}
 		} else {
 			entries[idx].Entry.Offset = acc
@@ -136,7 +140,7 @@ func remapMergeEntries(entries []MergeEntry, numInputs int) ([]MergeEntry, uint6
 	return entries, addressedTiles, uint64(tileContents), acc, nil
 }
 
-// combines contiguous I/O operations and eliminate backreferences
+// combines contiguous I/O operations and eliminate backreferences from the copy operation.
 func batchMergeEntries(entries []MergeEntry, numInputs int) []MergeOp {
 	lastOffset := make([]uint64, numInputs)
 	var mergeOps []MergeOp
@@ -201,7 +205,7 @@ func Merge(logger *log.Logger, inputs []string) error {
 
 	headers, mergedEntries, err, errIdx := prepareInputs(handles)
 	if err != nil {
-		return fmt.Errorf("%s %w", inputs[errIdx], err)
+		return fmt.Errorf("%s: %w", inputs[errIdx], err)
 	}
 
 	renumberedEntries, addressedTiles, numTileContents, tileDataLength, err := remapMergeEntries(mergedEntries, len(headers))
