@@ -242,7 +242,6 @@ func Merge(logger *log.Logger, inputs []string) error {
 
 	for _, op := range mergeOps {
 		handle := handles[op.InputIdx]
-		// handle.Seek(int64(headers[op.InputIdx].TileDataOffset)+int64(op.InputOffset), io.SeekStart)
 		io.CopyN(output, handle, int64(op.Length))
 	}
 
