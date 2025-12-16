@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/cespare/xxhash/v2"
 	"github.com/dustin/go-humanize"
-	"github.com/schollz/progressbar/v3"
 	"golang.org/x/sync/errgroup"
 	"io"
 	"log"
@@ -85,11 +84,14 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 	if err != nil {
 		return err
 	}
-	bar := progressbar.DefaultBytes(
-		resp.ContentLength,
-		"downloading syncfile",
-	)
-	bufferedReader = bufio.NewReader(io.TeeReader(resp.Body, bar))
+	var progress Progress
+	progressWriter := getProgressWriter()
+	if progressWriter != nil {
+		progress = progressWriter.NewBytesProgress(resp.ContentLength, "downloading syncfile")
+		bufferedReader = bufio.NewReader(io.TeeReader(resp.Body, progress))
+	} else {
+		bufferedReader = bufio.NewReader(resp.Body)
+	}
 
 	var syncHeader syncHeader
 	jsonBytes, _ := bufferedReader.ReadSlice('\n')
@@ -97,7 +99,9 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 	json.Unmarshal(jsonBytes, &syncHeader)
 
 	blocks := deserializeSyncBlocks(syncHeader.NumBlocks, bufferedReader)
-	bar.Close()
+	if progress != nil {
+		progress.Close()
+	}
 
 	ctx := context.Background()
 
@@ -122,10 +126,10 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 		return fmt.Errorf("archive must be clustered for sync")
 	}
 
-	bar = progressbar.Default(
-		int64(len(blocks)),
-		"calculating diff",
-	)
+	var diffProgress Progress
+	if progressWriter != nil {
+		diffProgress = progressWriter.NewCountProgress(int64(len(blocks)), "calculating diff")
+	}
 
 	wanted := make([]syncBlock, 0)
 	have := make([]srcDstRange, 0)
@@ -172,13 +176,17 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 					mu.Lock()
 					wanted = append(wanted, blocks[idx])
 					mu.Unlock()
-					bar.Add(1)
+					if diffProgress != nil {
+						diffProgress.Add(1)
+					}
 					idx = idx + 1
 				}
 
 				if e.TileID == blocks[idx].Start {
 					tasks <- syncTask{NewBlock: blocks[idx], OldOffset: e.Offset}
-					bar.Add(1)
+					if diffProgress != nil {
+						diffProgress.Add(1)
+					}
 					idx = idx + 1
 				}
 			}
@@ -193,7 +201,9 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 		mu.Lock()
 		wanted = append(wanted, blocks[idx])
 		mu.Unlock()
-		bar.Add(1)
+		if diffProgress != nil {
+			diffProgress.Add(1)
+		}
 		idx = idx + 1
 	}
 
@@ -282,36 +292,45 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", newHeader.LeafDirectoryOffset, newHeader.LeafDirectoryOffset+newHeader.LeafDirectoryLength-1))
 		resp, err = client.Do(req)
 
-		leafBar := progressbar.DefaultBytes(
-			int64(newHeader.LeafDirectoryLength),
-			"downloading leaf directories",
-		)
-		io.Copy(leafWriter, io.TeeReader(resp.Body, leafBar))
-		leafBar.Close()
+		var leafProgress Progress
+		if progressWriter != nil {
+			leafProgress = progressWriter.NewBytesProgress(int64(newHeader.LeafDirectoryLength), "downloading leaf directories")
+			io.Copy(leafWriter, io.TeeReader(resp.Body, leafProgress))
+			leafProgress.Close()
+		} else {
+			io.Copy(leafWriter, resp.Body)
+		}
 
-		fmt.Println(len(have), "local chunks")
-		bar := progressbar.DefaultBytes(
-			int64(totalRemoteBytes-toTransfer),
-			"copying local chunks",
-		)
+		var copyProgress Progress
+		if !quietMode {
+			fmt.Println(len(have), "local chunks")
+		}
+		if progressWriter != nil {
+			copyProgress = progressWriter.NewBytesProgress(int64(totalRemoteBytes-toTransfer), "copying local chunks")
+		}
 
 		// write the tile data (from local)
 		for _, h := range haveRanges {
 			chunkWriter := io.NewOffsetWriter(outfile, int64(newHeader.TileDataOffset+h.DstOffset))
 			r := io.NewSectionReader(oldFile, int64(oldHeader.TileDataOffset+h.SrcOffset), int64(h.Length))
-			io.Copy(io.MultiWriter(chunkWriter, bar), r)
+			if copyProgress != nil {
+				io.Copy(io.MultiWriter(chunkWriter, copyProgress), r)
+			} else {
+				io.Copy(chunkWriter, r)
+			}
 		}
 
 		oldFile.Close()
 
 		// write the tile data (from remote)
 		multiRanges := makeMultiRanges(ranges, int64(newHeader.TileDataOffset), 1048576-200)
-		fmt.Println("Batched into http requests", len(multiRanges))
-
-		bar = progressbar.DefaultBytes(
-			int64(toTransfer),
-			"fetching remote chunks",
-		)
+		var fetchProgress Progress
+		if !quietMode {
+			fmt.Println("Batched into http requests", len(multiRanges))
+		}
+		if progressWriter != nil {
+			fetchProgress = progressWriter.NewBytesProgress(int64(toTransfer), "fetching remote chunks")
+		}
 
 		downloadPart := func(task multiRange) error {
 			req, err := http.NewRequest("GET", newVersion, nil)
@@ -332,7 +351,11 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 				part, _ := mr.NextPart()
 				_ = part.Header.Get("Content-Range")
 				chunkWriter := io.NewOffsetWriter(outfile, int64(newHeader.TileDataOffset+r.DstOffset))
-				io.Copy(io.MultiWriter(chunkWriter, bar), part)
+				if fetchProgress != nil {
+					io.Copy(io.MultiWriter(chunkWriter, fetchProgress), part)
+				} else {
+					io.Copy(chunkWriter, part)
+				}
 			}
 			return nil
 		}

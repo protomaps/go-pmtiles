@@ -6,3 +6,4 @@ go-pmtiles
 *.json
 *.geojson
 *.tsv.gz
+examples/*.pmtiles

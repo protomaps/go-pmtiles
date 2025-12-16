@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/schollz/progressbar/v3"
 	"io"
 	"io/ioutil"
 	"log"
@@ -110,31 +109,64 @@ func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetad
 	newHeader.LeafDirectoryOffset = newHeader.MetadataOffset + newHeader.MetadataLength
 	newHeader.TileDataOffset = newHeader.LeafDirectoryOffset + newHeader.LeafDirectoryLength
 
-	bar := progressbar.DefaultBytes(
-		int64(HeaderV3LenBytes+newHeader.RootLength+uint64(len(metadataBytes))+newHeader.LeafDirectoryLength+newHeader.TileDataLength),
-		"writing file",
-	)
-
 	buf = SerializeHeader(newHeader)
-	io.Copy(io.MultiWriter(outfile, bar), bytes.NewReader(buf))
 
-	rootSection := io.NewSectionReader(file, int64(oldHeader.RootOffset), int64(oldHeader.RootLength))
-	if _, err := io.Copy(io.MultiWriter(outfile, bar), rootSection); err != nil {
-		return err
+	var progress Progress
+	progressWriter := getProgressWriter()
+	if progressWriter != nil {
+		progress = progressWriter.NewBytesProgress(
+			int64(HeaderV3LenBytes+newHeader.RootLength+uint64(len(metadataBytes))+newHeader.LeafDirectoryLength+newHeader.TileDataLength),
+			"writing file",
+		)
 	}
 
-	if _, err := io.Copy(io.MultiWriter(outfile, bar), bytes.NewReader(metadataBytes)); err != nil {
-		return err
+	if progress != nil {
+		io.Copy(io.MultiWriter(outfile, progress), bytes.NewReader(buf))
+	} else {
+		io.Copy(outfile, bytes.NewReader(buf))
+	}
+
+	rootSection := io.NewSectionReader(file, int64(oldHeader.RootOffset), int64(oldHeader.RootLength))
+	if progress != nil {
+		if _, err := io.Copy(io.MultiWriter(outfile, progress), rootSection); err != nil {
+			return err
+		}
+	} else {
+		if _, err := io.Copy(outfile, rootSection); err != nil {
+			return err
+		}
+	}
+
+	if progress != nil {
+		if _, err := io.Copy(io.MultiWriter(outfile, progress), bytes.NewReader(metadataBytes)); err != nil {
+			return err
+		}
+	} else {
+		if _, err := io.Copy(outfile, bytes.NewReader(metadataBytes)); err != nil {
+			return err
+		}
 	}
 
 	leafSection := io.NewSectionReader(file, int64(oldHeader.LeafDirectoryOffset), int64(oldHeader.LeafDirectoryLength))
-	if _, err := io.Copy(io.MultiWriter(outfile, bar), leafSection); err != nil {
-		return err
+	if progress != nil {
+		if _, err := io.Copy(io.MultiWriter(outfile, progress), leafSection); err != nil {
+			return err
+		}
+	} else {
+		if _, err := io.Copy(outfile, leafSection); err != nil {
+			return err
+		}
 	}
 
 	tileSection := io.NewSectionReader(file, int64(oldHeader.TileDataOffset), int64(oldHeader.TileDataLength))
-	if _, err := io.Copy(io.MultiWriter(outfile, bar), tileSection); err != nil {
-		return err
+	if progress != nil {
+		if _, err := io.Copy(io.MultiWriter(outfile, progress), tileSection); err != nil {
+			return err
+		}
+	} else {
+		if _, err := io.Copy(outfile, tileSection); err != nil {
+			return err
+		}
 	}
 
 	// explicitly close in order to rename
