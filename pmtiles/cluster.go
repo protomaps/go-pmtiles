@@ -2,7 +2,6 @@ package pmtiles
 
 import (
 	"fmt"
-	"github.com/schollz/progressbar/v3"
 	"io"
 	"log"
 	"os"
@@ -41,7 +40,7 @@ func Cluster(logger *log.Logger, InputPMTiles string, deduplicate bool) error {
 		return err
 	}
 
-	bar := progressbar.Default(int64(header.TileEntriesCount))
+	bar := defaultProgressbar(logger, int64(header.TileEntriesCount))
 
 	err = IterateEntries(header,
 		func(offset uint64, length uint64) ([]byte, error) {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/schollz/progressbar/v3"
 	"io"
 	"io/ioutil"
 	"log"
@@ -13,7 +12,7 @@ import (
 
 // Edit parts of the header or metadata.
 // works in-place if only the header is modified.
-func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetadataFile string) error {
+func Edit(logger *log.Logger, inputArchive string, newHeaderJSONFile string, newMetadataFile string) error {
 	if newHeaderJSONFile == "" && newMetadataFile == "" {
 		return fmt.Errorf("must supply --header-json and/or --metadata to edit")
 	}
@@ -110,7 +109,8 @@ func Edit(_ *log.Logger, inputArchive string, newHeaderJSONFile string, newMetad
 	newHeader.LeafDirectoryOffset = newHeader.MetadataOffset + newHeader.MetadataLength
 	newHeader.TileDataOffset = newHeader.LeafDirectoryOffset + newHeader.LeafDirectoryLength
 
-	bar := progressbar.DefaultBytes(
+	bar := defaultBytesProgressbar(
+		logger,
 		int64(HeaderV3LenBytes+newHeader.RootLength+uint64(len(metadataBytes))+newHeader.LeafDirectoryLength+newHeader.TileDataLength),
 		"writing file",
 	)
