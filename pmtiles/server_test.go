@@ -2,14 +2,12 @@ package pmtiles
 
 import (
 	"context"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"sort"
 	"testing"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stretchr/testify/assert"
 )
 
 var testResponse = []byte("bar")
@@ -50,56 +48,6 @@ func TestRegex(t *testing.T) {
 	assert.Equal(t, key, "!-_.*'()")
 }
 
-func fakeArchive(t *testing.T, header HeaderV3, metadata map[string]interface{}, tiles map[Zxy][]byte, leaves bool, internalCompression Compression) []byte {
-	byTileID := make(map[uint64][]byte)
-	keys := make([]uint64, 0, len(tiles))
-	for zxy, bytes := range tiles {
-		header.MaxZoom = max(header.MaxZoom, zxy.Z)
-		id := ZxyToID(zxy.Z, zxy.X, zxy.Y)
-		byTileID[id] = bytes
-		keys = append(keys, id)
-	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
-	resolver := newResolver(false, false)
-	tileDataBytes := make([]byte, 0)
-	for _, id := range keys {
-		tileBytes := byTileID[id]
-		resolver.AddTileIsNew(id, tileBytes, 1)
-		tileDataBytes = append(tileDataBytes, tileBytes...)
-	}
-
-	metadataBytes, _ := SerializeMetadata(metadata, internalCompression)
-	var rootBytes []byte
-	var leavesBytes []byte
-	if leaves {
-		rootBytes, leavesBytes, _ = buildRootsLeaves(resolver.Entries, 1, internalCompression)
-	} else {
-		rootBytes = SerializeEntries(resolver.Entries, internalCompression)
-		leavesBytes = make([]byte, 0)
-	}
-
-	header.InternalCompression = internalCompression
-	if header.TileType == Mvt {
-		header.TileCompression = Gzip
-	}
-
-	header.RootOffset = HeaderV3LenBytes
-	header.RootLength = uint64(len(rootBytes))
-	header.MetadataOffset = header.RootOffset + header.RootLength
-	header.MetadataLength = uint64(len(metadataBytes))
-	header.LeafDirectoryOffset = header.MetadataOffset + header.MetadataLength
-	header.LeafDirectoryLength = uint64(len(leavesBytes))
-	header.TileDataOffset = header.LeafDirectoryOffset + header.LeafDirectoryLength
-	header.TileDataLength = resolver.Offset
-
-	archiveBytes := SerializeHeader(header)
-	archiveBytes = append(archiveBytes, rootBytes...)
-	archiveBytes = append(archiveBytes, metadataBytes...)
-	archiveBytes = append(archiveBytes, leavesBytes...)
-	archiveBytes = append(archiveBytes, tileDataBytes...)
-	return archiveBytes
-}
-
 func newServer(t *testing.T) (mockBucket, *Server) {
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	bucket := mockBucket{make(map[string][]byte)}
@@ -134,7 +82,7 @@ func TestMvtEmptyArchiveReads(t *testing.T) {
 	header := HeaderV3{
 		TileType: Mvt,
 	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{}, false, Gzip)
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{}, false, Gzip)
 
 	statusCode, _, _ := server.Get(context.Background(), "/")
 	assert.Equal(t, 204, statusCode)
@@ -162,7 +110,7 @@ func TestReadMetadata(t *testing.T) {
 	header := HeaderV3{
 		TileType: Mvt,
 	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{
 		"vector_layers": []map[string]string{{"id": "layer1"}},
 		"attribution":   "Attribution",
 		"description":   "Description",
@@ -207,7 +155,7 @@ func TestReadMetadataNoCompression(t *testing.T) {
 	header := HeaderV3{
 		TileType: Mvt,
 	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{
 		"vector_layers": []map[string]string{{"id": "layer1"}},
 	}, map[Zxy][]byte{}, false, NoCompression)
 
@@ -225,7 +173,7 @@ func TestReadTiles(t *testing.T) {
 	header := HeaderV3{
 		TileType: Mvt,
 	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
 		{0, 0, 0}: {0, 1, 2, 3},
 		{4, 1, 2}: {1, 2, 3},
 	}, false, Gzip)
@@ -251,7 +199,7 @@ func TestReadTilesFromLeaves(t *testing.T) {
 	header := HeaderV3{
 		TileType: Mvt,
 	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
 		{0, 0, 0}: {0, 1, 2, 3},
 		{4, 1, 2}: {1, 2, 3},
 	}, true, Gzip)
@@ -271,7 +219,7 @@ func TestReadTilesFromLeavesNoCompression(t *testing.T) {
 	header := HeaderV3{
 		TileType: Mvt,
 	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
 		{0, 0, 0}: {0, 1, 2, 3},
 		{4, 1, 2}: {1, 2, 3},
 	}, true, NoCompression)
@@ -286,7 +234,7 @@ func TestInvalidateCacheOnTileRequest(t *testing.T) {
 	header := HeaderV3{
 		TileType: Mvt,
 	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
 		{0, 0, 0}: {0, 1, 2, 3},
 	}, false, Gzip)
 
@@ -294,7 +242,7 @@ func TestInvalidateCacheOnTileRequest(t *testing.T) {
 	assert.Equal(t, 200, statusCode)
 	assert.Equal(t, []byte{0, 1, 2, 3}, data)
 
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
 		{0, 0, 0}: {4, 5, 6, 7},
 	}, false, Gzip)
 
@@ -308,7 +256,7 @@ func TestInvalidateCacheOnDirRequest(t *testing.T) {
 	header := HeaderV3{
 		TileType: Mvt,
 	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
 		{0, 0, 0}: {0, 1},
 		{1, 1, 1}: {2, 3},
 	}, true, Gzip)
@@ -318,7 +266,7 @@ func TestInvalidateCacheOnDirRequest(t *testing.T) {
 	assert.Equal(t, 200, statusCode)
 	assert.Equal(t, []byte{0, 1}, data)
 
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
 		{0, 0, 0}: {4, 5},
 		{1, 1, 1}: {6, 7},
 	}, false, Gzip)
@@ -337,7 +285,7 @@ func TestInvalidateCacheOnTileJSONRequest(t *testing.T) {
 	header := HeaderV3{
 		TileType: Mvt,
 	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
 		{0, 0, 0}: {0, 1},
 		{1, 1, 1}: {2, 3},
 	}, false, Gzip)
@@ -358,7 +306,7 @@ func TestInvalidateCacheOnTileJSONRequest(t *testing.T) {
 		TileType:   Mvt,
 		CenterZoom: 4,
 	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
 		{0, 0, 0}: {0, 1},
 		{1, 1, 1}: {2, 3},
 	}, false, Gzip)
@@ -381,7 +329,7 @@ func TestInvalidateCacheOnMetadataRequest(t *testing.T) {
 	header := HeaderV3{
 		TileType: Mvt,
 	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{
 		"meta": "data",
 	}, map[Zxy][]byte{
 		{0, 0, 0}: {0, 1},
@@ -393,7 +341,7 @@ func TestInvalidateCacheOnMetadataRequest(t *testing.T) {
 		"meta": "data"
 	}`, string(data))
 
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{
 		"meta": "data2",
 	}, map[Zxy][]byte{
 		{0, 0, 0}: {0, 1},
@@ -411,7 +359,7 @@ func TestEtagResponsesFromTile(t *testing.T) {
 	header := HeaderV3{
 		TileType: Mvt,
 	}
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
 		{0, 0, 0}: {0, 1, 2, 3},
 		{4, 1, 2}: {1, 2, 3},
 	}, false, Gzip)
@@ -423,7 +371,7 @@ func TestEtagResponsesFromTile(t *testing.T) {
 	statusCode, headers311v1, _ := server.Get(context.Background(), "/archive/3/1/1.mvt")
 	assert.Equal(t, 204, statusCode)
 
-	mockBucket.items["archive.pmtiles"] = fakeArchive(t, header, map[string]interface{}{}, map[Zxy][]byte{
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
 		{0, 0, 0}: {0, 1, 2, 3},
 		{4, 1, 2}: {1, 2, 3, 4}, // different
 	}, false, Gzip)

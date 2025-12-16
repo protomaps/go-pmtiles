@@ -4,8 +4,59 @@ import (
 	"bytes"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
+	"sort"
 	"testing"
 )
+
+func fakeArchive(header HeaderV3, metadata map[string]interface{}, tiles map[Zxy][]byte, leaves bool, internalCompression Compression) []byte {
+	byTileID := make(map[uint64][]byte)
+	keys := make([]uint64, 0, len(tiles))
+	for zxy, bytes := range tiles {
+		header.MaxZoom = max(header.MaxZoom, zxy.Z)
+		id := ZxyToID(zxy.Z, zxy.X, zxy.Y)
+		byTileID[id] = bytes
+		keys = append(keys, id)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	resolver := newResolver(false, false)
+	tileDataBytes := make([]byte, 0)
+	for _, id := range keys {
+		tileBytes := byTileID[id]
+		resolver.AddTileIsNew(id, tileBytes, 1)
+		tileDataBytes = append(tileDataBytes, tileBytes...)
+	}
+
+	metadataBytes, _ := SerializeMetadata(metadata, internalCompression)
+	var rootBytes []byte
+	var leavesBytes []byte
+	if leaves {
+		rootBytes, leavesBytes, _ = buildRootsLeaves(resolver.Entries, 1, internalCompression)
+	} else {
+		rootBytes = SerializeEntries(resolver.Entries, internalCompression)
+		leavesBytes = make([]byte, 0)
+	}
+
+	header.InternalCompression = internalCompression
+	if header.TileType == Mvt {
+		header.TileCompression = Gzip
+	}
+
+	header.RootOffset = HeaderV3LenBytes
+	header.RootLength = uint64(len(rootBytes))
+	header.MetadataOffset = header.RootOffset + header.RootLength
+	header.MetadataLength = uint64(len(metadataBytes))
+	header.LeafDirectoryOffset = header.MetadataOffset + header.MetadataLength
+	header.LeafDirectoryLength = uint64(len(leavesBytes))
+	header.TileDataOffset = header.LeafDirectoryOffset + header.LeafDirectoryLength
+	header.TileDataLength = resolver.Offset
+
+	archiveBytes := SerializeHeader(header)
+	archiveBytes = append(archiveBytes, rootBytes...)
+	archiveBytes = append(archiveBytes, metadataBytes...)
+	archiveBytes = append(archiveBytes, leavesBytes...)
+	archiveBytes = append(archiveBytes, tileDataBytes...)
+	return archiveBytes
+}
 
 func TestDirectoryRoundtrip(t *testing.T) {
 	entries := make([]EntryV3, 0)
