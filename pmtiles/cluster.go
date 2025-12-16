@@ -65,6 +65,6 @@ func Cluster(logger *log.Logger, InputPMTiles string, deduplicate bool) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("total directory size %d (%f%% of original)\n", newHeader.RootLength+newHeader.LeafDirectoryLength, float64(newHeader.RootLength+newHeader.LeafDirectoryLength)/float64(header.RootLength+header.LeafDirectoryLength)*100)
+	logger.Printf("total directory size %d (%f%% of original)\n", newHeader.RootLength+newHeader.LeafDirectoryLength, float64(newHeader.RootLength+newHeader.LeafDirectoryLength)/float64(header.RootLength+header.LeafDirectoryLength)*100)
 	return nil
 }

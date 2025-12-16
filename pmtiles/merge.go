@@ -3,7 +3,6 @@ package pmtiles
 import (
 	"fmt"
 	"github.com/RoaringBitmap/roaring/roaring64"
-	"github.com/schollz/progressbar/v3"
 	"io"
 	"log"
 	"math"
@@ -290,7 +289,8 @@ func Merge(logger *log.Logger, inputs []string) error {
 		handle.Seek(int64(headers[idx].TileDataOffset), io.SeekStart)
 	}
 
-	bar := progressbar.DefaultBytes(
+	bar := defaultBytesProgressbar(
+		logger,
 		int64(tileDataLength),
 		"merging tile data",
 	)

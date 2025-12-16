@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -28,6 +29,8 @@ var (
 )
 
 var cli struct {
+	Quiet bool `help:"Silence logging and progress output" short:"q"`
+
 	Show struct {
 		Path       string `arg:""`
 		Bucket     string `help:"Remote bucket"`
@@ -126,6 +129,9 @@ func main() {
 
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 	ctx := kong.Parse(&cli)
+	if cli.Quiet {
+		logger.SetOutput(io.Discard)
+	}
 
 	switch ctx.Command() {
 	case "show <path>":

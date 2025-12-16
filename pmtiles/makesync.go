@@ -197,6 +197,6 @@ func Makesync(logger *log.Logger, cliVersion string, fileName string, blockSizeK
 
 	serializeSyncBlocks(output, blocks)
 
-	fmt.Printf("Created syncfile with %d blocks.\n", len(blocks))
+	logger.Printf("Created syncfile with %d blocks.\n", len(blocks))
 	return nil
 }

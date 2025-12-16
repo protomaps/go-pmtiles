@@ -370,7 +370,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 
 	overfetchLeaves, _ := MergeRanges(leafRanges, overfetch)
 	numOverfetchLeaves := overfetchLeaves.Len()
-	fmt.Printf("fetching %d dirs, %d chunks, %d requests\n", len(leaves), len(leafRanges), overfetchLeaves.Len())
+	logger.Printf("fetching %d dirs, %d chunks, %d requests\n", len(leaves), len(leafRanges), overfetchLeaves.Len())
 
 	for {
 		if overfetchLeaves.Len() == 0 {
@@ -410,7 +410,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		return tileEntries[i].TileID < tileEntries[j].TileID
 	})
 
-	fmt.Printf("Region tiles %d, result tile entries %d\n", relevantSet.GetCardinality(), len(tileEntries))
+	logger.Printf("Region tiles %d, result tile entries %d\n", relevantSet.GetCardinality(), len(tileEntries))
 
 	// 6. create the new header and chunk list
 	// we now need to re-encode this entry list using cumulative offsets
@@ -419,7 +419,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 	overfetchRanges, totalBytes := MergeRanges(tileParts, overfetch)
 
 	numOverfetchRanges := overfetchRanges.Len()
-	fmt.Printf("fetching %d tiles, %d chunks, %d requests\n", len(reencoded), len(tileParts), overfetchRanges.Len())
+	logger.Printf("fetching %d tiles, %d chunks, %d requests\n", len(reencoded), len(tileParts), overfetchRanges.Len())
 
 	// TODO: takes up too much RAM
 	// construct the directories
@@ -561,13 +561,13 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		}
 	}
 
-	fmt.Printf("Completed in %v with %v download threads (%v tiles/s).\n", time.Since(start), downloadThreads, float64(len(reencoded))/float64(time.Since(start).Seconds()))
+	logger.Printf("Completed in %v with %v download threads (%v tiles/s).\n", time.Since(start), downloadThreads, float64(len(reencoded))/float64(time.Since(start).Seconds()))
 	totalRequests := 2                  // header + root
 	totalRequests += numOverfetchLeaves // leaves
 	totalRequests++                     // metadata
 	totalRequests += numOverfetchRanges
-	fmt.Printf("Extract required %d total requests.\n", totalRequests)
-	fmt.Printf("Extract transferred %s (overfetch %v) for an archive size of %s\n", humanize.Bytes(totalBytes), overfetch, humanize.Bytes(totalActualBytes))
+	logger.Printf("Extract required %d total requests.\n", totalRequests)
+	logger.Printf("Extract transferred %s (overfetch %v) for an archive size of %s\n", humanize.Bytes(totalBytes), overfetch, humanize.Bytes(totalActualBytes))
 
 	return nil
 }
