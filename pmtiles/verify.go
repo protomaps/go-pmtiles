@@ -13,7 +13,7 @@ import (
 
 // Verify that an archive's header statistics are correct,
 // and that tiles are propertly ordered if clustered=true.
-func Verify(_ *log.Logger, file string) error {
+func Verify(logger *log.Logger, file string) error {
 	start := time.Now()
 	ctx := context.Background()
 
@@ -120,13 +120,13 @@ func Verify(_ *log.Logger, file string) error {
 			}
 
 			if e.Offset+uint64(e.Length) > header.TileDataLength {
-				fmt.Printf("Invalid: %v outside of tile data section", e)
+				logger.Printf("Invalid: %v outside of tile data section", e)
 			}
 
 			if header.Clustered {
 				if !offsets.Contains(e.Offset) {
 					if e.Offset != currentOffset {
-						fmt.Printf("Invalid: out-of-order entry %v in clustered archive", e)
+						logger.Printf("Invalid: out-of-order entry %v in clustered archive", e)
 					}
 					currentOffset += uint64(e.Length)
 				}
@@ -166,6 +166,6 @@ func Verify(_ *log.Logger, file string) error {
 		return fmt.Errorf("Invalid: bounds has area <= 0: clients may not display tiles correctly")
 	}
 
-	fmt.Printf("Completed verify in %v.\n", time.Since(start))
+	logger.Printf("Completed verify in %v.\n", time.Since(start))
 	return nil
 }

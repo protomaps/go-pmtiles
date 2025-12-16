@@ -218,7 +218,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 	blocksMatched := float64(len(have)) / float64(len(blocks)) * 100
 	pct := float64(toTransfer) / float64(totalRemoteBytes) * 100
 
-	fmt.Printf("%d/%d blocks matched (%.1f%%), need to transfer %s/%s (%.1f%%).\n", len(have), len(blocks), blocksMatched, humanize.Bytes(toTransfer), humanize.Bytes(totalRemoteBytes), pct)
+	logger.Printf("%d/%d blocks matched (%.1f%%), need to transfer %s/%s (%.1f%%).\n", len(have), len(blocks), blocksMatched, humanize.Bytes(toTransfer), humanize.Bytes(totalRemoteBytes), pct)
 
 	ranges := make([]srcDstRange, 0)
 	for _, v := range wanted {
@@ -242,7 +242,7 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 		}
 	}
 
-	fmt.Printf("need %d chunks\n", len(ranges))
+	logger.Printf("need %d chunks\n", len(ranges))
 
 	if !dryRun {
 		req, err := http.NewRequest("HEAD", newVersion, nil)
@@ -382,6 +382,6 @@ func Sync(logger *log.Logger, oldVersion string, newVersion string, dryRun bool)
 		}
 	}
 
-	fmt.Printf("Completed sync in %v.\n", time.Since(start))
+	logger.Printf("Completed sync in %v.\n", time.Since(start))
 	return nil
 }
