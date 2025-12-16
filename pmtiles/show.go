@@ -108,7 +108,7 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 				case string:
 					fmt.Println(k, v)
 				default:
-					fmt.Println(k, "<object...>")
+					fmt.Println(k, "<object, use --metadata to view full JSON metadata>")
 				}
 			}
 

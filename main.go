@@ -31,7 +31,7 @@ var cli struct {
 	Show struct {
 		Path       string `arg:""`
 		Bucket     string `help:"Remote bucket"`
-		Metadata   bool   `help:"Print only the JSON metadata"`
+		Metadata   bool   `help:"Output only the full JSON metadata"`
 		HeaderJson bool   `help:"Print a JSON representation of part of the header information"`
 		Tilejson   bool   `help:"Print the TileJSON"`
 		PublicURL  string `help:"Public base URL of tile endpoint for TileJSON e.g. https://example.com/tiles"`
