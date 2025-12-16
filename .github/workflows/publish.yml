@@ -47,4 +47,6 @@ jobs:
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
           outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=See https://github.com/protomaps/go-pmtiles for more info.
