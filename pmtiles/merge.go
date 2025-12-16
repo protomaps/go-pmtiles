@@ -3,6 +3,7 @@ package pmtiles
 import (
 	"fmt"
 	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/schollz/progressbar/v3"
 	"io"
 	"log"
 	"math"
@@ -29,7 +30,7 @@ type Remapping struct {
 
 // load N archives, validating that they are mergeable and disjoint.
 // returns a formatted error and index of the mismatched archive if not.
-// if valid, retruns a sorted list of MergeEntry records, each containing a directory Entry
+// if valid, returns a sorted list of MergeEntry records, each containing a directory Entry
 // but with offset values referring to the original input archive.
 func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error, int) {
 	var headers []HeaderV3
@@ -48,7 +49,6 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error, int
 		}
 		headers = append(headers, h)
 
-		// also validate the headers so we "fail fast"
 		if !h.Clustered {
 			return nil, nil, fmt.Errorf("must be clustered"), inputIdx
 		}
@@ -146,8 +146,8 @@ func remapMergeEntries(entries []MergeEntry, numInputs int) ([]MergeEntry, uint6
 func batchMergeEntries(entries []MergeEntry, numInputs int) []MergeOp {
 	lastOffset := make([]int64, numInputs)
 	for i := range lastOffset {
-	lastOffset[i] = -1
-}	
+		lastOffset[i] = -1
+	}
 	lastLength := make([]uint32, numInputs)
 	var mergeOps []MergeOp
 	for _, me := range entries {
@@ -290,9 +290,14 @@ func Merge(logger *log.Logger, inputs []string) error {
 		handle.Seek(int64(headers[idx].TileDataOffset), io.SeekStart)
 	}
 
+	bar := progressbar.DefaultBytes(
+		int64(tileDataLength),
+		"merging tile data",
+	)
+
 	for _, op := range mergeOps {
 		handle := handles[op.InputIdx]
-		_, err := io.CopyN(output, handle, int64(op.Length))
+		_, err := io.CopyN(io.MultiWriter(output, bar), handle, int64(op.Length))
 		if err != nil {
 			return err
 		}

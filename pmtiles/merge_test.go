@@ -19,9 +19,10 @@ func TestBatchMergeEntries(t *testing.T) {
 	entries := make([]MergeEntry, 0)
 	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
 	entries = append(entries, MergeEntry{EntryV3{1, 100, 100, 1}, 0, 100})
+	entries = append(entries, MergeEntry{EntryV3{2, 200, 200, 1}, 0, 200})
 	result := batchMergeEntries(entries, 1)
 	assert.Equal(t, 1, len(result))
-	assert.Equal(t, 200, int(result[0].Length))
+	assert.Equal(t, 400, int(result[0].Length))
 }
 
 func TestBatchMergeBackreference(t *testing.T) {
@@ -29,6 +30,15 @@ func TestBatchMergeBackreference(t *testing.T) {
 	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
 	entries = append(entries, MergeEntry{EntryV3{1, 100, 100, 1}, 0, 100})
 	entries = append(entries, MergeEntry{EntryV3{2, 0, 100, 1}, 0, 0})
+	result := batchMergeEntries(entries, 1)
+	assert.Equal(t, 1, len(result))
+}
+
+func TestBatchMergeSkipBackreference(t *testing.T) {
+	entries := make([]MergeEntry, 0)
+	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
+	entries = append(entries, MergeEntry{EntryV3{1, 100, 100, 1}, 0, 100})
+	entries = append(entries, MergeEntry{EntryV3{3, 100, 100, 1}, 0, 100})
 	result := batchMergeEntries(entries, 1)
 	assert.Equal(t, 1, len(result))
 }
@@ -90,6 +100,22 @@ func TestRemapMergeEntriesBackreference(t *testing.T) {
 	assert.Equal(t, uint64(4), tileContents)
 	assert.Equal(t, uint64(100), remapped[4].Entry.Offset)
 	assert.Equal(t, uint64(0), remapped[4].InputOffset)
+}
+
+func TestRemapMergeEntriesSkipBackreference(t *testing.T) {
+	entries := make([]MergeEntry, 0)
+	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
+	entries = append(entries, MergeEntry{EntryV3{1, 100, 100, 1}, 0, 100})
+	entries = append(entries, MergeEntry{EntryV3{2, 0, 100, 1}, 1, 0})
+	entries = append(entries, MergeEntry{EntryV3{3, 100, 100, 1}, 0, 100})
+	entries = append(entries, MergeEntry{EntryV3{5, 100, 100, 1}, 0, 100})
+	remapped, addressedTiles, tileContents, length, _ := remapMergeEntries(entries, 2)
+	assert.Equal(t, uint64(300), length)
+	assert.Equal(t, uint64(5), addressedTiles)
+	assert.Equal(t, uint64(3), tileContents)
+	assert.Equal(t, 5, len(remapped))
+	assert.Equal(t, uint64(100), remapped[3].Entry.Offset)
+	assert.Equal(t, uint64(100), remapped[4].Entry.Offset)
 }
 
 func TestValidateArchiveClustered(t *testing.T) {
