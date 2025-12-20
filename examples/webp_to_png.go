@@ -7,7 +7,10 @@ import (
 	"os"
 	"runtime"
 	"sync"
-	// "github.com/schollz/progressbar/v3"
+	"image/png"
+	"bytes"
+	"golang.org/x/image/webp"
+	"github.com/schollz/progressbar/v3"
 )
 
 type work struct {
@@ -48,7 +51,15 @@ func main() {
 		go func() {
 			defer wg.Done()
 			for j := range inChan {
-				//j.img = doWork(j.img) // reuse buffer
+				img, err := webp.Decode(bytes.NewReader(j.img))
+		    if err != nil {
+		        panic(err)
+		    }
+		    var pngBuf bytes.Buffer
+		    if err := png.Encode(&pngBuf, img); err != nil {
+		        panic(err)
+		    }
+		    j.img = pngBuf.Bytes()
 				outChan <- j
 			}
 		}()
@@ -90,6 +101,8 @@ func main() {
 	next := 0
 	pending := map[int]work{}
 
+	bar := progressbar.Default(int64(header.TileContentsCount))
+
 	offset := 0
 	var newEntries []pmtiles.EntryV3
 	for j := range outChan {
@@ -103,6 +116,7 @@ func main() {
 			newEntries = append(newEntries, pmtiles.EntryV3{result.tileID, uint64(offset), uint32(len(result.img)), result.runLength})
 			offset += int(len(result.img))
 			delete(pending, next)
+			bar.Add(1)
 			next++
 		}
 	}
