@@ -184,7 +184,7 @@ func TestOptimizeDirectories(t *testing.T) {
 	rand.Seed(3857)
 	entries := make([]EntryV3, 0)
 	entries = append(entries, EntryV3{0, 0, 100, 1})
-	_, leavesBytes, numLeaves := optimizeDirectories(entries, 100, Gzip)
+	_, leavesBytes, numLeaves := BuildDirectories(entries, 100, Gzip)
 	assert.False(t, len(leavesBytes) > 0)
 	assert.Equal(t, 0, numLeaves)
 
@@ -197,7 +197,7 @@ func TestOptimizeDirectories(t *testing.T) {
 		offset += uint64(randtilesize)
 	}
 
-	rootBytes, leavesBytes, numLeaves := optimizeDirectories(entries, 1024, Gzip)
+	rootBytes, leavesBytes, numLeaves := BuildDirectories(entries, 1024, Gzip)
 
 	assert.False(t, len(rootBytes) > 1024)
 

@@ -255,7 +255,7 @@ func finalize(logger *log.Logger, resolve *resolver, header HeaderV3, tmpfile *o
 	}
 	defer outfile.Close()
 
-	rootBytes, leavesBytes, numLeaves := optimizeDirectories(resolve.Entries, 16384-HeaderV3LenBytes, Gzip)
+	rootBytes, leavesBytes, numLeaves := BuildDirectories(resolve.Entries, 16384-HeaderV3LenBytes, Gzip)
 
 	if numLeaves > 0 {
 		logger.Println("Root dir bytes: ", len(rootBytes))

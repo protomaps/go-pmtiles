@@ -1,16 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"github.com/protomaps/go-pmtiles/pmtiles"
+	"github.com/schollz/progressbar/v3"
+	"golang.org/x/image/webp"
+	"image/png"
 	"io"
 	"log"
 	"os"
 	"runtime"
 	"sync"
-	"image/png"
-	"bytes"
-	"golang.org/x/image/webp"
-	"github.com/schollz/progressbar/v3"
 )
 
 type work struct {
@@ -20,7 +20,7 @@ type work struct {
 	img       []byte
 }
 
-// convert an archive from webp to png
+// transcode a raster archive from WebP to PNG
 func main() {
 	output, err := os.Create(os.Args[2])
 	if err != nil {
@@ -40,6 +40,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	if header.TileType != pmtiles.Webp {
+		log.Fatal("input must be WebP")
+	}
+	if header.TileCompression != pmtiles.NoCompression {
+		log.Fatal("input must not have tile compression")
+	}
+
 	inChan := make(chan work)
 	outChan := make(chan work)
 
@@ -52,14 +59,15 @@ func main() {
 			defer wg.Done()
 			for j := range inChan {
 				img, err := webp.Decode(bytes.NewReader(j.img))
-		    if err != nil {
-		        panic(err)
-		    }
-		    var pngBuf bytes.Buffer
-		    if err := png.Encode(&pngBuf, img); err != nil {
-		        panic(err)
-		    }
-		    j.img = pngBuf.Bytes()
+				if err != nil {
+					log.Println(j.tileID)
+					panic(err)
+				}
+				var pngBuf bytes.Buffer
+				if err := png.Encode(&pngBuf, img); err != nil {
+					panic(err)
+				}
+				j.img = pngBuf.Bytes()
 				outChan <- j
 			}
 		}()
@@ -80,7 +88,10 @@ func main() {
 			},
 			func(e pmtiles.EntryV3) {
 				sr := io.NewSectionReader(input, int64(header.TileDataOffset+e.Offset), int64(e.Length))
-				buf, _ := io.ReadAll(sr)
+				buf, err := io.ReadAll(sr)
+				if err != nil {
+					panic(err)
+				}
 				inChan <- work{idx, e.TileID, e.RunLength, buf}
 				idx++
 			})
@@ -90,14 +101,16 @@ func main() {
 		close(inChan)
 	}()
 
-	// write 16384 bytes
+	// write 16384 zero bytes.
+	// the eheader and root directory are guaranteed to fit in this section.
 	output.Write(make([]byte, 16384))
 
-	// write the metadata
+	// copy the metadata from the input.
 	input.Seek(int64(header.MetadataOffset), io.SeekStart)
 	io.CopyN(output, input, int64(header.MetadataLength))
 
-	// collect output in-order, assembling a new directory and writing new tiles
+	// read results from the output channel, buffering them in-order
+	// assemble a new directory and write new tile data to disk
 	next := 0
 	pending := map[int]work{}
 
@@ -121,12 +134,14 @@ func main() {
 		}
 	}
 
-	rootBytes, leavesBytes, _ := pmtiles.OptimizeDirectories(newEntries, 16384-pmtiles.HeaderV3LenBytes, pmtiles.Gzip)
+	// create the root and leaves from the new entries
+	rootBytes, leavesBytes, _ := pmtiles.OptimizeDirectories(newEntries, 16384-pmtiles.HeaderV3LenBytes, header.InternalCompression)
 	_, err = output.Write(leavesBytes)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// assign new values for offsets and lengths
 	header.TileType = pmtiles.Png
 	header.MetadataOffset = 16384
 	header.TileDataOffset = 16384 + header.MetadataLength
@@ -136,6 +151,7 @@ func main() {
 	header.RootOffset = pmtiles.HeaderV3LenBytes
 	header.RootLength = uint64(len(rootBytes))
 
+	// rewind the input and write the header and root directory
 	output.Seek(0, io.SeekStart)
 	headerBytes := pmtiles.SerializeHeader(header)
 	_, err = output.Write(headerBytes)
