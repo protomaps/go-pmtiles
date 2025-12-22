@@ -102,7 +102,7 @@ func main() {
 	}()
 
 	// write 16384 zero bytes.
-	// the eheader and root directory are guaranteed to fit in this section.
+	// the header and root directory are guaranteed to fit in this section.
 	output.Write(make([]byte, 16384))
 
 	// copy the metadata from the input.
@@ -135,7 +135,7 @@ func main() {
 	}
 
 	// create the root and leaves from the new entries
-	rootBytes, leavesBytes, _ := pmtiles.OptimizeDirectories(newEntries, 16384-pmtiles.HeaderV3LenBytes, header.InternalCompression)
+	rootBytes, leavesBytes, _ := pmtiles.BuildDirectories(newEntries, 16384-pmtiles.HeaderV3LenBytes, header.InternalCompression)
 	_, err = output.Write(leavesBytes)
 	if err != nil {
 		log.Fatal(err)
