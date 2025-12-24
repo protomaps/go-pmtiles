@@ -23,7 +23,7 @@ func Edit(logger *log.Logger, inputArchive string, newHeaderJSONFile string, new
 		return err
 	}
 
-	buf := make([]byte, 127)
+	buf := make([]byte, HeaderV3LenBytes)
 	_, err = file.Read(buf)
 	if err != nil {
 		return err

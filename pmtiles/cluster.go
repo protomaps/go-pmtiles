@@ -13,7 +13,7 @@ func Cluster(logger *log.Logger, InputPMTiles string, deduplicate bool) error {
 		return err
 	}
 
-	buf := make([]byte, 127)
+	buf := make([]byte, HeaderV3LenBytes)
 	_, err = file.Read(buf)
 	if err != nil {
 		return err
