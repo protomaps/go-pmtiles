@@ -462,12 +462,10 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 			return err
 		}
 
-		outfile.Truncate(127 + int64(len(newRootBytes)) + int64(header.MetadataLength) + int64(len(newLeavesBytes)) + int64(totalActualBytes))
-
-		_, err = outfile.Write(headerBytes)
-		if err != nil {
-			return err
-		}
+		// set the file size and write empty space for the header for now
+		// see comment below
+		outfile.Truncate(HeaderV3LenBytes + int64(len(newRootBytes)) + int64(header.MetadataLength) + int64(len(newLeavesBytes)) + int64(totalActualBytes))
+		outfile.Write(make([]byte, HeaderV3LenBytes))
 
 		// 8. write the root directory
 		_, err = outfile.Write(newRootBytes)
@@ -556,6 +554,16 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		}
 
 		err = errs.Wait()
+		if err != nil {
+			return err
+		}
+
+		// Write the header when finishing,
+		// otherwise a extract cancelled during the tile download section
+		// will appear valid with "pmtiles verify"
+		// even though the tile contents are corrupted.
+		outfile.Seek(0, io.SeekStart)
+		_, err = outfile.Write(headerBytes)
 		if err != nil {
 			return err
 		}
