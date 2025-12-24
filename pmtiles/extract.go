@@ -143,7 +143,7 @@ type overfetchListItem struct {
 	index        int
 }
 
-// MergeRanges takes a slice of SrcDstRanges, that:
+// mergeRanges takes a slice of SrcDstRanges, that:
 // * is non-contiguous, and is sorted by DstOffset
 // * an Overfetch parameter
 //   - overfetch = 0.2 means we can request an extra 20%
@@ -155,7 +155,7 @@ type overfetchListItem struct {
 //	input ranges are merged in order of smallest byte distance to next range
 //	until the overfetch budget is consumed.
 //	The list is sorted by Length
-func MergeRanges(ranges []srcDstRange, overfetch float32) (*list.List, uint64) {
+func mergeRanges(ranges []srcDstRange, overfetch float32) (*list.List, uint64) {
 	totalSize := 0
 
 	shortest := make([]*overfetchListItem, len(ranges))
@@ -368,7 +368,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		leafRanges = append(leafRanges, srcDstRange{header.LeafDirectoryOffset + leaf.Offset, 0, uint64(leaf.Length)})
 	}
 
-	overfetchLeaves, _ := MergeRanges(leafRanges, overfetch)
+	overfetchLeaves, _ := mergeRanges(leafRanges, overfetch)
 	numOverfetchLeaves := overfetchLeaves.Len()
 	logger.Printf("fetching %d dirs, %d chunks, %d requests\n", len(leaves), len(leafRanges), overfetchLeaves.Len())
 
@@ -416,14 +416,14 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 	// we now need to re-encode this entry list using cumulative offsets
 	reencoded, tileParts, tiledataLength, addressedTiles, tileContents := reencodeEntries(tileEntries)
 
-	overfetchRanges, totalBytes := MergeRanges(tileParts, overfetch)
+	overfetchRanges, totalBytes := mergeRanges(tileParts, overfetch)
 
 	numOverfetchRanges := overfetchRanges.Len()
 	logger.Printf("fetching %d tiles, %d chunks, %d requests\n", len(reencoded), len(tileParts), overfetchRanges.Len())
 
 	// TODO: takes up too much RAM
 	// construct the directories
-	newRootBytes, newLeavesBytes, _ := optimizeDirectories(reencoded, 16384-HeaderV3LenBytes, Gzip)
+	newRootBytes, newLeavesBytes, _ := BuildDirectories(reencoded, 16384-HeaderV3LenBytes, Gzip)
 
 	// 7. write the modified header
 	header.RootOffset = HeaderV3LenBytes

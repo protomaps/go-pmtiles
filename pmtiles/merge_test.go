@@ -8,49 +8,49 @@ import (
 )
 
 func TestBatchMergeEntriesDifferentInputs(t *testing.T) {
-	entries := make([]MergeEntry, 0)
-	entries = append(entries, MergeEntry{EntryV3{0, 100, 100, 1}, 0, 100})
-	entries = append(entries, MergeEntry{EntryV3{1, 200, 100, 1}, 1, 200})
+	entries := make([]mergeEntry, 0)
+	entries = append(entries, mergeEntry{EntryV3{0, 100, 100, 1}, 0, 100})
+	entries = append(entries, mergeEntry{EntryV3{1, 200, 100, 1}, 1, 200})
 	result := batchMergeEntries(entries, 2)
 	assert.Equal(t, 2, len(result))
 }
 
 func TestBatchMergeEntries(t *testing.T) {
-	entries := make([]MergeEntry, 0)
-	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
-	entries = append(entries, MergeEntry{EntryV3{1, 100, 100, 1}, 0, 100})
-	entries = append(entries, MergeEntry{EntryV3{2, 200, 200, 1}, 0, 200})
+	entries := make([]mergeEntry, 0)
+	entries = append(entries, mergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
+	entries = append(entries, mergeEntry{EntryV3{1, 100, 100, 1}, 0, 100})
+	entries = append(entries, mergeEntry{EntryV3{2, 200, 200, 1}, 0, 200})
 	result := batchMergeEntries(entries, 1)
 	assert.Equal(t, 1, len(result))
 	assert.Equal(t, 400, int(result[0].Length))
 }
 
 func TestBatchMergeBackreference(t *testing.T) {
-	entries := make([]MergeEntry, 0)
-	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
-	entries = append(entries, MergeEntry{EntryV3{1, 100, 100, 1}, 0, 100})
-	entries = append(entries, MergeEntry{EntryV3{2, 0, 100, 1}, 0, 0})
+	entries := make([]mergeEntry, 0)
+	entries = append(entries, mergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
+	entries = append(entries, mergeEntry{EntryV3{1, 100, 100, 1}, 0, 100})
+	entries = append(entries, mergeEntry{EntryV3{2, 0, 100, 1}, 0, 0})
 	result := batchMergeEntries(entries, 1)
 	assert.Equal(t, 1, len(result))
 }
 
 func TestBatchMergeSkipBackreference(t *testing.T) {
-	entries := make([]MergeEntry, 0)
-	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
-	entries = append(entries, MergeEntry{EntryV3{1, 100, 100, 1}, 0, 100})
-	entries = append(entries, MergeEntry{EntryV3{3, 100, 100, 1}, 0, 100})
+	entries := make([]mergeEntry, 0)
+	entries = append(entries, mergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
+	entries = append(entries, mergeEntry{EntryV3{1, 100, 100, 1}, 0, 100})
+	entries = append(entries, mergeEntry{EntryV3{3, 100, 100, 1}, 0, 100})
 	result := batchMergeEntries(entries, 1)
 	assert.Equal(t, 1, len(result))
 }
 
 func TestZoomBounds(t *testing.T) {
-	entries := make([]MergeEntry, 0)
-	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
-	entries = append(entries, MergeEntry{EntryV3{3, 100, 100, 1}, 0, 100})
+	entries := make([]mergeEntry, 0)
+	entries = append(entries, mergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
+	entries = append(entries, mergeEntry{EntryV3{3, 100, 100, 1}, 0, 100})
 	minZoom, maxZoom := zoomBounds(entries)
 	assert.Equal(t, uint8(0), minZoom)
 	assert.Equal(t, uint8(1), maxZoom)
-	entries = append(entries, MergeEntry{EntryV3{4, 100, 100, 2}, 0, 100})
+	entries = append(entries, mergeEntry{EntryV3{4, 100, 100, 2}, 0, 100})
 	_, maxZoom = zoomBounds(entries)
 	assert.Equal(t, uint8(2), maxZoom)
 }
@@ -74,9 +74,9 @@ func TestBounds(t *testing.T) {
 }
 
 func TestRemapMergeEntries(t *testing.T) {
-	entries := make([]MergeEntry, 0)
-	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
-	entries = append(entries, MergeEntry{EntryV3{1, 0, 100, 2}, 1, 0})
+	entries := make([]mergeEntry, 0)
+	entries = append(entries, mergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
+	entries = append(entries, mergeEntry{EntryV3{1, 0, 100, 2}, 1, 0})
 	remapped, addressedTiles, tileContents, length, _ := remapMergeEntries(entries, 2)
 	assert.Equal(t, uint64(200), length)
 	assert.Equal(t, uint64(3), addressedTiles)
@@ -88,12 +88,12 @@ func TestRemapMergeEntries(t *testing.T) {
 }
 
 func TestRemapMergeEntriesBackreference(t *testing.T) {
-	entries := make([]MergeEntry, 0)
-	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
-	entries = append(entries, MergeEntry{EntryV3{1, 0, 100, 1}, 1, 0})
-	entries = append(entries, MergeEntry{EntryV3{2, 100, 100, 1}, 0, 100})
-	entries = append(entries, MergeEntry{EntryV3{3, 100, 100, 1}, 1, 100})
-	entries = append(entries, MergeEntry{EntryV3{4, 0, 100, 1}, 1, 0}) // the backreference
+	entries := make([]mergeEntry, 0)
+	entries = append(entries, mergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
+	entries = append(entries, mergeEntry{EntryV3{1, 0, 100, 1}, 1, 0})
+	entries = append(entries, mergeEntry{EntryV3{2, 100, 100, 1}, 0, 100})
+	entries = append(entries, mergeEntry{EntryV3{3, 100, 100, 1}, 1, 100})
+	entries = append(entries, mergeEntry{EntryV3{4, 0, 100, 1}, 1, 0}) // the backreference
 	remapped, addressedTiles, tileContents, length, _ := remapMergeEntries(entries, 2)
 	assert.Equal(t, uint64(400), length)
 	assert.Equal(t, uint64(5), addressedTiles)
@@ -103,12 +103,12 @@ func TestRemapMergeEntriesBackreference(t *testing.T) {
 }
 
 func TestRemapMergeEntriesSkipBackreference(t *testing.T) {
-	entries := make([]MergeEntry, 0)
-	entries = append(entries, MergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
-	entries = append(entries, MergeEntry{EntryV3{1, 100, 100, 1}, 0, 100})
-	entries = append(entries, MergeEntry{EntryV3{2, 0, 100, 1}, 1, 0})
-	entries = append(entries, MergeEntry{EntryV3{3, 100, 100, 1}, 0, 100})
-	entries = append(entries, MergeEntry{EntryV3{5, 100, 100, 1}, 0, 100})
+	entries := make([]mergeEntry, 0)
+	entries = append(entries, mergeEntry{EntryV3{0, 0, 100, 1}, 0, 0})
+	entries = append(entries, mergeEntry{EntryV3{1, 100, 100, 1}, 0, 100})
+	entries = append(entries, mergeEntry{EntryV3{2, 0, 100, 1}, 1, 0})
+	entries = append(entries, mergeEntry{EntryV3{3, 100, 100, 1}, 0, 100})
+	entries = append(entries, mergeEntry{EntryV3{5, 100, 100, 1}, 0, 100})
 	remapped, addressedTiles, tileContents, length, _ := remapMergeEntries(entries, 2)
 	assert.Equal(t, uint64(300), length)
 	assert.Equal(t, uint64(5), addressedTiles)

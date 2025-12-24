@@ -11,29 +11,29 @@ import (
 	"sort"
 )
 
-type MergeEntry struct {
+type mergeEntry struct {
 	Entry       EntryV3
 	InputIdx    int    // the index of the input archive 0...N
 	InputOffset uint64 // the original offset of the entry in the archive's tile section
 }
 
-type MergeOp struct {
+type mergeOp struct {
 	InputIdx int
 	Length   uint64
 }
 
-type Remapping struct {
+type remapping struct {
 	SrcOffset uint64
 	DstOffset uint64
 }
 
 // load N archives, validating that they are mergeable and disjoint.
 // returns a formatted error and index of the mismatched archive if not.
-// if valid, returns a sorted list of MergeEntry records, each containing a directory Entry
+// if valid, returns a sorted list of mergeEntry records, each containing a directory Entry
 // but with offset values referring to the original input archive.
-func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error, int) {
+func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []mergeEntry, error, int) {
 	var headers []HeaderV3
-	var mergedEntries []MergeEntry
+	var mergedEntries []mergeEntry
 	union := roaring64.New()
 
 	for inputIdx, input := range inputs {
@@ -76,7 +76,7 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error, int
 			},
 			func(e EntryV3) {
 				tileset.AddRange(e.TileID, e.TileID+uint64(e.RunLength))
-				mergedEntries = append(mergedEntries, MergeEntry{Entry: e, InputOffset: e.Offset, InputIdx: inputIdx})
+				mergedEntries = append(mergedEntries, mergeEntry{Entry: e, InputOffset: e.Offset, InputIdx: inputIdx})
 			})
 
 		if err != nil {
@@ -99,21 +99,21 @@ func prepareInputs(inputs []io.ReadSeeker) ([]HeaderV3, []MergeEntry, error, int
 	return headers, mergedEntries, nil, 0
 }
 
-// remaps a sorted slice of MergeEntry
+// remaps a sorted slice of mergeEntry
 // changes each Entry to be contiguous in the new archive.
 // also handles deduplicated backreferences
-func remapMergeEntries(entries []MergeEntry, numInputs int) ([]MergeEntry, uint64, uint64, uint64, error) {
+func remapMergeEntries(entries []mergeEntry, numInputs int) ([]mergeEntry, uint64, uint64, uint64, error) {
 
 	acc := uint64(0)
 	addressedTiles := uint64(0)
 	tileContents := 0
-	remappings := make([][]Remapping, numInputs)
+	remappings := make([][]remapping, numInputs)
 
 	for idx, me := range entries {
-		remapping := remappings[me.InputIdx]
-		if len(remapping) > 0 && me.InputOffset <= remapping[len(remapping)-1].SrcOffset {
+		rm := remappings[me.InputIdx]
+		if len(rm) > 0 && me.InputOffset <= rm[len(rm)-1].SrcOffset {
 			// find the original offset in the remapping slice
-			i, ok := slices.BinarySearchFunc(remapping, me.InputOffset, func(r Remapping, k uint64) int {
+			i, ok := slices.BinarySearchFunc(rm, me.InputOffset, func(r remapping, k uint64) int {
 				switch {
 				case r.SrcOffset < k:
 					return -1
@@ -124,13 +124,13 @@ func remapMergeEntries(entries []MergeEntry, numInputs int) ([]MergeEntry, uint6
 				}
 			})
 			if ok {
-				entries[idx].Entry.Offset = remapping[i].DstOffset
+				entries[idx].Entry.Offset = rm[i].DstOffset
 			} else {
 				return nil, 0, 0, 0, fmt.Errorf("clustered archive has out-of-order entries")
 			}
 		} else {
 			entries[idx].Entry.Offset = acc
-			remappings[me.InputIdx] = append(remappings[me.InputIdx], Remapping{SrcOffset: me.InputOffset, DstOffset: acc})
+			remappings[me.InputIdx] = append(remappings[me.InputIdx], remapping{SrcOffset: me.InputOffset, DstOffset: acc})
 			acc += uint64(me.Entry.Length)
 			tileContents += 1
 		}
@@ -142,13 +142,13 @@ func remapMergeEntries(entries []MergeEntry, numInputs int) ([]MergeEntry, uint6
 }
 
 // combines contiguous I/O operations and eliminate backreferences from the copy operation.
-func batchMergeEntries(entries []MergeEntry, numInputs int) []MergeOp {
+func batchMergeEntries(entries []mergeEntry, numInputs int) []mergeOp {
 	lastOffset := make([]int64, numInputs)
 	for i := range lastOffset {
 		lastOffset[i] = -1
 	}
 	lastLength := make([]uint32, numInputs)
-	var mergeOps []MergeOp
+	var mergeOps []mergeOp
 	for _, me := range entries {
 		if int64(me.InputOffset) > lastOffset[me.InputIdx] {
 			last := len(mergeOps) - 1
@@ -156,7 +156,7 @@ func batchMergeEntries(entries []MergeEntry, numInputs int) []MergeOp {
 			if last >= 0 && (mergeOps[last].InputIdx == me.InputIdx) && (int64(me.InputOffset) == lastOffset[me.InputIdx]+int64(lastLength[me.InputIdx])) {
 				mergeOps[last].Length += entryLength
 			} else {
-				mergeOps = append(mergeOps, MergeOp{InputIdx: me.InputIdx, Length: entryLength})
+				mergeOps = append(mergeOps, mergeOp{InputIdx: me.InputIdx, Length: entryLength})
 			}
 			lastOffset[me.InputIdx] = int64(me.InputOffset)
 			lastLength[me.InputIdx] = me.Entry.Length
@@ -165,7 +165,7 @@ func batchMergeEntries(entries []MergeEntry, numInputs int) []MergeOp {
 	return mergeOps
 }
 
-func zoomBounds(entries []MergeEntry) (uint8, uint8) {
+func zoomBounds(entries []mergeEntry) (uint8, uint8) {
 	firstZ, _, _ := IDToZxy(entries[0].Entry.TileID)
 	lastEntry := entries[len(entries)-1].Entry
 	lastZ, _, _ := IDToZxy(lastEntry.TileID + uint64(lastEntry.RunLength) - 1)
@@ -226,7 +226,7 @@ func Merge(logger *log.Logger, inputs []string) error {
 	for i := range renumberedEntries {
 		tmp[i] = renumberedEntries[i].Entry
 	}
-	rootBytes, leavesBytes, _ := optimizeDirectories(tmp, 16384-HeaderV3LenBytes, Gzip)
+	rootBytes, leavesBytes, _ := BuildDirectories(tmp, 16384-HeaderV3LenBytes, Gzip)
 
 	logger.Printf("Copying center and JSON metadata from first input %s", inputs[0])
 

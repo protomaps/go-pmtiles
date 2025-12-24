@@ -483,7 +483,7 @@ func buildRootsLeaves(entries []EntryV3, leafSize int, compression Compression) 
 	return rootBytes, leavesBytes, numLeaves
 }
 
-func optimizeDirectories(entries []EntryV3, targetRootLen int, compression Compression) ([]byte, []byte, int) {
+func BuildDirectories(entries []EntryV3, targetRootLen int, compression Compression) ([]byte, []byte, int) {
 	if len(entries) < 16384 {
 		testRootBytes := SerializeEntries(entries, compression)
 		// Case1: the entire directory fits into the target len
