@@ -140,7 +140,7 @@ func TestMergeRanges(t *testing.T) {
 	ranges = append(ranges, srcDstRange{0, 0, 50})
 	ranges = append(ranges, srcDstRange{60, 60, 60})
 
-	result, totalTransferBytes := MergeRanges(ranges, 0.1)
+	result, totalTransferBytes := mergeRanges(ranges, 0.1)
 
 	assert.Equal(t, 1, result.Len())
 	assert.Equal(t, uint64(120), totalTransferBytes)
@@ -157,7 +157,7 @@ func TestMergeRangesMultiple(t *testing.T) {
 	ranges = append(ranges, srcDstRange{60, 60, 10})
 	ranges = append(ranges, srcDstRange{80, 80, 10})
 
-	result, totalTransferBytes := MergeRanges(ranges, 0.3)
+	result, totalTransferBytes := mergeRanges(ranges, 0.3)
 	front := result.Front().Value.(overfetchRange)
 	assert.Equal(t, uint64(90), totalTransferBytes)
 	assert.Equal(t, 1, result.Len())
@@ -170,6 +170,6 @@ func TestMergeRangesNonSrcOrdered(t *testing.T) {
 	ranges = append(ranges, srcDstRange{20, 0, 50})
 	ranges = append(ranges, srcDstRange{0, 60, 50})
 
-	result, _ := MergeRanges(ranges, 0.1)
+	result, _ := mergeRanges(ranges, 0.1)
 	assert.Equal(t, 2, result.Len())
 }

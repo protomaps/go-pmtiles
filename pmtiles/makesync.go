@@ -82,7 +82,7 @@ func Makesync(logger *log.Logger, cliVersion string, fileName string, blockSizeK
 		return err
 	}
 
-	buf := make([]byte, 127)
+	buf := make([]byte, HeaderV3LenBytes)
 	_, err = file.Read(buf)
 	if err != nil {
 		return err

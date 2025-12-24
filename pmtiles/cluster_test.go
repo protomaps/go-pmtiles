@@ -16,7 +16,7 @@ func TestCluster(t *testing.T) {
 	defer file.Close()
 	assert.Nil(t, err)
 
-	buf := make([]byte, 127)
+	buf := make([]byte, HeaderV3LenBytes)
 	_, _ = file.Read(buf)
 	header, _ := DeserializeHeader(buf)
 	assert.True(t, header.Clustered)
