@@ -462,9 +462,10 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 			return err
 		}
 
-		outfile.Truncate(127 + int64(len(newRootBytes)) + int64(header.MetadataLength) + int64(len(newLeavesBytes)) + int64(totalActualBytes))
-
-		_, err = outfile.Write(headerBytes)
+		// set the file size and write empty space for the header for now
+		// see comment below
+		outfile.Truncate(HeaderV3LenBytes + int64(len(newRootBytes)) + int64(header.MetadataLength) + int64(len(newLeavesBytes)) + int64(totalActualBytes))
+		_, err = outfile.Write(make([]byte, HeaderV3LenBytes))
 		if err != nil {
 			return err
 		}
@@ -486,7 +487,10 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 			return err
 		}
 
-		outfile.Write(metadataBytes)
+		_, err = outfile.Write(metadataBytes)
+		if err != nil {
+			return err
+		}
 
 		// 10. write the leaf directories
 		_, err = outfile.Write(newLeavesBytes)
@@ -556,6 +560,16 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		}
 
 		err = errs.Wait()
+		if err != nil {
+			return err
+		}
+
+		// Write the header when finishing,
+		// otherwise a extract cancelled during the tile download section
+		// will appear valid with "pmtiles verify"
+		// even though the tile contents are corrupted.
+		outfile.Seek(0, io.SeekStart)
+		_, err = outfile.Write(headerBytes)
 		if err != nil {
 			return err
 		}
