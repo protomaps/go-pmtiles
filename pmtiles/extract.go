@@ -465,7 +465,10 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		// set the file size and write empty space for the header for now
 		// see comment below
 		outfile.Truncate(HeaderV3LenBytes + int64(len(newRootBytes)) + int64(header.MetadataLength) + int64(len(newLeavesBytes)) + int64(totalActualBytes))
-		outfile.Write(make([]byte, HeaderV3LenBytes))
+		_, err = outfile.Write(make([]byte, HeaderV3LenBytes))
+		if err != nil {
+			return err
+		}
 
 		// 8. write the root directory
 		_, err = outfile.Write(newRootBytes)
@@ -484,7 +487,10 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 			return err
 		}
 
-		outfile.Write(metadataBytes)
+		_, err = outfile.Write(metadataBytes)
+		if err != nil {
+			return err
+		}
 
 		// 10. write the leaf directories
 		_, err = outfile.Write(newLeavesBytes)
