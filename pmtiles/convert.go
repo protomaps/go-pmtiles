@@ -45,7 +45,7 @@ func (r *resolver) NumContents() uint64 {
 
 // must be called in increasing tile_id order, uniquely
 func (r *resolver) AddTileIsNew(tileID uint64, data []byte, runLength uint32) (bool, []byte) {
-	r.AddressedTiles++
+	r.AddressedTiles += uint64(runLength)
 	var found offsetLen
 	var ok bool
 	var sumString string
