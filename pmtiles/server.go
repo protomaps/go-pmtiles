@@ -364,6 +364,10 @@ func (server *Server) getTileAttempt(ctx context.Context, httpHeaders map[string
 		if ext != "avif" {
 			return 400, httpHeaders, []byte("path mismatch: archive is type AVIF (.avif)"), ""
 		}
+	case Mlt:
+		if ext != "mlt" {
+			return 400, httpHeaders, []byte("path mismatch: archive is type MLT (.mlt)"), ""
+		}
 	}
 
 	tileID := ZxyToID(z, x, y)
