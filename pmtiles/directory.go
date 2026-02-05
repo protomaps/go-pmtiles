@@ -38,6 +38,7 @@ const (
 	Jpeg                     = 3
 	Webp                     = 4
 	Avif                     = 5
+	Mlt                      = 6
 )
 
 // HeaderV3LenBytes is the fixed-size binary header size.
@@ -97,6 +98,8 @@ func headerContentType(header HeaderV3) (string, bool) {
 		return "image/webp", true
 	case Avif:
 		return "image/avif", true
+	case Mlt:
+		return "application/vnd.maplibre-vector-tile", true
 	default:
 		return "", false
 	}
@@ -114,6 +117,8 @@ func tileTypeToString(t TileType) string {
 		return "webp"
 	case Avif:
 		return "avif"
+	case Mlt:
+		return "mlt"
 	default:
 		return ""
 	}
@@ -131,6 +136,8 @@ func stringToTileType(t string) TileType {
 		return Webp
 	case "avif":
 		return Avif
+	case "mlt":
+		return Mlt
 	default:
 		return UnknownTileType
 	}

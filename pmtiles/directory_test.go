@@ -275,6 +275,7 @@ func TestStringifiedExtension(t *testing.T) {
 	assert.Equal(t, ".jpg", headerExt(HeaderV3{TileType: Jpeg}))
 	assert.Equal(t, ".webp", headerExt(HeaderV3{TileType: Webp}))
 	assert.Equal(t, ".avif", headerExt(HeaderV3{TileType: Avif}))
+	assert.Equal(t, ".mlt", headerExt(HeaderV3{TileType: Mlt}))
 }
 
 func TestStringToTileType(t *testing.T) {
@@ -283,6 +284,7 @@ func TestStringToTileType(t *testing.T) {
 	assert.Equal(t, "jpg", tileTypeToString(stringToTileType("jpg")))
 	assert.Equal(t, "webp", tileTypeToString(stringToTileType("webp")))
 	assert.Equal(t, "avif", tileTypeToString(stringToTileType("avif")))
+	assert.Equal(t, "mlt", tileTypeToString(stringToTileType("mlt")))
 	assert.Equal(t, "", tileTypeToString(stringToTileType("")))
 }
 
