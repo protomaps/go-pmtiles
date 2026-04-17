@@ -99,7 +99,7 @@ func headerContentType(header HeaderV3) (string, bool) {
 	case Avif:
 		return "image/avif", true
 	case Mlt:
-		return "application/vnd.maplibre-vector-tile", true
+		return "application/vnd.maplibre-tile", true
 	default:
 		return "", false
 	}
