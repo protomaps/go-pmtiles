@@ -152,9 +152,6 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 				}
 				dirOffset = header.LeafDirectoryOffset + entry.Offset
 				dirLength = uint64(entry.Length)
-			} else {
-				fmt.Println("Tile not found in archive.")
-				return nil
 			}
 		}
 	}
