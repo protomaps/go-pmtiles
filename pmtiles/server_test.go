@@ -438,3 +438,25 @@ func TestCorsOptions(t *testing.T) {
 	assert.Equal(t, 204, res.Code)
 	assert.Equal(t, "*", res.Header().Get("Access-Control-Allow-Origin"))
 }
+
+func TestServeHTTP_PreservesContentLengthForGzipTiles(t *testing.T) {
+	mockBucket, server := newServer(t)
+	header := HeaderV3{
+		TileType: Mvt,
+	}
+
+	tileBytes := []byte{9, 8, 7, 6}
+	mockBucket.items["archive.pmtiles"] = fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: tileBytes,
+	}, false, Gzip)
+
+	res := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/archive/0/0/0.mvt", nil)
+
+	server.ServeHTTP(res, req)
+
+	assert.Equal(t, http.StatusOK, res.Code)
+	assert.Equal(t, tileBytes, res.Body.Bytes())
+
+	assert.Equal(t, "4", res.Header().Get("Content-Length"))
+}
