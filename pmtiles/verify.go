@@ -162,7 +162,7 @@ func Verify(logger *log.Logger, file string) error {
 		return fmt.Errorf("invalid: header CenterZoom=%v not within MinZoom/MaxZoom", header.CenterZoom)
 	}
 
-	if header.MinLonE7 == header.MaxLonE7 || header.MinLatE7 >= header.MaxLatE7 {
+	if header.MinLonE7 >= header.MaxLonE7 || header.MinLatE7 >= header.MaxLatE7 {
 		return fmt.Errorf("Invalid: bounds has area <= 0: clients may not display tiles correctly")
 	}
 

@@ -310,6 +310,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		}
 
 		var multipolygon orb.MultiPolygon
+		var centerLon, centerLat float64
 
 		if regionFile != "" {
 			dat, _ := ioutil.ReadFile(regionFile)
@@ -319,12 +320,8 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 			}
 
 			bound := multipolygon.Bound()
-			header.MinLonE7 = int32(bound.Left() * 10000000)
-			header.MinLatE7 = int32(bound.Bottom() * 10000000)
-			header.MaxLonE7 = int32(bound.Right() * 10000000)
-			header.MaxLatE7 = int32(bound.Top() * 10000000)
-			header.CenterLonE7 = int32(bound.Center().X() * 10000000)
-			header.CenterLatE7 = int32(bound.Center().Y() * 10000000)
+			centerLon = bound.Center().X()
+			centerLat = bound.Center().Y()
 		} else {
 			parts := strings.Split(bbox, ",")
 			minLon, err := strconv.ParseFloat(parts[0], 64)
@@ -346,21 +343,23 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 
 			multipolygon = bboxToMultiPolygon(minLon, minLat, maxLon, maxLat)
 
-			header.MinLonE7 = int32(minLon * 10000000)
-			header.MinLatE7 = int32(minLat * 10000000)
-			header.MaxLonE7 = int32(maxLon * 10000000)
-			header.MaxLatE7 = int32(maxLat * 10000000)
-
-			centerLon := (minLon + maxLon) / 2
+			centerLon = (minLon + maxLon) / 2
 			if minLon > maxLon {
 				centerLon = (minLon + maxLon + 360) / 2
 				if centerLon > 180 {
 					centerLon -= 360
 				}
 			}
-			header.CenterLonE7 = int32(centerLon * 10000000)
-			header.CenterLatE7 = int32((minLat + maxLat) / 2 * 10000000)
+			centerLat = (minLat + maxLat) / 2
 		}
+
+		bound := multipolygon.Bound()
+		header.MinLonE7 = int32(bound.Left() * 10000000)
+		header.MinLatE7 = int32(bound.Bottom() * 10000000)
+		header.MaxLonE7 = int32(bound.Right() * 10000000)
+		header.MaxLatE7 = int32(bound.Top() * 10000000)
+		header.CenterLonE7 = int32(centerLon * 10000000)
+		header.CenterLatE7 = int32(centerLat * 10000000)
 
 		// 2. construct a relevance bitmap
 		boundarySet, interiorSet := bitmapMultiPolygon(uint8(maxzoom), multipolygon)
