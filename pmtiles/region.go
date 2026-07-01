@@ -8,6 +8,16 @@ import (
 	"strings"
 )
 
+func bboxToMultiPolygon(minLon, minLat, maxLon, maxLat float64) orb.MultiPolygon {
+	if minLon > maxLon {
+		return orb.MultiPolygon{
+			{{{minLon, maxLat}, {180, maxLat}, {180, minLat}, {minLon, minLat}, {minLon, maxLat}}},
+			{{{-180, maxLat}, {maxLon, maxLat}, {maxLon, minLat}, {-180, minLat}, {-180, maxLat}}},
+		}
+	}
+	return orb.MultiPolygon{{{{minLon, maxLat}, {maxLon, maxLat}, {maxLon, minLat}, {minLon, minLat}, {minLon, maxLat}}}}
+}
+
 // BboxRegion parses a bbox string into an orb.MultiPolygon region.
 func BboxRegion(bbox string) (orb.MultiPolygon, error) {
 	parts := strings.Split(bbox, ",")
@@ -27,7 +37,7 @@ func BboxRegion(bbox string) (orb.MultiPolygon, error) {
 	if err != nil {
 		return nil, err
 	}
-	return orb.MultiPolygon{{{{minLon, maxLat}, {maxLon, maxLat}, {maxLon, minLat}, {minLon, minLat}, {minLon, maxLat}}}}, nil
+	return bboxToMultiPolygon(minLon, minLat, maxLon, maxLat), nil
 }
 
 // UnmarshalRegion parses JSON bytes into an orb.MultiPolygon region.

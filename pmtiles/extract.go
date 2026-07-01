@@ -15,6 +15,8 @@ import (
 	"math"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -312,32 +314,59 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		if regionFile != "" {
 			dat, _ := ioutil.ReadFile(regionFile)
 			multipolygon, err = UnmarshalRegion(dat)
+			if err != nil {
+				return err
+			}
 
-			if err != nil {
-				return err
-			}
+			bound := multipolygon.Bound()
+			header.MinLonE7 = int32(bound.Left() * 10000000)
+			header.MinLatE7 = int32(bound.Bottom() * 10000000)
+			header.MaxLonE7 = int32(bound.Right() * 10000000)
+			header.MaxLatE7 = int32(bound.Top() * 10000000)
+			header.CenterLonE7 = int32(bound.Center().X() * 10000000)
+			header.CenterLatE7 = int32(bound.Center().Y() * 10000000)
 		} else {
-			multipolygon, err = BboxRegion(bbox)
+			parts := strings.Split(bbox, ",")
+			minLon, err := strconv.ParseFloat(parts[0], 64)
 			if err != nil {
-				return err
+				return fmt.Errorf("invalid bbox: %w", err)
 			}
+			minLat, err := strconv.ParseFloat(parts[1], 64)
+			if err != nil {
+				return fmt.Errorf("invalid bbox: %w", err)
+			}
+			maxLon, err := strconv.ParseFloat(parts[2], 64)
+			if err != nil {
+				return fmt.Errorf("invalid bbox: %w", err)
+			}
+			maxLat, err := strconv.ParseFloat(parts[3], 64)
+			if err != nil {
+				return fmt.Errorf("invalid bbox: %w", err)
+			}
+
+			multipolygon = bboxToMultiPolygon(minLon, minLat, maxLon, maxLat)
+
+			header.MinLonE7 = int32(minLon * 10000000)
+			header.MinLatE7 = int32(minLat * 10000000)
+			header.MaxLonE7 = int32(maxLon * 10000000)
+			header.MaxLatE7 = int32(maxLat * 10000000)
+
+			centerLon := (minLon + maxLon) / 2
+			if minLon > maxLon {
+				centerLon = (minLon + maxLon + 360) / 2
+				if centerLon > 180 {
+					centerLon -= 360
+				}
+			}
+			header.CenterLonE7 = int32(centerLon * 10000000)
+			header.CenterLatE7 = int32((minLat + maxLat) / 2 * 10000000)
 		}
 
 		// 2. construct a relevance bitmap
-
-		bound := multipolygon.Bound()
-
 		boundarySet, interiorSet := bitmapMultiPolygon(uint8(maxzoom), multipolygon)
 		relevantSet = boundarySet
 		relevantSet.Or(interiorSet)
 		generalizeOr(relevantSet, uint8(minzoom))
-
-		header.MinLonE7 = int32(bound.Left() * 10000000)
-		header.MinLatE7 = int32(bound.Bottom() * 10000000)
-		header.MaxLonE7 = int32(bound.Right() * 10000000)
-		header.MaxLatE7 = int32(bound.Top() * 10000000)
-		header.CenterLonE7 = int32(bound.Center().X() * 10000000)
-		header.CenterLatE7 = int32(bound.Center().Y() * 10000000)
 	} else {
 		relevantSet = roaring64.New()
 		relevantSet.AddRange(ZxyToID(uint8(minzoom), 0, 0), ZxyToID(uint8(maxzoom)+1, 0, 0))
