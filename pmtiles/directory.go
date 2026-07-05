@@ -323,8 +323,6 @@ func SerializeEntries(entries []EntryV3, compression Compression) []byte {
 }
 
 func DeserializeEntries(data *bytes.Buffer, compression Compression) []EntryV3 {
-	entries := make([]EntryV3, 0)
-
 	var reader io.Reader
 
 	if compression == NoCompression {
@@ -337,6 +335,10 @@ func DeserializeEntries(data *bytes.Buffer, compression Compression) []EntryV3 {
 	byteReader := bufio.NewReader(reader)
 
 	numEntries, _ := binary.ReadUvarint(byteReader)
+
+	// Preallocate the entries slice to the known count so the append loops below
+	// do not repeatedly reallocate and copy the backing array as it grows.
+	entries := make([]EntryV3, 0, numEntries)
 
 	lastID := uint64(0)
 	for i := uint64(0); i < numEntries; i++ {
