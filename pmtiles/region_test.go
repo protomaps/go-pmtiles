@@ -1,6 +1,7 @@
 package pmtiles
 
 import (
+	"github.com/paulmach/orb"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -12,6 +13,24 @@ func TestBboxRegion(t *testing.T) {
 	assert.Equal(t, 52.304934, result[0][0][0][1])
 	assert.Equal(t, 1.097501, result[0][0][2][0])
 	assert.Equal(t, 50.680367, result[0][0][2][1])
+}
+
+func TestBboxRegionAntimeridianCrossing(t *testing.T) {
+	result, err := BboxRegion("170,-10,-170,10")
+	assert.Nil(t, err)
+	assert.Equal(t, orb.MultiPolygon{
+		{{{170, 10}, {180, 10}, {180, -10}, {170, -10}, {170, 10}}},
+		{{{-180, 10}, {-170, 10}, {-170, -10}, {-180, -10}, {-180, 10}}},
+	}, result)
+}
+
+func TestBboxRegionAntimeridianCrossingRingOrder(t *testing.T) {
+	result, err := BboxRegion("179.5,-5,-179.5,5")
+	assert.Nil(t, err)
+	assert.Equal(t, orb.MultiPolygon{
+		{{{179.5, 5}, {180, 5}, {180, -5}, {179.5, -5}, {179.5, 5}}},
+		{{{-180, 5}, {-179.5, 5}, {-179.5, -5}, {-180, -5}, {-180, 5}}},
+	}, result)
 }
 
 func TestRawPolygonRegion(t *testing.T) {
