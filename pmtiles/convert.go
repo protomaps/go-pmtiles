@@ -99,8 +99,8 @@ func newResolver(deduplicate bool, compress bool) *resolver {
 }
 
 // Convert an existing archive on disk to a new PMTiles specification version 3 archive.
-func Convert(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
-	return convertMbtiles(logger, input, output, deduplicate, tmpfile)
+func Convert(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File, noTmpfile bool) error {
+	return convertMbtiles(logger, input, output, deduplicate, tmpfile, noTmpfile)
 }
 
 func setZoomCenterDefaults(header *HeaderV3, entries []EntryV3) {
@@ -116,7 +116,7 @@ func setZoomCenterDefaults(header *HeaderV3, entries []EntryV3) {
 	}
 }
 
-func convertMbtiles(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File) error {
+func convertMbtiles(logger *log.Logger, input string, output string, deduplicate bool, tmpfile *os.File, noTmpfile bool) error {
 	start := time.Now()
 	conn, err := sqlite.OpenConn(input, sqlite.OpenReadOnly)
 	if err != nil {
@@ -186,6 +186,10 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 		return fmt.Errorf("no tiles in MBTiles archive")
 	}
 
+	if noTmpfile {
+		return convertMbtilesNoTmpfile(logger, conn, tileset, header, jsonMetadata, output, deduplicate, start)
+	}
+
 	logger.Println("Pass 2: writing tiles")
 	resolve := newResolver(deduplicate, header.TileType == Mvt)
 	{
@@ -235,6 +239,148 @@ func convertMbtiles(logger *log.Logger, input string, output string, deduplicate
 	if err != nil {
 		return err
 	}
+	logger.Println("Finished in ", time.Since(start))
+	return nil
+}
+
+func iterateMbtiles(conn *sqlite.Conn, tileset *roaring64.Bitmap, fn func(id uint64, data []byte) error) error {
+	stmt := conn.Prep("SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?")
+	i := tileset.Iterator()
+	var rawTileTmp bytes.Buffer
+
+	for i.HasNext() {
+		id := i.Next()
+		z, x, y := IDToZxy(id)
+		flippedY := (1 << z) - 1 - y
+
+		stmt.BindInt64(1, int64(z))
+		stmt.BindInt64(2, int64(x))
+		stmt.BindInt64(3, int64(flippedY))
+
+		hasRow, err := stmt.Step()
+		if err != nil {
+			return fmt.Errorf("Failed to step statement, %w", err)
+		}
+		if !hasRow {
+			return fmt.Errorf("Missing row")
+		}
+
+		reader := stmt.ColumnReader(0)
+		rawTileTmp.Reset()
+		rawTileTmp.ReadFrom(reader)
+		data := rawTileTmp.Bytes()
+
+		if len(data) > 0 {
+			if err := fn(id, data); err != nil {
+				return err
+			}
+		}
+
+		stmt.ClearBindings()
+		stmt.Reset()
+	}
+	return nil
+}
+
+func convertMbtilesNoTmpfile(logger *log.Logger, conn *sqlite.Conn, tileset *roaring64.Bitmap, header HeaderV3, jsonMetadata map[string]interface{}, output string, deduplicate bool, start time.Time) error {
+	// Pass 1: dry run — build resolver and entry list without writing any data
+	logger.Println("Pass 1: Computing tile offsets (dry run)")
+	dryResolve := newResolver(deduplicate, header.TileType == Mvt)
+	{
+		bar := defaultProgressbar(logger, int64(tileset.GetCardinality()))
+		err := iterateMbtiles(conn, tileset, func(id uint64, data []byte) error {
+			dryResolve.AddTileIsNew(id, data, 1) // discard returned bytes
+			bar.Add(1)
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("Failed in pass 1, %w", err)
+		}
+	}
+
+	// Build directories and header with complete entry knowledge
+	logger.Println("# of addressed tiles: ", dryResolve.AddressedTiles)
+	logger.Println("# of tile entries (after RLE): ", len(dryResolve.Entries))
+	logger.Println("# of tile contents: ", dryResolve.NumContents())
+
+	rootBytes, leavesBytes, numLeaves := BuildDirectories(dryResolve.Entries, 16384-HeaderV3LenBytes, Gzip)
+
+	if numLeaves > 0 {
+		logger.Println("Root dir bytes: ", len(rootBytes))
+		logger.Println("Leaves dir bytes: ", len(leavesBytes))
+		logger.Println("Num leaf dirs: ", numLeaves)
+		logger.Println("Total dir bytes: ", len(rootBytes)+len(leavesBytes))
+		logger.Println("Average leaf dir bytes: ", len(leavesBytes)/numLeaves)
+		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(rootBytes)+len(leavesBytes))/float64(dryResolve.AddressedTiles))
+	} else {
+		logger.Println("Total dir bytes: ", len(rootBytes))
+		logger.Printf("Average bytes per addressed tile: %.2f\n", float64(len(rootBytes))/float64(dryResolve.AddressedTiles))
+	}
+
+	metadataBytes, err := SerializeMetadata(jsonMetadata, Gzip)
+	if err != nil {
+		return fmt.Errorf("Failed to marshal metadata, %w", err)
+	}
+
+	setZoomCenterDefaults(&header, dryResolve.Entries)
+	header.Clustered = true
+	header.InternalCompression = Gzip
+	if header.TileType == Mvt {
+		header.TileCompression = Gzip
+	}
+
+	header.AddressedTilesCount = dryResolve.AddressedTiles
+	header.TileEntriesCount = uint64(len(dryResolve.Entries))
+	header.TileContentsCount = dryResolve.NumContents()
+	header.RootOffset = HeaderV3LenBytes
+	header.RootLength = uint64(len(rootBytes))
+	header.MetadataOffset = header.RootOffset + header.RootLength
+	header.MetadataLength = uint64(len(metadataBytes))
+	header.LeafDirectoryOffset = header.MetadataOffset + header.MetadataLength
+	header.LeafDirectoryLength = uint64(len(leavesBytes))
+	header.TileDataOffset = header.LeafDirectoryOffset + header.LeafDirectoryLength
+	header.TileDataLength = dryResolve.Offset
+
+	// Write header + directories + metadata to output file
+	outfile, err := os.Create(output)
+	if err != nil {
+		return fmt.Errorf("Failed to create %s, %w", output, err)
+	}
+	defer outfile.Close()
+
+	headerBytes := SerializeHeader(header)
+	if _, err = outfile.Write(headerBytes); err != nil {
+		return fmt.Errorf("Failed to write header, %w", err)
+	}
+	if _, err = outfile.Write(rootBytes); err != nil {
+		return fmt.Errorf("Failed to write root directory, %w", err)
+	}
+	if _, err = outfile.Write(metadataBytes); err != nil {
+		return fmt.Errorf("Failed to write metadata, %w", err)
+	}
+	if _, err = outfile.Write(leavesBytes); err != nil {
+		return fmt.Errorf("Failed to write leaf directories, %w", err)
+	}
+
+	// Pass 2: write tile data directly to output file
+	logger.Println("Pass 2: Writing tiles")
+	writeResolve := newResolver(deduplicate, header.TileType == Mvt)
+	{
+		bar := defaultProgressbar(logger, int64(tileset.GetCardinality()))
+		err := iterateMbtiles(conn, tileset, func(id uint64, data []byte) error {
+			if isNew, newData := writeResolve.AddTileIsNew(id, data, 1); isNew {
+				if _, err := outfile.Write(newData); err != nil {
+					return fmt.Errorf("Failed to write tile data: %w", err)
+				}
+			}
+			bar.Add(1)
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("Failed in pass 2, %w", err)
+		}
+	}
+
 	logger.Println("Finished in ", time.Since(start))
 	return nil
 }
