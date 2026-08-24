@@ -82,6 +82,7 @@ var cli struct {
 		Force           bool   `help:"Force removal"`
 		NoDeduplication bool   `help:"Don't attempt to deduplicate tiles"`
 		Tmpdir          string `help:"An optional path to a folder for temporary files" type:"existingdir"`
+		NoTmpfile       bool   `help:"Use two-pass conversion to avoid temporary file (slower but saves disk space)"`
 	} `cmd:"" help:"Convert an MBTiles database to PMTiles"`
 
 	Verify struct {
@@ -195,29 +196,31 @@ func main() {
 
 		var tmpfile *os.File
 
-		if cli.Convert.Tmpdir == "" {
-			var err error
-			tmpfile, err = os.CreateTemp("", "pmtiles")
+		if !cli.Convert.NoTmpfile {
+			if cli.Convert.Tmpdir == "" {
+				var err error
+				tmpfile, err = os.CreateTemp("", "pmtiles")
 
-			if err != nil {
-				logger.Fatalf("Failed to create temp file, %v", err)
+				if err != nil {
+					logger.Fatalf("Failed to create temp file, %v", err)
+				}
+			} else {
+				absTemproot, err := filepath.Abs(cli.Convert.Tmpdir)
+
+				if err != nil {
+					logger.Fatalf("Failed to derive absolute path for %s, %v", cli.Convert.Tmpdir, err)
+				}
+
+				tmpfile, err = os.CreateTemp(absTemproot, "pmtiles")
+
+				if err != nil {
+					logger.Fatalf("Failed to create temp file, %v", err)
+				}
 			}
-		} else {
-			absTemproot, err := filepath.Abs(cli.Convert.Tmpdir)
-
-			if err != nil {
-				logger.Fatalf("Failed to derive absolute path for %s, %v", cli.Convert.Tmpdir, err)
-			}
-
-			tmpfile, err = os.CreateTemp(absTemproot, "pmtiles")
-
-			if err != nil {
-				logger.Fatalf("Failed to create temp file, %v", err)
-			}
+			defer os.Remove(tmpfile.Name())
 		}
 
-		defer os.Remove(tmpfile.Name())
-		err := pmtiles.Convert(logger, path, output, !cli.Convert.NoDeduplication, tmpfile)
+		err := pmtiles.Convert(logger, path, output, !cli.Convert.NoDeduplication, tmpfile, cli.Convert.NoTmpfile)
 
 		if err != nil {
 			logger.Fatalf("Failed to convert %s, %v", path, err)
