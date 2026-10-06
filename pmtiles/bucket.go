@@ -121,34 +121,31 @@ func generateEtagFromInts(ns ...int64) string {
 func (b FileBucket) NewRangeReaderEtag(_ context.Context, key string, offset, length int64, etag string) (io.ReadCloser, string, int, error) {
 	name := filepath.Join(b.path, key)
 	file, err := os.Open(name)
-	defer file.Close()
 	if err != nil {
 		return nil, "", 404, err
 	}
 	info, err := file.Stat()
 	if err != nil {
+		file.Close()
 		return nil, "", 404, err
 	}
 	newEtag := generateEtagFromInts(info.ModTime().UnixNano(), info.Size())
 	if len(etag) > 0 && etag != newEtag {
+		file.Close()
 		return nil, "", 412, &RefreshRequiredError{}
 	}
-	result := make([]byte, length)
-	read, err := file.ReadAt(result, offset)
 
-	if err == io.EOF {
-		part := result[0:read]
-		return io.NopCloser(bytes.NewReader(part)), newEtag, 206, nil
-	}
+	// stream the range instead of buffering it: ranges can be hundreds of GB.
+	// reads past the end of the file are truncated (io.EOF).
+	return &sectionReadCloser{
+		Reader: io.NewSectionReader(file, offset, length),
+		Closer: file,
+	}, newEtag, 206, nil
+}
 
-	if err != nil {
-		return nil, "", 500, err
-	}
-	if read != int(length) {
-		return nil, "", 416, fmt.Errorf("Expected to read %d bytes but only read %d", length, read)
-	}
-
-	return io.NopCloser(bytes.NewReader(result)), newEtag, 206, nil
+type sectionReadCloser struct {
+	io.Reader
+	io.Closer
 }
 
 func (b FileBucket) Close() error {

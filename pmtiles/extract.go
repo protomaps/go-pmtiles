@@ -277,10 +277,10 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
 	}
 	b, err := io.ReadAll(r)
+	r.Close()
 	if err != nil {
 		return err
 	}
-	r.Close()
 
 	header, err := DeserializeHeader(b[0:HeaderV3LenBytes])
 
@@ -539,6 +539,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 			if err != nil {
 				return err
 			}
+			defer tileReader.Close()
 			offsetWriter := io.NewOffsetWriter(outfile, int64(header.TileDataOffset)+int64(or.Rng.DstOffset))
 
 			for _, cd := range or.CopyDiscards {
@@ -553,7 +554,6 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 					return err
 				}
 			}
-			tileReader.Close()
 			return nil
 		}
 

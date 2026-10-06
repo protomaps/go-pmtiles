@@ -36,10 +36,10 @@ func Verify(logger *log.Logger, file string) error {
 		return fmt.Errorf("failed to create range reader for %s, %w", key, err)
 	}
 	b, err := io.ReadAll(r)
+	r.Close()
 	if err != nil {
 		return fmt.Errorf("failed to read %s, %w", key, err)
 	}
-	r.Close()
 
 	header, err := DeserializeHeader(b[0:HeaderV3LenBytes])
 

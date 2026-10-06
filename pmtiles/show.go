@@ -37,10 +37,10 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 		return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
 	}
 	b, err := io.ReadAll(r)
+	r.Close()
 	if err != nil {
 		return fmt.Errorf("Failed to read %s, %w", key, err)
 	}
-	r.Close()
 
 	header, err := DeserializeHeader(b[0:HeaderV3LenBytes])
 	if err != nil {
@@ -60,6 +60,7 @@ func Show(_ *log.Logger, output io.Writer, bucketURL string, key string, showHea
 		}
 
 		metadataBytes, err := DeserializeMetadataBytes(metadataReader, header.InternalCompression)
+		metadataReader.Close()
 		if err != nil {
 			return fmt.Errorf("Failed to read %s, %w", key, err)
 		}

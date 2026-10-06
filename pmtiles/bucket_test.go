@@ -152,6 +152,7 @@ func TestFileBucketReplace(t *testing.T) {
 	assert.Equal(t, 206, status)
 	assert.Nil(t, err)
 	data, err := io.ReadAll(reader)
+	reader.Close()
 	assert.Nil(t, err)
 	assert.Equal(t, []byte{2}, data)
 
@@ -161,6 +162,7 @@ func TestFileBucketReplace(t *testing.T) {
 	assert.Equal(t, 206, status)
 	assert.Nil(t, err)
 	data, err = io.ReadAll(reader)
+	reader.Close()
 	assert.Nil(t, err)
 	assert.NotEqual(t, etag1, etag2)
 	assert.Equal(t, []byte{5}, data)
@@ -188,6 +190,7 @@ func TestFileBucketRename(t *testing.T) {
 	assert.Equal(t, 206, status)
 	assert.Nil(t, err)
 	data, err := io.ReadAll(reader)
+	reader.Close()
 	assert.Nil(t, err)
 	assert.Equal(t, []byte{2}, data)
 
@@ -198,6 +201,7 @@ func TestFileBucketRename(t *testing.T) {
 	assert.Equal(t, 206, status)
 	assert.Nil(t, err)
 	data, err = io.ReadAll(reader)
+	reader.Close()
 	assert.Nil(t, err)
 	assert.NotEqual(t, etag1, etag2)
 	assert.Equal(t, []byte{5}, data)
@@ -219,6 +223,7 @@ func TestFileShorterThan16K(t *testing.T) {
 	assert.Equal(t, 206, status)
 	assert.Nil(t, err)
 	data, err := io.ReadAll(reader)
+	reader.Close()
 	assert.Nil(t, err)
 	assert.Equal(t, 3, len(data))
 }
@@ -275,4 +280,30 @@ func TestGetProviderErrorStatusCode(t *testing.T) {
 func TestGenerationEtag(t *testing.T) {
 	assert.Equal(t, int64(123), etagToGeneration("123"))
 	assert.Equal(t, "123", generationToEtag(int64(123)))
+}
+
+func TestFileBucketRangeReader(t *testing.T) {
+	dir := t.TempDir()
+	assert.Nil(t, os.WriteFile(filepath.Join(dir, "a.bin"), []byte("0123456789"), 0666))
+	bucket := NewFileBucket(dir)
+
+	read := func(offset, length int64) string {
+		r, err := bucket.NewRangeReader(context.Background(), "a.bin", offset, length)
+		assert.Nil(t, err)
+		b, err := io.ReadAll(r)
+		assert.Nil(t, err)
+		assert.Nil(t, r.Close())
+		return string(b)
+	}
+
+	assert.Equal(t, "2345", read(2, 4))
+	assert.Equal(t, "89", read(8, 100))
+	assert.Equal(t, "", read(50, 4))
+
+	_, err := bucket.NewRangeReader(context.Background(), "missing.bin", 0, 4)
+	assert.NotNil(t, err)
+
+	_, _, status, err := bucket.NewRangeReaderEtag(context.Background(), "a.bin", 0, 4, "\"stale\"")
+	assert.Equal(t, 412, status)
+	assert.NotNil(t, err)
 }
