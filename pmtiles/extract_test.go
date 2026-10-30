@@ -1,9 +1,19 @@
 package pmtiles
 
 import (
+	"bytes"
+	"context"
+	"fmt"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/stretchr/testify/assert"
+	"io"
+	"log"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestRelevantEntries(t *testing.T) {
@@ -172,4 +182,98 @@ func TestMergeRangesNonSrcOrdered(t *testing.T) {
 
 	result, _ := mergeRanges(ranges, 0.1)
 	assert.Equal(t, 2, result.Len())
+}
+
+type section func(header HeaderV3) (uint64, uint64)
+
+func rootSection(h HeaderV3) (uint64, uint64)     { return h.RootOffset, h.RootLength }
+func metadataSection(h HeaderV3) (uint64, uint64) { return h.MetadataOffset, h.MetadataLength }
+func leafSection(h HeaderV3) (uint64, uint64)     { return h.LeafDirectoryOffset, h.LeafDirectoryLength }
+func tileSection(h HeaderV3) (uint64, uint64)     { return h.TileDataOffset, h.TileDataLength }
+
+func replacingSource(t *testing.T, v1, v2 []byte, sec section) (*httptest.Server, *bool) {
+	header, err := DeserializeHeader(v1[0:HeaderV3LenBytes])
+	assert.Nil(t, err)
+	offset, length := sec(header)
+	assert.Greater(t, length, uint64(0))
+	var mu sync.Mutex
+	replaced := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var start uint64
+		fmt.Sscanf(r.Header.Get("Range"), "bytes=%d-", &start)
+		mu.Lock()
+		if !replaced && start >= offset && start < offset+length {
+			replaced = true
+		}
+		data := v1
+		if replaced {
+			data = v2
+		}
+		mu.Unlock()
+		w.Header().Set("ETag", generateEtag(data))
+		http.ServeContent(w, r, "archive.pmtiles", time.Time{}, bytes.NewReader(data))
+	}))
+	t.Cleanup(server.Close)
+	return server, &replaced
+}
+
+func extractReplaced(t *testing.T, v1, v2 []byte, sec section) {
+	server, replaced := replacingSource(t, v1, v2, sec)
+	output := filepath.Join(t.TempDir(), "output.pmtiles")
+	err := Extract(context.Background(), log.New(io.Discard, "", 0), server.URL, "archive.pmtiles", -1, -1, "", "", output, 1, 0.05, false)
+	assert.True(t, *replaced)
+	assert.True(t, isRefreshRequiredError(err), "expected RefreshRequiredError, got %v", err)
+}
+
+func TestExtractSourceReplacedBeforeTileRead(t *testing.T) {
+	header := HeaderV3{TileType: Mvt, Clustered: true}
+	v1 := fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1, 2, 3},
+	}, false, Gzip)
+	v2 := fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {4, 5, 6, 7},
+	}, false, Gzip)
+	extractReplaced(t, v1, v2, tileSection)
+}
+
+func TestExtractSourceReplacedBeforeLeafRead(t *testing.T) {
+	header := HeaderV3{TileType: Mvt, Clustered: true}
+	v1 := fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1},
+		{1, 1, 1}: {2, 3},
+	}, true, Gzip)
+	v2 := fakeArchive(header, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {4, 5},
+		{1, 1, 1}: {6, 7},
+	}, false, Gzip)
+	extractReplaced(t, v1, v2, leafSection)
+}
+
+func TestExtractSourceReplacedBeforeRootRead(t *testing.T) {
+	v1 := fakeArchive(HeaderV3{TileType: Mvt, Clustered: true}, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1},
+		{1, 1, 1}: {2, 3},
+	}, false, Gzip)
+	v2 := fakeArchive(HeaderV3{TileType: Mvt, Clustered: true, CenterZoom: 4}, map[string]interface{}{}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1},
+		{1, 1, 1}: {2, 3},
+	}, false, Gzip)
+	extractReplaced(t, v1, v2, rootSection)
+}
+
+func TestExtractSourceReplacedBeforeMetadataRead(t *testing.T) {
+	header := HeaderV3{TileType: Mvt, Clustered: true}
+	v1 := fakeArchive(header, map[string]interface{}{
+		"meta": "data",
+	}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1},
+		{1, 1, 1}: {2, 3},
+	}, false, Gzip)
+	v2 := fakeArchive(header, map[string]interface{}{
+		"meta": "data2",
+	}, map[Zxy][]byte{
+		{0, 0, 0}: {0, 1},
+		{1, 1, 1}: {2, 3},
+	}, false, Gzip)
+	extractReplaced(t, v1, v2, metadataSection)
 }

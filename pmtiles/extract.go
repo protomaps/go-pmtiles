@@ -271,7 +271,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 	}
 	defer bucket.Close()
 
-	r, err := bucket.NewRangeReader(ctx, key, 0, HeaderV3LenBytes)
+	r, etag, _, err := bucket.NewRangeReaderEtag(ctx, key, 0, HeaderV3LenBytes, "")
 
 	if err != nil {
 		return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
@@ -281,6 +281,11 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		return err
 	}
 	r.Close()
+
+	// If-Match requires strong comparison, so a weak ETag would never match
+	if strings.HasPrefix(etag, "W/") {
+		etag = ""
+	}
 
 	header, err := DeserializeHeader(b[0:HeaderV3LenBytes])
 
@@ -375,7 +380,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 	dirOffset := header.RootOffset
 	dirLength := header.RootLength
 
-	rootReader, err := bucket.NewRangeReader(ctx, key, int64(dirOffset), int64(dirLength))
+	rootReader, _, _, err := bucket.NewRangeReaderEtag(ctx, key, int64(dirOffset), int64(dirLength), etag)
 	if err != nil {
 		return err
 	}
@@ -406,7 +411,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		}
 		or := overfetchLeaves.Remove(overfetchLeaves.Front()).(overfetchRange)
 
-		chunkReader, err := bucket.NewRangeReader(ctx, key, int64(or.Rng.SrcOffset), int64(or.Rng.Length))
+		chunkReader, _, _, err := bucket.NewRangeReaderEtag(ctx, key, int64(or.Rng.SrcOffset), int64(or.Rng.Length), etag)
 		if err != nil {
 			return err
 		}
@@ -505,7 +510,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		}
 
 		// 9. get and write the metadata
-		metadataReader, err := bucket.NewRangeReader(ctx, key, int64(sourceMetadataOffset), int64(header.MetadataLength))
+		metadataReader, _, _, err := bucket.NewRangeReaderEtag(ctx, key, int64(sourceMetadataOffset), int64(header.MetadataLength), etag)
 		if err != nil {
 			return err
 		}
@@ -535,7 +540,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		var mu sync.Mutex
 
 		downloadPart := func(or overfetchRange) error {
-			tileReader, err := bucket.NewRangeReader(ctx, key, int64(sourceTileDataOffset+or.Rng.SrcOffset), int64(or.Rng.Length))
+			tileReader, _, _, err := bucket.NewRangeReaderEtag(ctx, key, int64(sourceTileDataOffset+or.Rng.SrcOffset), int64(or.Rng.Length), etag)
 			if err != nil {
 				return err
 			}
