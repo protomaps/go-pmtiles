@@ -503,7 +503,11 @@ func ExtractWithResume(ctx context.Context, logger *log.Logger, bucketURL string
 		totalActualBytes += x.Length
 	}
 
+	// transferredBytes counts the tile data that this run downloads. A dry run downloads none, and
+	// reports the bytes that a run would download.
+	transferredBytes := totalBytes
 	if !dryRun {
+		transferredBytes = 0
 		outputSize := HeaderV3LenBytes + int64(len(newRootBytes)) + int64(header.MetadataLength) + int64(len(newLeavesBytes)) + int64(totalActualBytes)
 
 		// With resume turned on, state holds the progress that the resume state file records.
@@ -687,6 +691,7 @@ func ExtractWithResume(ctx context.Context, logger *log.Logger, bucketURL string
 							bar.Add(n)
 							progressMu.Lock()
 							rangeBytesDone[srcOffset] = position
+							transferredBytes += uint64(n)
 							progressMu.Unlock()
 						}
 						if readErr == io.EOF && position < end {
@@ -799,7 +804,7 @@ func ExtractWithResume(ctx context.Context, logger *log.Logger, bucketURL string
 	totalRequests++                     // metadata
 	totalRequests += numOverfetchRanges
 	logger.Printf("Extract required %d total requests.\n", totalRequests)
-	logger.Printf("Extract transferred %s (overfetch %v) for an archive size of %s\n", humanize.Bytes(totalBytes), overfetch, humanize.Bytes(totalActualBytes))
+	logger.Printf("Extract transferred %s (overfetch %v) for an archive size of %s\n", humanize.Bytes(transferredBytes), overfetch, humanize.Bytes(totalActualBytes))
 
 	return nil
 }
