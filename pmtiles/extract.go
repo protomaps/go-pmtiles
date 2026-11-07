@@ -596,8 +596,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		// otherwise a extract cancelled during the tile download section
 		// will appear valid with "pmtiles verify"
 		// even though the tile contents are corrupted.
-		outfile.Seek(0, io.SeekStart)
-		_, err = outfile.Write(headerBytes)
+		_, err = outfile.WriteAt(headerBytes, 0)
 		if err != nil {
 			return err
 		}
