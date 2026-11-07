@@ -250,7 +250,22 @@ func mergeRanges(ranges []srcDstRange, overfetch float32) (*list.List, uint64) {
 // 9. get and write the metadata.
 // 10. write the leaf directories (if any)
 // 11. Get all tiles, and write directly to the output.
+//
+// Extract is ExtractWithResume with resume turned off.
+// It keeps its signature, so that code that calls it does not change.
 func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key string, minzoom int8, maxzoom int8, regionFile string, bbox string, output string, downloadThreads int, overfetch float32, dryRun bool) error {
+	return ExtractWithResume(ctx, logger, bucketURL, key, minzoom, maxzoom, regionFile, bbox, output, downloadThreads, overfetch, dryRun, ResumeOptions{})
+}
+
+// ExtractWithResume is Extract, with an extract that can continue after an interruption.
+// With resume.StatePath set, it records the progress of the download in a resume state file.
+// A later call with the same source and arguments continues from the recorded progress.
+// See ResumeOptions.
+//
+// Design decision: ExtractWithResume is a separate function, and Extract keeps its signature.
+// Extract is public API with 12 positional parameters. More parameters on Extract would break
+// every program that calls it. Extract calls ExtractWithResume with resume turned off.
+func ExtractWithResume(ctx context.Context, logger *log.Logger, bucketURL string, key string, minzoom int8, maxzoom int8, regionFile string, bbox string, output string, downloadThreads int, overfetch float32, dryRun bool, resume ResumeOptions) error {
 	// 1. fetch the header
 	start := time.Now()
 
@@ -271,7 +286,9 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 	}
 	defer bucket.Close()
 
-	r, err := bucket.NewRangeReader(ctx, key, 0, HeaderV3LenBytes)
+	// Every later read of the source sends the ETag of this first read with If-Match,
+	// so a source that changes during the extract fails the read instead of mixing two versions.
+	r, sourceEtag, _, err := bucket.NewRangeReaderEtag(ctx, key, 0, HeaderV3LenBytes, "")
 
 	if err != nil {
 		return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
@@ -281,6 +298,17 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		return err
 	}
 	r.Close()
+
+	// If-Match uses the strong comparison, so a weak ETag never matches it.
+	// Extract therefore does not pin a weak ETag, and cannot resume from a source that has one.
+	if strings.HasPrefix(sourceEtag, "W/") {
+		sourceEtag = ""
+	}
+
+	readSource := func(offset int64, length int64) (io.ReadCloser, error) {
+		reader, _, _, err := bucket.NewRangeReaderEtag(ctx, key, offset, length, sourceEtag)
+		return reader, err
+	}
 
 	header, err := DeserializeHeader(b[0:HeaderV3LenBytes])
 
@@ -375,7 +403,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 	dirOffset := header.RootOffset
 	dirLength := header.RootLength
 
-	rootReader, err := bucket.NewRangeReader(ctx, key, int64(dirOffset), int64(dirLength))
+	rootReader, err := readSource(int64(dirOffset), int64(dirLength))
 	if err != nil {
 		return err
 	}
@@ -406,7 +434,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		}
 		or := overfetchLeaves.Remove(overfetchLeaves.Front()).(overfetchRange)
 
-		chunkReader, err := bucket.NewRangeReader(ctx, key, int64(or.Rng.SrcOffset), int64(or.Rng.Length))
+		chunkReader, err := readSource(int64(or.Rng.SrcOffset), int64(or.Rng.Length))
 		if err != nil {
 			return err
 		}
@@ -481,18 +509,69 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		totalActualBytes += x.Length
 	}
 
+	// transferredBytes counts the tile data that this run downloads. A dry run downloads none, and
+	// reports the bytes that a run would download.
+	transferredBytes := totalBytes
 	if !dryRun {
+		transferredBytes = 0
+		outputSize := HeaderV3LenBytes + int64(len(newRootBytes)) + int64(header.MetadataLength) + int64(len(newLeavesBytes)) + int64(totalActualBytes)
 
-		outfile, err := os.Create(output)
-		defer outfile.Close()
+		// With resume turned on, state holds the progress that the resume state file records.
+		var state extractResumeState
+		resuming := false
+		if resume.StatePath != "" {
+			regionHash, err := regionSHA256(regionFile)
+			if err != nil {
+				return err
+			}
+			identity := extractResumeState{
+				FormatVersion: extractResumeStateFormatVersion,
+				SourceURL:     bucketURL + "/" + key,
+				SourceEtag:    sourceEtag,
+				MinZoom:       minzoom,
+				MaxZoom:       maxzoom,
+				Bbox:          bbox,
+				RegionSHA256:  regionHash,
+				Overfetch:     overfetch,
+				PlanSHA256:    extractPlanSHA256(headerBytes, newRootBytes, newLeavesBytes, overfetchRanges),
+			}
+			var complete bool
+			state, resuming, complete, err = prepareExtractResume(resume, output, identity, outputSize)
+			if err != nil {
+				return err
+			}
+			if complete {
+				logger.Printf("%s is complete, according to %s.\n", output, resume.StatePath)
+				return nil
+			}
+		}
 
+		var outfile *os.File
+		if resuming {
+			logger.Printf("Resuming %s from %s.\n", output, resume.StatePath)
+			outfile, err = os.OpenFile(output, os.O_RDWR, 0)
+		} else {
+			outfile, err = os.Create(output)
+		}
 		if err != nil {
 			return err
 		}
+		defer outfile.Close()
 
 		// set the file size and write empty space for the header for now
 		// see comment below
-		outfile.Truncate(HeaderV3LenBytes + int64(len(newRootBytes)) + int64(header.MetadataLength) + int64(len(newLeavesBytes)) + int64(totalActualBytes))
+		if !resuming {
+			if err := outfile.Truncate(outputSize); err != nil {
+				return err
+			}
+			// Record the new output with no progress, so that a failure before the
+			// first checkpoint leaves an output that a later run can resume.
+			if resume.StatePath != "" {
+				if err := writeExtractResumeState(resume.StatePath, state); err != nil {
+					return err
+				}
+			}
+		}
 		_, err = outfile.Write(make([]byte, HeaderV3LenBytes))
 		if err != nil {
 			return err
@@ -505,7 +584,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		}
 
 		// 9. get and write the metadata
-		metadataReader, err := bucket.NewRangeReader(ctx, key, int64(sourceMetadataOffset), int64(header.MetadataLength))
+		metadataReader, err := readSource(int64(sourceMetadataOffset), int64(header.MetadataLength))
 		if err != nil {
 			return err
 		}
@@ -534,28 +613,126 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 
 		var mu sync.Mutex
 
+		// rangeBytesDone holds, for each download range by its source offset,
+		// the number of source bytes from the start of the range that are written to the output.
+		var progressMu sync.Mutex
+		rangeBytesDone := make(map[uint64]uint64)
+		for srcOffset, done := range state.RangeBytesDone {
+			rangeBytesDone[srcOffset] = done
+			bar.Add64(int64(done))
+		}
+
+		// checkpoint syncs the output, then records the progress from before the sync
+		// in the resume state file. Every byte that the file records is then on disk.
+		var checkpointMu sync.Mutex
+		checkpoint := func() error {
+			if resume.StatePath == "" {
+				return nil
+			}
+			checkpointMu.Lock()
+			defer checkpointMu.Unlock()
+			progressMu.Lock()
+			snapshot := make(map[uint64]uint64, len(rangeBytesDone))
+			for srcOffset, done := range rangeBytesDone {
+				snapshot[srcOffset] = done
+			}
+			progressMu.Unlock()
+			if err := outfile.Sync(); err != nil {
+				return err
+			}
+			state.RangeBytesDone = snapshot
+			return writeExtractResumeState(resume.StatePath, state)
+		}
+
+		// The first checkpoint records the directories as written, and creates the resume state file.
+		if err := checkpoint(); err != nil {
+			return err
+		}
+
 		downloadPart := func(or overfetchRange) error {
-			tileReader, err := bucket.NewRangeReader(ctx, key, int64(sourceTileDataOffset+or.Rng.SrcOffset), int64(or.Rng.Length))
+			srcOffset := or.Rng.SrcOffset
+			progressMu.Lock()
+			done := rangeBytesDone[srcOffset]
+			progressMu.Unlock()
+			if done >= or.Rng.Length {
+				return nil
+			}
+
+			tileReader, err := readSource(int64(sourceTileDataOffset+srcOffset+done), int64(or.Rng.Length-done))
 			if err != nil {
 				return err
 			}
-			offsetWriter := io.NewOffsetWriter(outfile, int64(header.TileDataOffset)+int64(or.Rng.DstOffset))
+			defer tileReader.Close()
+
+			// position counts the source bytes from the start of the range.
+			// dstPosition is the offset in the output of the next wanted byte.
+			position := uint64(0)
+			dstPosition := int64(header.TileDataOffset + or.Rng.DstOffset)
+			buffer := make([]byte, 1<<20)
 
 			for _, cd := range or.CopyDiscards {
-
-				_, err := io.CopyN(io.MultiWriter(offsetWriter, bar), tileReader, int64(cd.Wanted))
-				if err != nil {
-					return err
-				}
-
-				_, err = io.CopyN(bar, tileReader, int64(cd.Discard))
-				if err != nil {
-					return err
+				for _, part := range []struct {
+					length uint64
+					wanted bool
+				}{{cd.Wanted, true}, {cd.Discard, false}} {
+					end := position + part.length
+					// Skip the bytes that an earlier run wrote.
+					if position < done {
+						skipped := min(end, done) - position
+						if part.wanted {
+							dstPosition += int64(skipped)
+						}
+						position += skipped
+					}
+					for position < end {
+						n, readErr := tileReader.Read(buffer[:min(uint64(len(buffer)), end-position)])
+						if n > 0 {
+							if part.wanted {
+								if _, err := outfile.WriteAt(buffer[:n], dstPosition); err != nil {
+									return err
+								}
+								dstPosition += int64(n)
+							}
+							position += uint64(n)
+							bar.Add(n)
+							progressMu.Lock()
+							rangeBytesDone[srcOffset] = position
+							transferredBytes += uint64(n)
+							progressMu.Unlock()
+						}
+						if readErr == io.EOF && position < end {
+							return io.ErrUnexpectedEOF
+						}
+						if readErr != nil && readErr != io.EOF {
+							return readErr
+						}
+					}
 				}
 			}
-			tileReader.Close()
 			return nil
 		}
+
+		// With resume turned on, a checkpoint runs at each interval while the download runs.
+		stopCheckpoints := make(chan struct{})
+		checkpointsStopped := make(chan struct{})
+		go func() {
+			defer close(checkpointsStopped)
+			if resume.StatePath == "" {
+				return
+			}
+			ticker := time.NewTicker(extractResumeCheckpointInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					if err := checkpoint(); err != nil {
+						logger.Printf("Failed to save the resume state: %v\n", err)
+					}
+				case <-stopCheckpoints:
+					return
+				}
+			}
+		}()
 
 		errs, _ := errgroup.WithContext(ctx)
 
@@ -588,7 +765,13 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		}
 
 		err = errs.Wait()
+		close(stopCheckpoints)
+		<-checkpointsStopped
 		if err != nil {
+			// Record the progress, so that a resumed extract continues from it.
+			if checkpointErr := checkpoint(); checkpointErr != nil {
+				logger.Printf("Failed to save the resume state: %v\n", checkpointErr)
+			}
 			return err
 		}
 
@@ -596,10 +779,28 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		// otherwise a extract cancelled during the tile download section
 		// will appear valid with "pmtiles verify"
 		// even though the tile contents are corrupted.
-		outfile.Seek(0, io.SeekStart)
-		_, err = outfile.Write(headerBytes)
+		// Sync before the header write, so the tile data is on disk before the header,
+		// and after it, so the header is on disk when Extract returns.
+		if err := outfile.Sync(); err != nil {
+			return err
+		}
+		_, err = outfile.WriteAt(headerBytes, 0)
 		if err != nil {
 			return err
+		}
+		if err := outfile.Sync(); err != nil {
+			return err
+		}
+
+		if resume.StatePath != "" {
+			if resume.KeepState {
+				state.Complete = true
+				if err := checkpoint(); err != nil {
+					return err
+				}
+			} else if err := os.Remove(resume.StatePath); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -609,7 +810,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 	totalRequests++                     // metadata
 	totalRequests += numOverfetchRanges
 	logger.Printf("Extract required %d total requests.\n", totalRequests)
-	logger.Printf("Extract transferred %s (overfetch %v) for an archive size of %s\n", humanize.Bytes(totalBytes), overfetch, humanize.Bytes(totalActualBytes))
+	logger.Printf("Extract transferred %s (overfetch %v) for an archive size of %s\n", humanize.Bytes(transferredBytes), overfetch, humanize.Bytes(totalActualBytes))
 
 	return nil
 }
