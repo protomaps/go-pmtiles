@@ -254,12 +254,30 @@ func TestExtractMaxZoomFromLocalArchive(t *testing.T) {
 
 // archiveServer serves an archive over HTTP with range requests, ETags and If-Match,
 // through http.ServeContent. replaceAfterRequests > 0 replaces the archive's ETag after that many requests.
+// cutAfterBytes > 0 ends each response's connection after that many bytes of its body.
 type archiveServer struct {
 	mu                   sync.Mutex
 	archive              []byte
 	etag                 string
 	requests             int
 	replaceAfterRequests int
+	cutAfterBytes        int
+}
+
+// cuttingResponseWriter ends the connection after remaining bytes of the body.
+type cuttingResponseWriter struct {
+	http.ResponseWriter
+	remaining int
+}
+
+func (w *cuttingResponseWriter) Write(p []byte) (int, error) {
+	if len(p) <= w.remaining {
+		w.remaining -= len(p)
+		return w.ResponseWriter.Write(p)
+	}
+	w.ResponseWriter.Write(p[:w.remaining])
+	w.ResponseWriter.(http.Flusher).Flush()
+	panic(http.ErrAbortHandler)
 }
 
 func (s *archiveServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -269,9 +287,14 @@ func (s *archiveServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.etag = `"replaced"`
 	}
 	etag := s.etag
+	archive := s.archive
+	cutAfterBytes := s.cutAfterBytes
 	s.mu.Unlock()
 	w.Header().Set("ETag", etag)
-	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(s.archive))
+	if cutAfterBytes > 0 {
+		w = &cuttingResponseWriter{w, cutAfterBytes}
+	}
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(archive))
 }
 
 func extractTestTiles() map[Zxy][]byte {

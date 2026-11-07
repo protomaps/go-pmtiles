@@ -60,16 +60,19 @@ var cli struct {
 	} `cmd:"" help:"Edit JSON metadata or parts of the header"`
 
 	Extract struct {
-		Input           string  `arg:"" help:"Input local or remote archive"`
-		Output          string  `arg:"" help:"Output archive" type:"path"`
-		Bucket          string  `help:"Remote bucket of input archive"`
-		Region          string  `help:"local GeoJSON Polygon or MultiPolygon file for area of interest" type:"existingfile"`
-		Bbox            string  `help:"bbox area of interest: min_lon,min_lat,max_lon,max_lat" type:"string"`
-		Minzoom         int8    `default:"-1" help:"Minimum zoom level, inclusive"`
-		Maxzoom         int8    `default:"-1" help:"Maximum zoom level, inclusive"`
-		DownloadThreads int     `default:"4" help:"Number of download threads"`
-		DryRun          bool    `help:"Calculate tiles to extract, but don't download them"`
-		Overfetch       float32 `default:"0.05" help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
+		Input                string  `arg:"" help:"Input local or remote archive"`
+		Output               string  `arg:"" help:"Output archive" type:"path"`
+		Bucket               string  `help:"Remote bucket of input archive"`
+		Region               string  `help:"local GeoJSON Polygon or MultiPolygon file for area of interest" type:"existingfile"`
+		Bbox                 string  `help:"bbox area of interest: min_lon,min_lat,max_lon,max_lat" type:"string"`
+		Minzoom              int8    `default:"-1" help:"Minimum zoom level, inclusive"`
+		Maxzoom              int8    `default:"-1" help:"Maximum zoom level, inclusive"`
+		DownloadThreads      int     `default:"4" help:"Number of download threads"`
+		DryRun               bool    `help:"Calculate tiles to extract, but don't download them"`
+		Overfetch            float32 `default:"0.05" help:"What ratio of extra data to download to minimize # requests; 0.2 is 20%"`
+		ResumeState          string  `help:"File that records the progress of the extract. A later run with the same arguments resumes from it" type:"path"`
+		RestartOnUnresumable bool    `help:"With --resume-state, delete an output that cannot be resumed, and its resume state file, and start again"`
+		KeepResumeState      bool    `help:"With --resume-state, keep the resume state file, marked complete, after the extract succeeds"`
 	} `cmd:"" help:"Create an archive from a larger archive for a subset of zoom levels or geographic region"`
 
 	Merge struct {
@@ -180,7 +183,15 @@ func main() {
 			logger.Fatal(startHTTPServer(cli.Serve.Interface+":"+strconv.Itoa(cli.Serve.Port), mux))
 		}
 	case "extract <input> <output>":
-		err := pmtiles.Extract(context.Background(), logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Minzoom, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Bbox, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun)
+		if cli.Extract.ResumeState == "" && (cli.Extract.RestartOnUnresumable || cli.Extract.KeepResumeState) {
+			logger.Fatalf("Failed to extract, --restart-on-unresumable and --keep-resume-state need --resume-state")
+		}
+		resume := pmtiles.ResumeOptions{
+			StatePath:            cli.Extract.ResumeState,
+			RestartOnUnresumable: cli.Extract.RestartOnUnresumable,
+			KeepState:            cli.Extract.KeepResumeState,
+		}
+		err := pmtiles.ExtractWithResume(context.Background(), logger, cli.Extract.Bucket, cli.Extract.Input, cli.Extract.Minzoom, cli.Extract.Maxzoom, cli.Extract.Region, cli.Extract.Bbox, cli.Extract.Output, cli.Extract.DownloadThreads, cli.Extract.Overfetch, cli.Extract.DryRun, resume)
 		if err != nil {
 			logger.Fatalf("Failed to extract, %v", err)
 		}
