@@ -596,9 +596,16 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		// otherwise a extract cancelled during the tile download section
 		// will appear valid with "pmtiles verify"
 		// even though the tile contents are corrupted.
-		outfile.Seek(0, io.SeekStart)
-		_, err = outfile.Write(headerBytes)
+		// Sync before the header write, so the tile data is on disk before the header,
+		// and after it, so the header is on disk when Extract returns.
+		if err := outfile.Sync(); err != nil {
+			return err
+		}
+		_, err = outfile.WriteAt(headerBytes, 0)
 		if err != nil {
+			return err
+		}
+		if err := outfile.Sync(); err != nil {
 			return err
 		}
 	}

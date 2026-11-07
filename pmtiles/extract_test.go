@@ -1,8 +1,15 @@
 package pmtiles
 
 import (
+	"bytes"
+	"context"
+	"fmt"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/stretchr/testify/assert"
+	"io"
+	"log"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -172,4 +179,70 @@ func TestMergeRangesNonSrcOrdered(t *testing.T) {
 
 	result, _ := mergeRanges(ranges, 0.1)
 	assert.Equal(t, 2, result.Len())
+}
+
+// readTileContents returns the contents of every tile in a local archive, by tile ID.
+func readTileContents(t *testing.T, path string) map[uint64][]byte {
+	archive, err := os.ReadFile(path)
+	assert.Nil(t, err)
+	header, err := DeserializeHeader(archive[0:HeaderV3LenBytes])
+	assert.Nil(t, err)
+
+	contents := make(map[uint64][]byte)
+	var readDirectory func(offset uint64, length uint64)
+	readDirectory = func(offset uint64, length uint64) {
+		entries := DeserializeEntries(bytes.NewBuffer(archive[offset:offset+length]), header.InternalCompression)
+		for _, entry := range entries {
+			if entry.RunLength == 0 {
+				readDirectory(header.LeafDirectoryOffset+entry.Offset, uint64(entry.Length))
+				continue
+			}
+			start := header.TileDataOffset + entry.Offset
+			for i := uint64(0); i < uint64(entry.RunLength); i++ {
+				contents[entry.TileID+i] = archive[start : start+uint64(entry.Length)]
+			}
+		}
+	}
+	readDirectory(header.RootOffset, header.RootLength)
+	return contents
+}
+
+func TestExtractMaxZoomFromLocalArchive(t *testing.T) {
+	for _, leaves := range []bool{false, true} {
+		t.Run(fmt.Sprintf("leaves=%v", leaves), func(t *testing.T) {
+			tiles := make(map[Zxy][]byte)
+			for z := uint8(0); z <= 2; z++ {
+				for x := uint32(0); x < 1<<z; x++ {
+					for y := uint32(0); y < 1<<z; y++ {
+						tiles[Zxy{z, x, y}] = []byte(fmt.Sprintf("tile %d/%d/%d", z, x, y))
+					}
+				}
+			}
+			header := HeaderV3{
+				TileType:  Mvt,
+				Clustered: true,
+				MinLonE7:  -180 * 10000000,
+				MinLatE7:  -85 * 10000000,
+				MaxLonE7:  180 * 10000000,
+				MaxLatE7:  85 * 10000000,
+			}
+			dir := t.TempDir()
+			input := filepath.Join(dir, "input.pmtiles")
+			output := filepath.Join(dir, "output.pmtiles")
+			assert.Nil(t, os.WriteFile(input, fakeArchive(header, map[string]interface{}{}, tiles, leaves, Gzip), 0o600))
+
+			logger := log.New(io.Discard, "", 0)
+			err := Extract(context.Background(), logger, "", input, -1, 1, "", "", output, 4, 0.05, false)
+			assert.Nil(t, err)
+			assert.Nil(t, Verify(logger, output))
+
+			expected := make(map[uint64][]byte)
+			for zxy, content := range tiles {
+				if zxy.Z <= 1 {
+					expected[ZxyToID(zxy.Z, zxy.X, zxy.Y)] = content
+				}
+			}
+			assert.Equal(t, expected, readTileContents(t, output))
+		})
+	}
 }
