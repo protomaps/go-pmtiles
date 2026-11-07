@@ -7,13 +7,13 @@ import (
 
 func TestResolver(t *testing.T) {
 	resolver := newResolver(true, true)
-	resolver.AddTileIsNew(1, []byte{0x1, 0x2}, 1)
+	_, first := resolver.AddTileIsNew(1, []byte{0x1, 0x2}, 1)
 	assert.Equal(t, 1, len(resolver.Entries))
-	resolver.AddTileIsNew(2, []byte{0x1, 0x3}, 1)
-	assert.Equal(t, uint64(52), resolver.Offset)
+	_, second := resolver.AddTileIsNew(2, []byte{0x1, 0x3}, 1)
+	assert.Equal(t, uint64(len(first)+len(second)), resolver.Offset)
 	isNew, _ := resolver.AddTileIsNew(3, []byte{0x1, 0x2}, 1)
 	assert.False(t, isNew)
-	assert.Equal(t, uint64(52), resolver.Offset)
+	assert.Equal(t, uint64(len(first)+len(second)), resolver.Offset)
 	resolver.AddTileIsNew(4, []byte{0x1, 0x2}, 1)
 	assert.Equal(t, 3, len(resolver.Entries))
 	resolver.AddTileIsNew(6, []byte{0x1, 0x2}, 1)
