@@ -299,6 +299,12 @@ func ExtractWithResume(ctx context.Context, logger *log.Logger, bucketURL string
 	}
 	r.Close()
 
+	// If-Match uses the strong comparison, so a weak ETag never matches it.
+	// Extract therefore does not pin a weak ETag, and cannot resume from a source that has one.
+	if strings.HasPrefix(sourceEtag, "W/") {
+		sourceEtag = ""
+	}
+
 	readSource := func(offset int64, length int64) (io.ReadCloser, error) {
 		reader, _, _, err := bucket.NewRangeReaderEtag(ctx, key, offset, length, sourceEtag)
 		return reader, err

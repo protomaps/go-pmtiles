@@ -335,3 +335,17 @@ func TestExtractFailsWhenTheSourceChanges(t *testing.T) {
 	var refreshRequired *RefreshRequiredError
 	assert.True(t, errors.As(err, &refreshRequired), "expected a RefreshRequiredError, got %v", err)
 }
+
+func TestExtractReadsASourceWithAWeakETag(t *testing.T) {
+	server := &archiveServer{
+		archive: fakeArchive(extractTestHeader(), map[string]interface{}{}, extractTestTiles(), true, Gzip),
+		etag:    `W/"weak"`,
+	}
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	output := filepath.Join(t.TempDir(), "output.pmtiles")
+	logger := log.New(io.Discard, "", 0)
+	assert.Nil(t, Extract(context.Background(), logger, "", httpServer.URL+"/input.pmtiles", -1, 1, "", "", output, 4, 0.05, false))
+	assert.Nil(t, Verify(logger, output))
+}
