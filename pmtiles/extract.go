@@ -271,7 +271,9 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 	}
 	defer bucket.Close()
 
-	r, err := bucket.NewRangeReader(ctx, key, 0, HeaderV3LenBytes)
+	// Every later read of the source sends the ETag of this first read with If-Match,
+	// so a source that changes during the extract fails the read instead of mixing two versions.
+	r, sourceEtag, _, err := bucket.NewRangeReaderEtag(ctx, key, 0, HeaderV3LenBytes, "")
 
 	if err != nil {
 		return fmt.Errorf("Failed to create range reader for %s, %w", key, err)
@@ -281,6 +283,11 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		return err
 	}
 	r.Close()
+
+	readSource := func(offset int64, length int64) (io.ReadCloser, error) {
+		reader, _, _, err := bucket.NewRangeReaderEtag(ctx, key, offset, length, sourceEtag)
+		return reader, err
+	}
 
 	header, err := DeserializeHeader(b[0:HeaderV3LenBytes])
 
@@ -375,7 +382,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 	dirOffset := header.RootOffset
 	dirLength := header.RootLength
 
-	rootReader, err := bucket.NewRangeReader(ctx, key, int64(dirOffset), int64(dirLength))
+	rootReader, err := readSource(int64(dirOffset), int64(dirLength))
 	if err != nil {
 		return err
 	}
@@ -406,7 +413,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		}
 		or := overfetchLeaves.Remove(overfetchLeaves.Front()).(overfetchRange)
 
-		chunkReader, err := bucket.NewRangeReader(ctx, key, int64(or.Rng.SrcOffset), int64(or.Rng.Length))
+		chunkReader, err := readSource(int64(or.Rng.SrcOffset), int64(or.Rng.Length))
 		if err != nil {
 			return err
 		}
@@ -505,7 +512,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		}
 
 		// 9. get and write the metadata
-		metadataReader, err := bucket.NewRangeReader(ctx, key, int64(sourceMetadataOffset), int64(header.MetadataLength))
+		metadataReader, err := readSource(int64(sourceMetadataOffset), int64(header.MetadataLength))
 		if err != nil {
 			return err
 		}
@@ -535,7 +542,7 @@ func Extract(ctx context.Context, logger *log.Logger, bucketURL string, key stri
 		var mu sync.Mutex
 
 		downloadPart := func(or overfetchRange) error {
-			tileReader, err := bucket.NewRangeReader(ctx, key, int64(sourceTileDataOffset+or.Rng.SrcOffset), int64(or.Rng.Length))
+			tileReader, err := readSource(int64(sourceTileDataOffset+or.Rng.SrcOffset), int64(or.Rng.Length))
 			if err != nil {
 				return err
 			}

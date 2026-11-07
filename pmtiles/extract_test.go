@@ -3,14 +3,19 @@ package pmtiles
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestRelevantEntries(t *testing.T) {
@@ -245,4 +250,65 @@ func TestExtractMaxZoomFromLocalArchive(t *testing.T) {
 			assert.Equal(t, expected, readTileContents(t, output))
 		})
 	}
+}
+
+// archiveServer serves an archive over HTTP with range requests, ETags and If-Match,
+// through http.ServeContent. replaceAfterRequests > 0 replaces the archive's ETag after that many requests.
+type archiveServer struct {
+	mu                   sync.Mutex
+	archive              []byte
+	etag                 string
+	requests             int
+	replaceAfterRequests int
+}
+
+func (s *archiveServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	s.requests++
+	if s.replaceAfterRequests > 0 && s.requests > s.replaceAfterRequests {
+		s.etag = `"replaced"`
+	}
+	etag := s.etag
+	s.mu.Unlock()
+	w.Header().Set("ETag", etag)
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(s.archive))
+}
+
+func extractTestTiles() map[Zxy][]byte {
+	tiles := make(map[Zxy][]byte)
+	for z := uint8(0); z <= 2; z++ {
+		for x := uint32(0); x < 1<<z; x++ {
+			for y := uint32(0); y < 1<<z; y++ {
+				tiles[Zxy{z, x, y}] = []byte(fmt.Sprintf("tile %d/%d/%d", z, x, y))
+			}
+		}
+	}
+	return tiles
+}
+
+func extractTestHeader() HeaderV3 {
+	return HeaderV3{
+		TileType:  Mvt,
+		Clustered: true,
+		MinLonE7:  -180 * 10000000,
+		MinLatE7:  -85 * 10000000,
+		MaxLonE7:  180 * 10000000,
+		MaxLatE7:  85 * 10000000,
+	}
+}
+
+func TestExtractFailsWhenTheSourceChanges(t *testing.T) {
+	server := &archiveServer{
+		archive:              fakeArchive(extractTestHeader(), map[string]interface{}{}, extractTestTiles(), true, Gzip),
+		etag:                 `"original"`,
+		replaceAfterRequests: 1,
+	}
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	output := filepath.Join(t.TempDir(), "output.pmtiles")
+	err := Extract(context.Background(), log.New(io.Discard, "", 0), "", httpServer.URL+"/input.pmtiles", -1, 1, "", "", output, 4, 0.05, false)
+
+	var refreshRequired *RefreshRequiredError
+	assert.True(t, errors.As(err, &refreshRequired), "expected a RefreshRequiredError, got %v", err)
 }
