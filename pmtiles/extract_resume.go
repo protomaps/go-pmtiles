@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"time"
 )
@@ -86,7 +87,7 @@ func readExtractResumeState(path string) (*extractResumeState, error) {
 }
 
 // writeExtractResumeState writes the state to a temporary file, syncs it,
-// renames it over the resume state file, and syncs the directory.
+// renames it over the resume state file, and syncs the directory, except on Windows.
 // A crash at any point leaves either the old or the new resume state file.
 func writeExtractResumeState(path string, state extractResumeState) error {
 	data, err := json.MarshalIndent(state, "", "  ")
@@ -111,6 +112,10 @@ func writeExtractResumeState(path string, state extractResumeState) error {
 	}
 	if err := os.Rename(temporaryPath, path); err != nil {
 		return err
+	}
+	// Windows cannot open a directory to sync it, and NTFS journals the rename itself.
+	if runtime.GOOS == "windows" {
+		return nil
 	}
 	directory, err := os.Open(filepath.Dir(path))
 	if err != nil {
